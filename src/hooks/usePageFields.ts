@@ -292,9 +292,7 @@ export function usePageFields(
 ): UsePageFieldsResult {
   const [fields, setFields] = useState<Partial<AuthoringFields> | null>(null);
   const [pageUrl, setPageUrl] = useState<string>("");
-  const [siteDomain, setSiteDomain] = useState<string>(
-    process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "",
-  );
+  const [siteDomain, setSiteDomain] = useState<string>("");
   const [editingToken, setEditingToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
