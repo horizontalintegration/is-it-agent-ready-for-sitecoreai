@@ -69,7 +69,7 @@ export function useMarketplaceClient(options: UseMarketplaceClientOptions = {}) 
   // Use ref to track if we're currently initializing to prevent race conditions
   const isInitializingRef = useRef(false);
 
-  const initializeClient = useCallback(async (attempt = 1): Promise<void> => {
+  const initializeClient = useCallback(async (): Promise<void> => {
     // Use functional state update to check current state without dependencies
     let shouldProceed = false;
     setState(prev => {
@@ -83,30 +83,38 @@ export function useMarketplaceClient(options: UseMarketplaceClientOptions = {}) 
 
     if (!shouldProceed) return;
 
+    let attempt = 1;
+    let lastError: Error | null = null;
     try {
-      const client = await getMarketplaceClient();
-      setState({
-        client,
-        error: null,
-        isLoading: false,
-        isInitialized: true,
-      });
-    } catch (error) {
-      if (attempt < opts.retryAttempts) {
-        await new Promise(resolve => setTimeout(resolve, opts.retryDelay));
-        return initializeClient(attempt + 1);
+      while (attempt <= opts.retryAttempts) {
+        try {
+          const client = await getMarketplaceClient();
+          setState({
+            client,
+            error: null,
+            isLoading: false,
+            isInitialized: true,
+          });
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error('Failed to initialize MarketplaceClient');
+          attempt++;
+          if (attempt <= opts.retryAttempts) {
+            await new Promise(resolve => setTimeout(resolve, opts.retryDelay));
+          }
+        }
       }
 
       setState({
         client: null,
-        error: error instanceof Error ? error : new Error('Failed to initialize MarketplaceClient'),
+        error: lastError,
         isLoading: false,
         isInitialized: false,
       });
     } finally {
       isInitializingRef.current = false;
     }
-  }, [opts.retryAttempts, opts.retryDelay]); // Removed state dependencies
+  }, [opts.retryAttempts, opts.retryDelay]);
 
   useEffect(() => {
     if (opts.autoInit) {

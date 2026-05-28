@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+:root {
+  --color-text-success: #1d9e75;
+  --color-text-danger: #dc2626;
+  --color-text-warning: #d97706;
+}
