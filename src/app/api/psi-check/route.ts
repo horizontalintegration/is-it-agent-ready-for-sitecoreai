@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchWithTimeout } from "@/lib/server/extract-html";
 import type { PsiResult } from "@/lib/rule-engine/types";
 
-export const maxDuration = 60; // seconds — PSI Lighthouse audits can take 20–40s
+export const maxDuration = 100; // seconds — PSI Lighthouse audits can take 20–40s
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const res = await fetchWithTimeout(`${PSI_ENDPOINT}?${params.toString()}`, { timeoutMs: 60_000 });
+    const res = await fetchWithTimeout(`${PSI_ENDPOINT}?${params.toString()}`, { timeoutMs: 100_000 });
     const data = (await res.json()) as PsiApiResponse;
 
     if (!res.ok) {
