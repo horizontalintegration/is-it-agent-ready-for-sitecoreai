@@ -17,7 +17,7 @@ import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 const CACHE_KEY = "aiDiscovery:scores:v1";
 const INITIAL_AUTO_SCAN_COUNT = 20;
 const CONCURRENCY = 5;
-const PAGE_SEARCH_PAGESIZE = 100;
+const TREE_WALK_DEPTH = 5; // descendants levels fetched per GraphQL call
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SDK response shapes
@@ -31,30 +31,79 @@ interface SiteContextShape {
   };
 }
 
-interface SdkHost {
-  id?: string | null;
-  name?: string | null;
-  hostnames?: Array<string> | null;
-  targetHostname?: string | null;
-  homePageId?: string | null;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Authoring GraphQL — recursive children walk
+// ─────────────────────────────────────────────────────────────────────────────
 
-interface SdkPage {
-  id?: string | null;
-  name?: string | null;
+interface GqlItemNode {
+  itemId?: string;
+  name?: string;
   displayName?: string | null;
-  route?: string | null;
-  path?: string | null;
-  templateId?: string | null;
-  updatedAt?: string | null;
-  language?: string | null;
+  path?: string;
+  updated?: { value?: string | null } | null;
+  renderings?: { value?: string | null } | null;
+  children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
-interface SdkPagesSearchResult {
-  totalCount?: number;
-  results?: Array<SdkPage> | null;
-  // some envelopes include a continuation token; treat as optional
-  continuationToken?: string | null;
+interface GqlEnvelope {
+  data?: { item?: GqlItemNode | null };
+  errors?: Array<{ message?: string }>;
+}
+
+// Build a query with N nested children levels. GraphQL doesn't allow recursion,
+// so we expand it as a fixed depth tree. Items with __Renderings populated are
+// treated as pages; the rest are skipped client-side.
+function buildSitePagesQuery(depth: number): string {
+  const itemFields = `
+    itemId
+    name
+    displayName
+    path
+    updated: field(name: "__Updated") { value }
+    renderings: field(name: "__Renderings") { value }
+  `;
+  let inner = "";
+  for (let i = 0; i < depth; i++) {
+    inner = `children { nodes { ${itemFields} ${inner} } }`;
+  }
+  return `
+    query GetSitePages($rootPath: String!, $language: String!) {
+      item(where: { path: $rootPath, language: $language }) {
+        ${itemFields}
+        ${inner}
+      }
+    }
+  `;
+}
+
+// Flatten the recursive GqlItemNode tree to a list, keeping only items that
+// have presentation (i.e., real pages, not content folders).
+function flattenPages(root: GqlItemNode | null | undefined): GqlItemNode[] {
+  if (!root) return [];
+  const out: GqlItemNode[] = [];
+  function walk(node: GqlItemNode) {
+    const hasLayout = !!node.renderings?.value && node.renderings.value.trim().length > 0;
+    if (hasLayout) out.push(node);
+    const kids = node.children?.nodes ?? [];
+    for (const k of kids) walk(k);
+  }
+  walk(root);
+  return out;
+}
+
+// Compute the public-facing route from a Sitecore content tree path.
+// "/sitecore/content/Tenant/Site/Home/About Us" → "/About-Us"
+// "/sitecore/content/Tenant/Site/Home"          → "/"
+function pathToRoute(path: string | undefined): string {
+  if (!path) return "/";
+  const homeIdx = path.indexOf("/Home/");
+  if (homeIdx === -1) {
+    return path.endsWith("/Home") ? "/" : "/";
+  }
+  const rel = path.substring(homeIdx + "/Home/".length);
+  // SXA URL convention: spaces → hyphens
+  const segments = rel.split("/").map((s) => s.replace(/\s+/g, "-"));
+  return "/" + segments.join("/");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,7 +287,7 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
     await withConcurrency(targets, CONCURRENCY, async (row) => { await scanOne(row); });
   }, [scanOne]);
 
-  // ── Enumerate pages via SDK + auto-scan first N ──────────────────────────
+  // ── Enumerate pages via xmc.authoring.graphql + auto-scan first N ───────
   const enumerateAndScan = useCallback(async () => {
     if (!client) return;
     setIsLoading(true);
@@ -248,18 +297,13 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       // 1. site.context → siteId, name
       console.log("[sitePages] step 1: querying site.context");
       const siteRes = await client.query("site.context");
-      try {
-        console.log("[sitePages] site.context JSON:", JSON.stringify(siteRes, null, 2));
-      } catch {
-        console.log("[sitePages] site.context (proxy):", siteRes);
-      }
       const siteCtx = ((siteRes as { data?: SiteContextShape })?.data) ?? {};
       const siteInfo = siteCtx.siteInfo;
       const siteId = siteInfo?.siteId ?? "";
       const siteName = siteInfo?.name ?? "";
       console.log("[sitePages] siteId:", siteId, "name:", siteName);
 
-      if (!siteId) {
+      if (!siteId || !siteName) {
         setError("Could not load site context.");
         setPages([]);
         setSiteContext({ id: "", domain: "", name: "" });
@@ -267,63 +311,39 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
         return;
       }
 
-      // 2. listHosts(siteId) → targetHostname + homePageId
-      // May fail with 401 ("Marketplace M2M credentials not found") when the
-      // Marketplace app isn't configured for the authoring API. Fall back to
-      // the env-var domain when that happens.
-      console.log("[sitePages] step 2: querying xmc.sites.listHosts for siteId=", siteId);
-      let domain = "";
-      let homePageId = "";
-      try {
-        const hostsRes = await client.query("xmc.sites.listHosts", {
-          params: { path: { siteId } },
-        } as Parameters<ClientSDK["query"]>[1]);
-
-        const hostsData = (hostsRes as { data?: unknown })?.data;
-        const hostsError = (hostsData as { error?: { detail?: string; status?: number; title?: string } })?.error;
-
-        if (hostsError) {
-          console.warn("[sitePages] listHosts API error — falling back to env domain:", hostsError);
-        } else {
-          // listHosts response shape: pageRes.data.data = Host[] | pageRes.data = Host[]
-          const hostsList: SdkHost[] = Array.isArray(hostsData)
-            ? (hostsData as SdkHost[])
-            : (((hostsData as { data?: SdkHost[] })?.data) ?? []);
-          console.log("[sitePages] hostsList length:", hostsList.length);
-
-          const primaryHost = hostsList.find((h) => h.targetHostname) ?? hostsList[0];
-          const rawHost = primaryHost?.targetHostname ?? "";
-          domain = rawHost
-            ? rawHost.startsWith("http") ? rawHost : `https://${rawHost}`
-            : "";
-          homePageId = primaryHost?.homePageId ?? "";
-          console.log("[sitePages] resolved from listHosts → domain:", domain, "homePageId:", homePageId);
-        }
-      } catch (err) {
-        console.warn("[sitePages] listHosts threw — falling back to env domain:", err);
-      }
-
-      // Fallback: env variable
-      if (!domain) {
-        const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
-        domain = envDomain
-          ? envDomain.startsWith("http") ? envDomain : `https://${envDomain}`
-          : "";
-        console.log("[sitePages] fallback domain from env:", domain);
-      }
+      // 2. Resolve domain from env variable (site.context doesn't expose targetHostname)
+      const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
+      const domain = envDomain
+        ? envDomain.startsWith("http") ? envDomain : `https://${envDomain}`
+        : "";
 
       setSiteContext({ id: siteId, domain, name: siteName });
 
       if (!domain) {
         setError(
-          "Could not resolve site domain. Configure Marketplace M2M credentials for xmc.sites.listHosts, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
+          "Site domain not configured. Set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN in your .env.local.",
         );
         setPages([]);
         setIsLoading(false);
         return;
       }
 
-      // 3. Fetch robots.txt once for this domain (cached for the session)
+      // 3. application.context → sitecoreContextId for the GraphQL call
+      let sitecoreContextId: string | undefined;
+      try {
+        const appRes = await client.query("application.context");
+        const app = (appRes as { data?: { resourceAccess?: Array<{ context?: { preview?: string; live?: string } }>; resources?: Array<{ context?: { preview?: string; live?: string } }> } })?.data;
+        const list = app?.resourceAccess ?? app?.resources ?? [];
+        for (const r of list) {
+          if (r?.context?.preview) { sitecoreContextId = r.context.preview; break; }
+          if (r?.context?.live)    { sitecoreContextId = r.context.live; break; }
+        }
+        console.log("[sitePages] sitecoreContextId:", sitecoreContextId);
+      } catch (err) {
+        console.warn("[sitePages] application.context query failed:", err);
+      }
+
+      // 4. Fetch robots.txt once for this domain
       if (robotsFetchedDomainRef.current !== domain) {
         robotsFetchedDomainRef.current = domain;
         robotsRef.current = await tryJson<RobotsTxt>(
@@ -331,76 +351,64 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
         );
       }
 
-      // 4. Paginate xmc.pages.search. If we have homePageId, scope by rootIds;
-      // otherwise search globally and filter client-side by path containing
-      // the site name (so we don't pollute the matrix with other sites' pages).
-      console.log("[sitePages] step 4: querying xmc.pages.search rootIds=", homePageId ? [homePageId] : "(none)");
-      const collected: SdkPage[] = [];
-      let pageNumber = 1;
-      const language = "en"; // site.context doesn't expose language; default to en
-      for (let i = 0; i < 50; i++) {
-        const query: Record<string, unknown> = {
-          filter: "Pages",
-          language,
-          pageSize: PAGE_SEARCH_PAGESIZE,
-          pageNumber,
-        };
-        if (homePageId) query.rootIds = [homePageId];
+      // 5. Resolve site Home path: env override OR convention "/sitecore/content/{siteName}/Home"
+      const language = "en";
+      const rootPathOverride = process.env.NEXT_PUBLIC_SITE_ROOT_PATH;
+      const rootPath = rootPathOverride && rootPathOverride.trim().length > 0
+        ? rootPathOverride.trim()
+        : `/sitecore/content/${siteName}/Home`;
+      console.log("[sitePages] using rootPath:", rootPath);
 
-        const searchRes = await client.query("xmc.pages.search", {
-          params: { query },
-        } as Parameters<ClientSDK["query"]>[1]);
+      // 6. Authoring GraphQL — walk descendants of Home to TREE_WALK_DEPTH levels
+      const query = buildSitePagesQuery(TREE_WALK_DEPTH);
+      const gqlRes = await client.mutate("xmc.authoring.graphql", {
+        params: {
+          body: {
+            query,
+            variables: { rootPath, language },
+          },
+          ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+        },
+      } as Parameters<ClientSDK["mutate"]>[1]);
 
-        if (i === 0) {
-          try {
-            console.log("[sitePages] pages.search page 1 JSON:", JSON.stringify(searchRes, null, 2).slice(0, 3000));
-          } catch {
-            console.log("[sitePages] pages.search page 1 (proxy):", searchRes);
-          }
-        }
-
-        // Detect API errors in the SDK envelope
-        const searchData = (searchRes as { data?: unknown })?.data;
-        const searchError = (searchData as { error?: { detail?: string; status?: number } })?.error;
-        if (searchError) {
-          throw new Error(`xmc.pages.search returned ${searchError.status}: ${searchError.detail ?? "unknown error"}`);
-        }
-
-        const payload: SdkPagesSearchResult = Array.isArray(searchData)
-          ? { results: searchData as SdkPage[] }
-          : (((searchData as { data?: SdkPagesSearchResult })?.data) ?? (searchData as SdkPagesSearchResult) ?? {});
-
-        const results = payload.results ?? [];
-        console.log(`[sitePages] pages.search page ${pageNumber} → ${results.length} results (totalCount=${payload.totalCount})`);
-        if (results.length === 0) break;
-        collected.push(...results);
-        if (results.length < PAGE_SEARCH_PAGESIZE) break;
-        pageNumber++;
+      try {
+        console.log("[sitePages] authoring.graphql JSON:", JSON.stringify(gqlRes, null, 2).slice(0, 2000));
+      } catch {
+        console.log("[sitePages] authoring.graphql (proxy):", gqlRes);
       }
 
-      // Without rootIds, filter to the current site by content-tree path prefix
-      const scoped = homePageId
-        ? collected
-        : collected.filter((p) => {
-            const path = p.path ?? "";
-            return siteName ? path.toLowerCase().includes(siteName.toLowerCase()) : true;
-          });
-      console.log("[sitePages] collected:", collected.length, "scoped:", scoped.length);
+      const envelope: GqlEnvelope =
+        ((gqlRes as { data?: GqlEnvelope })?.data as GqlEnvelope)
+        ?? (gqlRes as GqlEnvelope);
 
-      // 5. Sort by updatedAt desc, build rows with cache lookup
+      if (envelope?.errors?.length) {
+        const detail = envelope.errors.map((e) => e.message).filter(Boolean).join("; ");
+        throw new Error(`GraphQL errors: ${detail || "unknown"}`);
+      }
+
+      const root = envelope?.data?.item ?? null;
+      if (!root) {
+        throw new Error(`No item found at path ${rootPath}. Override with NEXT_PUBLIC_SITE_ROOT_PATH.`);
+      }
+
+      const pageNodes = flattenPages(root);
+      console.log(`[sitePages] flattened ${pageNodes.length} pages from tree`);
+
+      // 7. Sort by updated desc, build rows with cache lookup
       const cache = readCache();
-      const rows: PageMatrixRow[] = scoped
+      const rows: PageMatrixRow[] = pageNodes
         .map<PageMatrixRow>((p) => {
-          const pageUrl = buildPageUrl(domain, p.route);
-          const lastModified = p.updatedAt ?? "";
+          const route = pathToRoute(p.path);
+          const pageUrl = buildPageUrl(domain, route);
+          const lastModified = p.updated?.value ?? "";
           const cached = cache[pageUrl];
           const fromCache = cached && cached.updatedAt === lastModified ? cached : null;
           return {
-            id: p.id ?? pageUrl,
+            id: p.itemId ?? pageUrl,
             name: p.displayName || p.name || "(untitled)",
-            route: p.route ?? "",
+            route,
             pageUrl,
-            templateId: p.templateId ?? "",
+            templateId: "",
             lastModified,
             score: fromCache ? fromCache.score : null,
             scanStatus: fromCache ? "scanned" : "idle",
@@ -417,13 +425,13 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       pagesRef.current = rows;
       setIsLoading(false);
 
-      // 6. Auto-scan the first N un-scanned rows
+      // 8. Auto-scan the first N un-scanned rows
       const toScan = rows.filter((r) => r.scanStatus === "idle").slice(0, INITIAL_AUTO_SCAN_COUNT);
       await withConcurrency(toScan, CONCURRENCY, async (row) => { await scanOne(row); });
     } catch (err) {
       console.error("[sitePages] enumeration failed:", err);
       const message = err instanceof Error ? err.message : String(err);
-      setError(`Could not load pages from the SDK: ${message}`);
+      setError(`Could not load pages: ${message}`);
       setIsLoading(false);
     }
   }, [client, base, scanOne]);
