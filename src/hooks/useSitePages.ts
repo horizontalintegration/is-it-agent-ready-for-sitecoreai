@@ -245,11 +245,18 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
 
     try {
       // 1. site.context → siteId, name
+      console.log("[sitePages] step 1: querying site.context");
       const siteRes = await client.query("site.context");
+      try {
+        console.log("[sitePages] site.context JSON:", JSON.stringify(siteRes, null, 2));
+      } catch {
+        console.log("[sitePages] site.context (proxy):", siteRes);
+      }
       const siteCtx = ((siteRes as { data?: SiteContextShape })?.data) ?? {};
       const siteInfo = siteCtx.siteInfo;
       const siteId = siteInfo?.siteId ?? "";
       const siteName = siteInfo?.name ?? "";
+      console.log("[sitePages] siteId:", siteId, "name:", siteName);
 
       if (!siteId) {
         setError("Could not load site context.");
@@ -260,15 +267,22 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       }
 
       // 2. listHosts(siteId) → targetHostname + homePageId
+      console.log("[sitePages] step 2: querying xmc.sites.listHosts for siteId=", siteId);
       const hostsRes = await client.query("xmc.sites.listHosts", {
         params: { path: { siteId } },
       } as Parameters<ClientSDK["query"]>[1]);
+      try {
+        console.log("[sitePages] listHosts JSON:", JSON.stringify(hostsRes, null, 2));
+      } catch {
+        console.log("[sitePages] listHosts (proxy):", hostsRes);
+      }
 
       // listHosts response shape: pageRes.data.data = Host[]
       const hostsList =
         ((hostsRes as { data?: { data?: SdkHost[] } })?.data?.data)
         ?? ((hostsRes as { data?: SdkHost[] })?.data)
         ?? [];
+      console.log("[sitePages] hostsList length:", hostsList.length, "list:", hostsList);
 
       const primaryHost = hostsList.find((h) => h.targetHostname) ?? hostsList[0];
       const rawHost = primaryHost?.targetHostname ?? "";
@@ -276,6 +290,7 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
         ? rawHost.startsWith("http") ? rawHost : `https://${rawHost}`
         : "";
       const homePageId = primaryHost?.homePageId ?? "";
+      console.log("[sitePages] primaryHost:", primaryHost, "domain:", domain, "homePageId:", homePageId);
 
       setSiteContext({ id: siteId, domain, name: siteName });
 
@@ -295,6 +310,7 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       }
 
       // 4. Paginate xmc.pages.search under the home page until exhausted
+      console.log("[sitePages] step 4: querying xmc.pages.search rootIds=", [homePageId]);
       const collected: SdkPage[] = [];
       let pageNumber = 1;
       const language = "en"; // site.context doesn't expose language; default to en
@@ -311,16 +327,26 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
           },
         } as Parameters<ClientSDK["query"]>[1]);
 
+        if (i === 0) {
+          try {
+            console.log("[sitePages] pages.search page 1 JSON:", JSON.stringify(searchRes, null, 2).slice(0, 3000));
+          } catch {
+            console.log("[sitePages] pages.search page 1 (proxy):", searchRes);
+          }
+        }
+
         const payload =
           ((searchRes as { data?: { data?: SdkPagesSearchResult } })?.data?.data)
           ?? ((searchRes as { data?: SdkPagesSearchResult })?.data)
           ?? {};
         const results = payload.results ?? [];
+        console.log(`[sitePages] pages.search page ${pageNumber} → ${results.length} results (totalCount=${payload.totalCount})`);
         if (results.length === 0) break;
         collected.push(...results);
         if (results.length < PAGE_SEARCH_PAGESIZE) break;
         pageNumber++;
       }
+      console.log("[sitePages] collected total:", collected.length);
 
       // 5. Sort by updatedAt desc, build rows with cache lookup
       const cache = readCache();
@@ -356,8 +382,9 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       const toScan = rows.filter((r) => r.scanStatus === "idle").slice(0, INITIAL_AUTO_SCAN_COUNT);
       await withConcurrency(toScan, CONCURRENCY, async (row) => { await scanOne(row); });
     } catch (err) {
-      console.error("[useSitePages] enumeration failed:", err);
-      setError("Could not load pages from the SDK.");
+      console.error("[sitePages] enumeration failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Could not load pages from the SDK: ${message}`);
       setIsLoading(false);
     }
   }, [client, base, scanOne]);
