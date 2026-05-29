@@ -71,6 +71,10 @@ export interface JsonLdBlock {
 }
 
 export interface ParsedHtml {
+  // <title> text and <meta name="description"> content
+  title: string | null;
+  metaDescription: string | null;
+
   // Rendered heading structure in DOM order
   headings: Array<{ level: number; text: string }>;
 
