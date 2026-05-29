@@ -44,6 +44,7 @@ interface SdkPage {
   name?: string | null;
   displayName?: string | null;
   route?: string | null;
+  path?: string | null;
   templateId?: string | null;
   updatedAt?: string | null;
   language?: string | null;
@@ -267,35 +268,56 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       }
 
       // 2. listHosts(siteId) → targetHostname + homePageId
+      // May fail with 401 ("Marketplace M2M credentials not found") when the
+      // Marketplace app isn't configured for the authoring API. Fall back to
+      // the env-var domain when that happens.
       console.log("[sitePages] step 2: querying xmc.sites.listHosts for siteId=", siteId);
-      const hostsRes = await client.query("xmc.sites.listHosts", {
-        params: { path: { siteId } },
-      } as Parameters<ClientSDK["query"]>[1]);
+      let domain = "";
+      let homePageId = "";
       try {
-        console.log("[sitePages] listHosts JSON:", JSON.stringify(hostsRes, null, 2));
-      } catch {
-        console.log("[sitePages] listHosts (proxy):", hostsRes);
+        const hostsRes = await client.query("xmc.sites.listHosts", {
+          params: { path: { siteId } },
+        } as Parameters<ClientSDK["query"]>[1]);
+
+        const hostsData = (hostsRes as { data?: unknown })?.data;
+        const hostsError = (hostsData as { error?: { detail?: string; status?: number; title?: string } })?.error;
+
+        if (hostsError) {
+          console.warn("[sitePages] listHosts API error — falling back to env domain:", hostsError);
+        } else {
+          // listHosts response shape: pageRes.data.data = Host[] | pageRes.data = Host[]
+          const hostsList: SdkHost[] = Array.isArray(hostsData)
+            ? (hostsData as SdkHost[])
+            : (((hostsData as { data?: SdkHost[] })?.data) ?? []);
+          console.log("[sitePages] hostsList length:", hostsList.length);
+
+          const primaryHost = hostsList.find((h) => h.targetHostname) ?? hostsList[0];
+          const rawHost = primaryHost?.targetHostname ?? "";
+          domain = rawHost
+            ? rawHost.startsWith("http") ? rawHost : `https://${rawHost}`
+            : "";
+          homePageId = primaryHost?.homePageId ?? "";
+          console.log("[sitePages] resolved from listHosts → domain:", domain, "homePageId:", homePageId);
+        }
+      } catch (err) {
+        console.warn("[sitePages] listHosts threw — falling back to env domain:", err);
       }
 
-      // listHosts response shape: pageRes.data.data = Host[]
-      const hostsList =
-        ((hostsRes as { data?: { data?: SdkHost[] } })?.data?.data)
-        ?? ((hostsRes as { data?: SdkHost[] })?.data)
-        ?? [];
-      console.log("[sitePages] hostsList length:", hostsList.length, "list:", hostsList);
-
-      const primaryHost = hostsList.find((h) => h.targetHostname) ?? hostsList[0];
-      const rawHost = primaryHost?.targetHostname ?? "";
-      const domain = rawHost
-        ? rawHost.startsWith("http") ? rawHost : `https://${rawHost}`
-        : "";
-      const homePageId = primaryHost?.homePageId ?? "";
-      console.log("[sitePages] primaryHost:", primaryHost, "domain:", domain, "homePageId:", homePageId);
+      // Fallback: env variable
+      if (!domain) {
+        const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
+        domain = envDomain
+          ? envDomain.startsWith("http") ? envDomain : `https://${envDomain}`
+          : "";
+        console.log("[sitePages] fallback domain from env:", domain);
+      }
 
       setSiteContext({ id: siteId, domain, name: siteName });
 
-      if (!domain || !homePageId) {
-        setError("Could not resolve site domain or home page from listHosts.");
+      if (!domain) {
+        setError(
+          "Could not resolve site domain. Configure Marketplace M2M credentials for xmc.sites.listHosts, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
+        );
         setPages([]);
         setIsLoading(false);
         return;
@@ -309,22 +331,24 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
         );
       }
 
-      // 4. Paginate xmc.pages.search under the home page until exhausted
-      console.log("[sitePages] step 4: querying xmc.pages.search rootIds=", [homePageId]);
+      // 4. Paginate xmc.pages.search. If we have homePageId, scope by rootIds;
+      // otherwise search globally and filter client-side by path containing
+      // the site name (so we don't pollute the matrix with other sites' pages).
+      console.log("[sitePages] step 4: querying xmc.pages.search rootIds=", homePageId ? [homePageId] : "(none)");
       const collected: SdkPage[] = [];
       let pageNumber = 1;
       const language = "en"; // site.context doesn't expose language; default to en
       for (let i = 0; i < 50; i++) {
+        const query: Record<string, unknown> = {
+          filter: "Pages",
+          language,
+          pageSize: PAGE_SEARCH_PAGESIZE,
+          pageNumber,
+        };
+        if (homePageId) query.rootIds = [homePageId];
+
         const searchRes = await client.query("xmc.pages.search", {
-          params: {
-            query: {
-              rootIds: [homePageId],
-              filter: "Pages",
-              language,
-              pageSize: PAGE_SEARCH_PAGESIZE,
-              pageNumber,
-            },
-          },
+          params: { query },
         } as Parameters<ClientSDK["query"]>[1]);
 
         if (i === 0) {
@@ -335,10 +359,17 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
           }
         }
 
-        const payload =
-          ((searchRes as { data?: { data?: SdkPagesSearchResult } })?.data?.data)
-          ?? ((searchRes as { data?: SdkPagesSearchResult })?.data)
-          ?? {};
+        // Detect API errors in the SDK envelope
+        const searchData = (searchRes as { data?: unknown })?.data;
+        const searchError = (searchData as { error?: { detail?: string; status?: number } })?.error;
+        if (searchError) {
+          throw new Error(`xmc.pages.search returned ${searchError.status}: ${searchError.detail ?? "unknown error"}`);
+        }
+
+        const payload: SdkPagesSearchResult = Array.isArray(searchData)
+          ? { results: searchData as SdkPage[] }
+          : (((searchData as { data?: SdkPagesSearchResult })?.data) ?? (searchData as SdkPagesSearchResult) ?? {});
+
         const results = payload.results ?? [];
         console.log(`[sitePages] pages.search page ${pageNumber} → ${results.length} results (totalCount=${payload.totalCount})`);
         if (results.length === 0) break;
@@ -346,11 +377,19 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
         if (results.length < PAGE_SEARCH_PAGESIZE) break;
         pageNumber++;
       }
-      console.log("[sitePages] collected total:", collected.length);
+
+      // Without rootIds, filter to the current site by content-tree path prefix
+      const scoped = homePageId
+        ? collected
+        : collected.filter((p) => {
+            const path = p.path ?? "";
+            return siteName ? path.toLowerCase().includes(siteName.toLowerCase()) : true;
+          });
+      console.log("[sitePages] collected:", collected.length, "scoped:", scoped.length);
 
       // 5. Sort by updatedAt desc, build rows with cache lookup
       const cache = readCache();
-      const rows: PageMatrixRow[] = collected
+      const rows: PageMatrixRow[] = scoped
         .map<PageMatrixRow>((p) => {
           const pageUrl = buildPageUrl(domain, p.route);
           const lastModified = p.updatedAt ?? "";
