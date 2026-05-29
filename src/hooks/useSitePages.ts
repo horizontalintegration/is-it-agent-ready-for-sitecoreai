@@ -14,10 +14,13 @@ interface UseSitePagesResult {
 }
 
 interface SiteContextResponse {
-  id?: string;
-  targetHostname?: string;
-  hostName?: string;
-  name?: string;
+  siteInfo?: {
+    siteId?: string;
+    name?: string;
+    displayName?: string;
+    targetHostname?: string;
+    hosts?: unknown[];
+  };
 }
 
 interface SiteScanResponse {
@@ -107,22 +110,29 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       setIsLoading(true);
       try {
         const siteRes = await client.query("site.context");
-        console.log("[useSitePages] site.context raw response:", siteRes);
-        console.log("[useSitePages] site.context response keys:", Object.keys(siteRes ?? {}));
+        try {
+          console.log("[useSitePages] site.context JSON:", JSON.stringify(siteRes, null, 2));
+        } catch {
+          console.log("[useSitePages] site.context (not serialisable):", siteRes);
+        }
         const siteResData = (siteRes as { data?: unknown })?.data;
-        console.log("[useSitePages] site.context .data:", siteResData);
-        console.log("[useSitePages] site.context .data keys:", Object.keys(siteResData ?? {}));
+        try {
+          console.log("[useSitePages] site.context .data JSON:", JSON.stringify(siteResData, null, 2));
+        } catch {
+          console.log("[useSitePages] site.context .data (not serialisable):", siteResData);
+        }
         const ctx = (siteResData as SiteContextResponse | undefined) ?? {};
-        console.log("[useSitePages] ctx.id:", ctx.id, "ctx.name:", ctx.name, "ctx.targetHostname:", ctx.targetHostname);
+        const siteInfo = ctx.siteInfo;
+        console.log("[useSitePages] siteInfo.siteId:", siteInfo?.siteId, "siteInfo.name:", siteInfo?.name);
         if (cancelled) return;
-        const rawHost = ctx.targetHostname ?? ctx.hostName ?? "";
+        const rawHost = siteInfo?.targetHostname ?? "";
         const domain = rawHost
           ? rawHost.startsWith("http") ? rawHost : `https://${rawHost}`
           : "";
         const next = {
-          id: ctx.id ?? "",
+          id: siteInfo?.siteId ?? "",
           domain,
-          name: ctx.name ?? "",
+          name: siteInfo?.name ?? "",
         };
         setSiteContext(next);
         if (next.id) {
