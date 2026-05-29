@@ -1378,9 +1378,8 @@ export function runRuleEngine(data: PageData): EngineOutput {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Named exports for the dashboard widget's quick-score utility.
-// These are the 9 "live" checks that only require authoring field values
-// (no preview fetch, no PSI API, no Claude API).
+// Named exports of individual check functions for reuse outside the orchestrator
+// (e.g. by the dashboard site-score module). Keep them small and pure.
 // ─────────────────────────────────────────────────────────────────────────────
 export {
   checkMetaTitle,

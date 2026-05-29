@@ -1,29 +1,22 @@
-import type { QuickScoreResult } from "@/lib/rule-engine/quick-score";
+import type { SiteScoreResult } from "@/lib/rule-engine/site-score";
 
-export interface PageSummaryFields {
-  pageTitle: string | null;
-  metaDescription: string | null;
-  author: string | null;
-  publishDate: string | null;
-  lastUpdatedDate: string | null;
-  noIndex: boolean;
-  richTextParagraphs: string[];
-  images: Array<{ componentName: string; alt: string | null }>;
-  links: Array<{ componentName: string; anchorText: string | null; href: string | null }>;
-  headings: Array<{ level: number; text: string; componentName: string }>;
-  faqItems: Array<{ question: string; answer: string }>;
-  hasFaqComponent: boolean;
-  hasHowToComponent: boolean;
-}
+export type RowScanStatus = "idle" | "scanning" | "scanned" | "error";
 
 export interface PageMatrixRow {
   id: string;
   name: string;
-  path: string;
+  /** Public-facing route (e.g. "/about-us") */
+  route: string;
+  /** Full public URL (domain + route), built once during enumeration */
+  pageUrl: string;
   templateId: string;
+  /** ISO timestamp from xmc.pages.search.updatedAt */
   lastModified: string;
-  score: QuickScoreResult;
-  fields: PageSummaryFields;
+  score: SiteScoreResult | null;
+  scanStatus: RowScanStatus;
+  scanError?: string;
+  /** ISO timestamp of the last successful scan */
+  lastScannedAt?: string;
 }
 
 export type MatrixFilter = "critical" | "warning" | "good" | "all";

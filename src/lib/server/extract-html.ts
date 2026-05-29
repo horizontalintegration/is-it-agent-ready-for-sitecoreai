@@ -44,6 +44,9 @@ export function extractParsedHtml(html: string): ParsedHtml {
     .map((p) => p.innerText.replace(/\s+/g, " ").trim())
     .filter((t) => t.length > 0);
 
+  const title = root.querySelector("title")?.innerText.trim() || null;
+  const metaDescription = root.querySelector('meta[name="description"]')?.getAttribute("content") ?? null;
+
   const canonicalHref = root.querySelector('link[rel="canonical"]')?.getAttribute("href") ?? null;
   const robotsMeta = root.querySelector('meta[name="robots"]')?.getAttribute("content") ?? null;
   const googlebotMeta = root.querySelector('meta[name="googlebot"]')?.getAttribute("content") ?? null;
@@ -85,6 +88,8 @@ export function extractParsedHtml(html: string): ParsedHtml {
   }
 
   return {
+    title,
+    metaDescription,
     headings,
     images,
     links,

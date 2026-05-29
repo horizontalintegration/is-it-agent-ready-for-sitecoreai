@@ -1,8 +1,40 @@
 import type { PageData } from "./types";
 import type { PageMatrixRow } from "@/types/dashboard";
-import { quickScore } from "./quick-score";
+import type { SiteScoreResult } from "./site-score";
 
 const SITE_DOMAIN = "https://example.com";
+
+const MAX_PILLARS: SiteScoreResult["maxPillars"] = {
+  crawlability: 15,
+  structured: 20,
+  answerability: 20,
+  authority: 25,
+  retrievability: 20,
+};
+
+function labelFor(total: number): SiteScoreResult["label"] {
+  if (total < 40) return "critical";
+  if (total <= 70) return "warning";
+  return "good";
+}
+
+function makeFixtureScore(
+  pillars: SiteScoreResult["pillars"],
+): SiteScoreResult {
+  const total =
+    pillars.crawlability +
+    pillars.structured +
+    pillars.answerability +
+    pillars.authority +
+    pillars.retrievability;
+  return {
+    total,
+    maxTotal: 100,
+    pillars,
+    maxPillars: MAX_PILLARS,
+    label: labelFor(total),
+  };
+}
 
 export function makeTestPageData(): PageData {
   return {
@@ -60,6 +92,9 @@ export function makeTestPageData(): PageData {
       hasHowToComponent: false,
     },
     parsedHtml: {
+      title: "How to build an effective content strategy in 2026",
+      metaDescription:
+        "A practical guide to building a content strategy that delivers measurable results across SEO, AEO and AI search channels.",
       headings: [
         { level: 1, text: "How to build an effective content strategy in 2026" },
         { level: 2, text: "What is a content strategy?" },
@@ -132,215 +167,81 @@ export function makeTestPageData(): PageData {
   };
 }
 
-interface FixtureFieldsInput {
-  pageTitle: string | null;
-  metaDescription: string | null;
-  author: string | null;
+interface FixtureRowInput {
+  id: string;
+  name: string;
+  route: string;
   daysOld: number;
-  imagesMissingAlt: number;
-  totalImages: number;
-  faqValid: boolean;
-  paragraphsHard: boolean;
+  pillars: SiteScoreResult["pillars"];
 }
 
-function buildRow(
-  id: string,
-  name: string,
-  path: string,
-  input: FixtureFieldsInput
-): PageMatrixRow {
+function buildRow(input: FixtureRowInput): PageMatrixRow {
   const lastUpdated = new Date(Date.now() - input.daysOld * 86_400_000);
-  const images = Array.from({ length: input.totalImages }, (_, i) => ({
-    componentName: `Image_${i + 1}`,
-    alt: i < input.totalImages - input.imagesMissingAlt ? "alt text" : null,
-  }));
-
-  const score = quickScore({
-    pageTitle: input.pageTitle,
-    metaDescription: input.metaDescription,
-    author: input.author,
-    publishDate: lastUpdated,
-    lastUpdatedDate: lastUpdated,
-    images,
-    hasFaqComponent: true,
-    faqItems: input.faqValid
-      ? [
-          {
-            question: "Sample question?",
-            answer: "This is a properly sized answer that falls within the 30 to 300 character ideal range.",
-          },
-        ]
-      : [
-          {
-            question: "Sample question?",
-            answer: "short",
-          },
-        ],
-    richTextParagraphs: input.paragraphsHard
-      ? [
-          "Notwithstanding the multidimensional ramifications of contemporary discursive paradigms, contemporary practitioners frequently encounter epistemologically fraught circumstances that necessitate sophisticated analytical engagement.",
-        ]
-      : [
-          "This is a short and readable paragraph. It uses common words. It should grade easily under thirteen.",
-        ],
-  });
-
   return {
-    id,
-    name,
-    path,
+    id: input.id,
+    name: input.name,
+    route: input.route,
+    pageUrl: `${SITE_DOMAIN}${input.route}`,
     templateId: "article-template-id",
     lastModified: lastUpdated.toISOString(),
-    score,
-    fields: {
-      pageTitle: input.pageTitle,
-      metaDescription: input.metaDescription,
-      author: input.author,
-      publishDate: lastUpdated.toISOString(),
-      lastUpdatedDate: lastUpdated.toISOString(),
-      noIndex: false,
-      richTextParagraphs: [],
-      images: images.map((i) => ({ componentName: i.componentName, alt: i.alt })),
-      links: [],
-      headings: [],
-      faqItems: [],
-      hasFaqComponent: true,
-      hasHowToComponent: false,
-    },
+    score: makeFixtureScore(input.pillars),
+    scanStatus: "scanned",
+    lastScannedAt: new Date().toISOString(),
   };
 }
 
 export function makeTestSitePages(): PageMatrixRow[] {
   return [
-    // Critical (score < 25)
-    buildRow("p1", "About", "/about", {
-      pageTitle: null,
-      metaDescription: null,
-      author: null,
-      daysOld: 1200,
-      imagesMissingAlt: 3,
-      totalImages: 3,
-      faqValid: false,
-      paragraphsHard: true,
+    // Critical (total < 40)
+    buildRow({
+      id: "p1", name: "About", route: "/about", daysOld: 1200,
+      pillars: { crawlability: 3, structured: 0, answerability: 4, authority: 5, retrievability: 4 },
     }),
-    buildRow("p2", "Legacy product page", "/products/legacy", {
-      pageTitle: "Old",
-      metaDescription: null,
-      author: null,
-      daysOld: 900,
-      imagesMissingAlt: 2,
-      totalImages: 2,
-      faqValid: false,
-      paragraphsHard: true,
+    buildRow({
+      id: "p2", name: "Legacy product page", route: "/products/legacy", daysOld: 900,
+      pillars: { crawlability: 6, structured: 3, answerability: 4, authority: 6, retrievability: 6 },
     }),
-    buildRow("p3", "Empty draft", "/blog/draft", {
-      pageTitle: "Draft",
-      metaDescription: "Too short",
-      author: null,
-      daysOld: 800,
-      imagesMissingAlt: 1,
-      totalImages: 1,
-      faqValid: false,
-      paragraphsHard: true,
+    buildRow({
+      id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800,
+      pillars: { crawlability: 4, structured: 0, answerability: 2, authority: 4, retrievability: 5 },
     }),
-    // Warning (25–45)
-    buildRow("p4", "Pricing", "/pricing", {
-      pageTitle: "Pricing for our platform — flexible plans for every team",
-      metaDescription: null,
-      author: "Sales Team",
-      daysOld: 400,
-      imagesMissingAlt: 1,
-      totalImages: 4,
-      faqValid: true,
-      paragraphsHard: true,
+    // Warning (40–70)
+    buildRow({
+      id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
+      pillars: { crawlability: 9, structured: 6, answerability: 10, authority: 12, retrievability: 12 },
     }),
-    buildRow("p5", "Contact us", "/contact", {
-      pageTitle: "Contact",
-      metaDescription: "Get in touch with our team",
-      author: "Support",
-      daysOld: 200,
-      imagesMissingAlt: 0,
-      totalImages: 1,
-      faqValid: true,
-      paragraphsHard: false,
+    buildRow({
+      id: "p5", name: "Contact us", route: "/contact", daysOld: 200,
+      pillars: { crawlability: 11, structured: 6, answerability: 8, authority: 15, retrievability: 14 },
     }),
-    buildRow("p6", "Old blog post", "/blog/intro-to-cms", {
-      pageTitle: "Intro to content management — a beginner's guide for marketers",
-      metaDescription:
-        "An introduction to content management systems for marketing teams looking to adopt their first CMS this year.",
-      author: "Sam Author",
-      daysOld: 500,
-      imagesMissingAlt: 1,
-      totalImages: 2,
-      faqValid: true,
-      paragraphsHard: false,
+    buildRow({
+      id: "p6", name: "Old blog post", route: "/blog/intro-to-cms", daysOld: 500,
+      pillars: { crawlability: 11, structured: 9, answerability: 12, authority: 10, retrievability: 14 },
     }),
-    buildRow("p7", "Solutions overview", "/solutions/overview", {
-      pageTitle: "Solutions overview",
-      metaDescription:
-        "Explore the full range of digital experience solutions for marketers, developers and content teams.",
-      author: "Product Marketing",
-      daysOld: 300,
-      imagesMissingAlt: 2,
-      totalImages: 5,
-      faqValid: false,
-      paragraphsHard: false,
+    buildRow({
+      id: "p7", name: "Solutions overview", route: "/solutions/overview", daysOld: 300,
+      pillars: { crawlability: 11, structured: 6, answerability: 10, authority: 14, retrievability: 14 },
     }),
-    buildRow("p8", "Customer story", "/blog/case-study-acme", {
-      pageTitle: "How Acme increased content velocity by 3x with the platform",
-      metaDescription:
-        "Acme Co used the platform to triple their content output while maintaining quality across SEO and AI surfaces.",
-      author: "Customer Marketing",
-      daysOld: 250,
-      imagesMissingAlt: 0,
-      totalImages: 3,
-      faqValid: true,
-      paragraphsHard: true,
+    buildRow({
+      id: "p8", name: "Customer story", route: "/blog/case-study-acme", daysOld: 250,
+      pillars: { crawlability: 11, structured: 14, answerability: 14, authority: 14, retrievability: 14 },
     }),
-    // Good (> 45) — likely unreachable until thresholds are reconciled
-    buildRow("p9", "Homepage", "/", {
-      pageTitle: "The platform for modern digital experience — built for content teams",
-      metaDescription:
-        "A composable digital experience platform for content teams, marketers and developers. Ship great content faster.",
-      author: "Editorial Team",
-      daysOld: 30,
-      imagesMissingAlt: 0,
-      totalImages: 4,
-      faqValid: true,
-      paragraphsHard: false,
+    // Good (> 70)
+    buildRow({
+      id: "p9", name: "Homepage", route: "/", daysOld: 30,
+      pillars: { crawlability: 14, structured: 17, answerability: 16, authority: 22, retrievability: 18 },
     }),
-    buildRow("p10", "Blog: SEO playbook 2026", "/blog/seo-playbook-2026", {
-      pageTitle: "The complete SEO playbook for 2026 — what's changed and what works",
-      metaDescription:
-        "A comprehensive guide to SEO in 2026 covering AI features, AEO, structured data and the workflows your team needs.",
-      author: "Editorial Team",
-      daysOld: 45,
-      imagesMissingAlt: 0,
-      totalImages: 5,
-      faqValid: true,
-      paragraphsHard: false,
+    buildRow({
+      id: "p10", name: "Blog: SEO playbook 2026", route: "/blog/seo-playbook-2026", daysOld: 45,
+      pillars: { crawlability: 14, structured: 17, answerability: 18, authority: 23, retrievability: 18 },
     }),
-    buildRow("p11", "Solutions: marketing", "/solutions/marketing", {
-      pageTitle: "Marketing solutions — orchestrate content across every channel",
-      metaDescription:
-        "Modern marketing solutions to plan, create, publish and measure content across every channel your audience touches.",
-      author: "Product Marketing",
-      daysOld: 90,
-      imagesMissingAlt: 0,
-      totalImages: 3,
-      faqValid: true,
-      paragraphsHard: false,
+    buildRow({
+      id: "p11", name: "Solutions: marketing", route: "/solutions/marketing", daysOld: 90,
+      pillars: { crawlability: 13, structured: 14, answerability: 16, authority: 20, retrievability: 16 },
     }),
-    buildRow("p12", "Blog: AEO essentials", "/blog/aeo-essentials", {
-      pageTitle: "AEO essentials — getting your content into answer engines",
-      metaDescription:
-        "What answer engine optimisation means, how it differs from SEO, and the structured data your content needs.",
-      author: "Editorial Team",
-      daysOld: 60,
-      imagesMissingAlt: 0,
-      totalImages: 4,
-      faqValid: true,
-      paragraphsHard: false,
+    buildRow({
+      id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
+      pillars: { crawlability: 14, structured: 20, answerability: 18, authority: 22, retrievability: 18 },
     }),
   ];
 }

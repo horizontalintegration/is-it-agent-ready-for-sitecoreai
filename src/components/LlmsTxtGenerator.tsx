@@ -28,15 +28,15 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
   const [flashLabel, setFlashLabel] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    const ok = pages.filter((p) => p.score.total >= threshold);
+    const ok = pages.filter((p) => (p.score?.total ?? 0) >= threshold);
     return ok
       .filter((p) => {
-        if (isBlogPath(p.path)) return includeBlog;
-        if (isProductsPath(p.path)) return includeProducts;
-        if (EXCLUDE_PATHS.some((e) => p.path.startsWith(e))) return includeUtility;
+        if (isBlogPath(p.route)) return includeBlog;
+        if (isProductsPath(p.route)) return includeProducts;
+        if (EXCLUDE_PATHS.some((e) => p.route.startsWith(e))) return includeUtility;
         return includeUtility;
       })
-      .sort((a, b) => b.score.total - a.score.total);
+      .sort((a, b) => (b.score?.total ?? 0) - (a.score?.total ?? 0));
   }, [pages, threshold, includeBlog, includeProducts, includeUtility]);
 
   const content = useMemo(() => {
@@ -45,8 +45,8 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
     const blog: PageMatrixRow[] = [];
     const products: PageMatrixRow[] = [];
     for (const p of filtered) {
-      if (isBlogPath(p.path)) blog.push(p);
-      else if (isProductsPath(p.path)) products.push(p);
+      if (isBlogPath(p.route)) blog.push(p);
+      else if (isProductsPath(p.route)) products.push(p);
       else core.push(p);
     }
 
@@ -58,10 +58,10 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
     lines.push("> Digital experience platform");
     lines.push("");
     const formatPage = (p: PageMatrixRow) => {
-      const description = includeDescriptions
-        ? p.fields.metaDescription ?? p.fields.pageTitle ?? p.name
-        : p.fields.pageTitle ?? p.name;
-      return `- [${p.name}](${siteDomain.replace(/\/+$/, "")}${p.path}): ${description}`;
+      // Score-based dashboard doesn't fetch per-page descriptions in enumeration;
+      // when descriptions are off (or unavailable), fall back to the page name.
+      const description = includeDescriptions ? p.name : p.name;
+      return `- [${p.name}](${siteDomain.replace(/\/+$/, "")}${p.route}): ${description}`;
     };
     if (core.length > 0) {
       lines.push("## Core pages");

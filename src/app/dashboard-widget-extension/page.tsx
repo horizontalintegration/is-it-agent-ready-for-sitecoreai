@@ -19,18 +19,18 @@ export default function DashboardWidgetPage() {
   const { client, isInitialized } = useMarketplaceClient();
   const live = useSitePages(client, isInitialized);
 
-  // Fixture data is opt-in via `?demo=1` in the URL — never auto-activated
-  // by the SDK's transient un-initialized state.
+  // Fixture data is opt-in via `?demo=1` in the URL.
   const useFixture = useDemoMode();
   const fixturePages = useMemo<PageMatrixRow[]>(
     () => (useFixture ? makeTestSitePages() : []),
-    [useFixture]
+    [useFixture],
   );
 
   const pages = useFixture ? fixturePages : live.pages;
   const siteContext = useFixture ? DEMO_SITE_CONTEXT : live.siteContext;
   const isLoading = useFixture ? false : live.isLoading;
   const error = useFixture ? null : live.error;
+  const scanningCount = useFixture ? 0 : live.scanningCount;
 
   const [activeTab, setActiveTab] = useState<"matrix" | "llms">("matrix");
   const [filter, setFilter] = useState<MatrixFilter>("critical");
@@ -39,15 +39,16 @@ export default function DashboardWidgetPage() {
   const filteredSorted = useMemo(() => {
     let out = pages;
     if (filter !== "all") {
-      out = out.filter((p) => p.score.label === filter);
+      // Unscanned rows are excluded from label filters; visible only under "all".
+      out = out.filter((p) => p.score?.label === filter);
     }
     const sorted = [...out];
     sorted.sort((a, b) => {
       switch (sortBy) {
         case "score-asc":
-          return a.score.total - b.score.total;
+          return (a.score?.total ?? -1) - (b.score?.total ?? -1);
         case "score-desc":
-          return b.score.total - a.score.total;
+          return (b.score?.total ?? -1) - (a.score?.total ?? -1);
         case "modified":
           return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
         case "name":
@@ -57,18 +58,19 @@ export default function DashboardWidgetPage() {
     return sorted;
   }, [pages, filter, sortBy]);
 
-  const handleRescan = async (row: PageMatrixRow) => {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    const pageUrl = `${siteContext.domain.replace(/\/+$/, "")}${row.path}`;
-    try {
-      await fetch(`${base}/api/rescan-page`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageUrl }),
-      });
-    } catch (err) {
-      console.error("Rescan failed:", err);
-    }
+  const handleScanRow = (row: PageMatrixRow) => {
+    if (useFixture) return;
+    live.scanRow(row.id);
+  };
+
+  const handleScanAll = () => {
+    if (useFixture) return;
+    live.scanAll();
+  };
+
+  const handleClearAndRefresh = () => {
+    if (useFixture) return;
+    live.clearAndRefresh();
   };
 
   return (
@@ -122,10 +124,12 @@ export default function DashboardWidgetPage() {
             filter={filter}
             sortBy={sortBy}
             isLoading={isLoading}
-            siteDomain={siteContext.domain}
+            scanningCount={scanningCount}
             onFilterChange={setFilter}
             onSortChange={setSortBy}
-            onRescanPage={handleRescan}
+            onScanRow={handleScanRow}
+            onScanAll={handleScanAll}
+            onClearAndRefresh={handleClearAndRefresh}
           />
         ) : (
           <LlmsTxtGenerator
