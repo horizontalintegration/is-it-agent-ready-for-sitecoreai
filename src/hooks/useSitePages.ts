@@ -107,7 +107,13 @@ export function useSitePages(client: ClientSDK | null, isInitialized: boolean): 
       setIsLoading(true);
       try {
         const siteRes = await client.query("site.context");
-        const ctx = (siteRes?.data as SiteContextResponse | undefined) ?? {};
+        console.log("[useSitePages] site.context raw response:", siteRes);
+        console.log("[useSitePages] site.context response keys:", Object.keys(siteRes ?? {}));
+        const siteResData = (siteRes as { data?: unknown })?.data;
+        console.log("[useSitePages] site.context .data:", siteResData);
+        console.log("[useSitePages] site.context .data keys:", Object.keys(siteResData ?? {}));
+        const ctx = (siteResData as SiteContextResponse | undefined) ?? {};
+        console.log("[useSitePages] ctx.id:", ctx.id, "ctx.name:", ctx.name, "ctx.targetHostname:", ctx.targetHostname);
         if (cancelled) return;
         const rawHost = ctx.targetHostname ?? ctx.hostName ?? "";
         const domain = rawHost
