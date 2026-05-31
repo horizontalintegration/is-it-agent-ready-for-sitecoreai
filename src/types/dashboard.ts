@@ -12,6 +12,10 @@ export interface PageMatrixRow {
   templateId: string;
   /** ISO timestamp from xmc.pages.search.updatedAt */
   lastModified: string;
+  /** Page "Title" field from Sitecore — used as the llms.txt link label when present. */
+  metaTitle?: string | null;
+  /** "Meta Description" (OG description fallback) from Sitecore — used as the llms.txt summary. */
+  metaDescription?: string | null;
   score: SiteScoreResult | null;
   scanStatus: RowScanStatus;
   scanError?: string;
