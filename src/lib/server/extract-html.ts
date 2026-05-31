@@ -1,5 +1,5 @@
 import { parse } from "node-html-parser";
-import type { ParsedHtml } from "@/lib/rule-engine/types";
+import type { FooterTrust, ParsedHtml } from "@/lib/rule-engine/types";
 
 /**
  * Unwrap the Next.js image optimizer URL (`/_next/image?url=<encoded>`) to the
@@ -106,6 +106,37 @@ export function extractParsedHtml(html: string): ParsedHtml {
     hasNav,
     hasHeader,
     interactiveElementsMissingLabel,
+  };
+}
+
+/**
+ * Detect visible corporate-identity signals in the page footer — the rendered-text
+ * counterpart to Organization schema. Scopes to the <footer> element (falls back to
+ * the whole document when there is none) and uses regex/href heuristics, so results
+ * are best-effort: the address check in particular will miss spelled-out or non-US
+ * formats. Surface it as "detected", not a guarantee.
+ */
+export function extractFooterTrust(html: string): FooterTrust {
+  const root = parse(html);
+  const footer = root.querySelector("footer") ?? root;
+
+  const hrefs = footer
+    .querySelectorAll("a")
+    .map((a) => (a.getAttribute("href") ?? "").toLowerCase());
+  const hasLink = (re: RegExp) => hrefs.some((h) => re.test(h));
+
+  const text = footer.innerText.replace(/\s+/g, " ").trim();
+  // US ZIP (12345 / 12345-6789) or a "City, CC" / "City, ST" pair.
+  const hasAddress =
+    /\b\d{5}(-\d{4})?\b/.test(text) || /\b[A-Z][a-zA-Z.'-]+,\s*[A-Z]{2,}\b/.test(text);
+
+  return {
+    hasAddress,
+    hasContact: hasLink(/\/contact/),
+    hasPrivacy: hasLink(/\/privacy/),
+    hasTerms: hasLink(/\/(terms|tos)\b/),
+    hasSecurity: hasLink(/\/(security|trust)\b/),
+    hasAbout: hasLink(/\/about/),
   };
 }
 

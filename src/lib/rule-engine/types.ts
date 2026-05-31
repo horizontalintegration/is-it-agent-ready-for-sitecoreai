@@ -121,6 +121,20 @@ export interface RobotsTxt {
   appleBotExtended: CrawlerPermission;
 }
 
+// ── Footer trust (fetched once per domain — site-level banner, AEO signal) ───
+//
+// Rendered-text counterpart to the Organization schema check: visible corporate
+// identity signals in the page footer reduce entity ambiguity for AI systems.
+
+export interface FooterTrust {
+  hasAddress: boolean;   // postal address pattern (zip, or "City, CC") in footer text
+  hasContact: boolean;   // link matching /contact
+  hasPrivacy: boolean;   // link matching /privacy
+  hasTerms: boolean;     // link matching /terms or /tos
+  hasSecurity: boolean;  // link matching /security or /trust
+  hasAbout: boolean;     // link matching /about
+}
+
 // ── PageSpeed Insights (from PSI API) ────────────────────────────────────────
 
 export interface PsiResult {
