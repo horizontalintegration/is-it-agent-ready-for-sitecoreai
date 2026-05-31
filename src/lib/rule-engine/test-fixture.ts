@@ -173,6 +173,7 @@ interface FixtureRowInput {
   route: string;
   daysOld: number;
   pillars: SiteScoreResult["pillars"];
+  description?: string;
 }
 
 function buildRow(input: FixtureRowInput): PageMatrixRow {
@@ -184,6 +185,8 @@ function buildRow(input: FixtureRowInput): PageMatrixRow {
     pageUrl: `${SITE_DOMAIN}${input.route}`,
     templateId: "article-template-id",
     lastModified: lastUpdated.toISOString(),
+    metaTitle: input.name,
+    metaDescription: input.description ?? null,
     score: makeFixtureScore(input.pillars),
     scanStatus: "scanned",
     lastScannedAt: new Date().toISOString(),
@@ -230,18 +233,22 @@ export function makeTestSitePages(): PageMatrixRow[] {
     buildRow({
       id: "p9", name: "Homepage", route: "/", daysOld: 30,
       pillars: { crawlability: 14, structured: 17, answerability: 16, authority: 22, retrievability: 18 },
+      description: "The digital experience platform for building content-led customer journeys.",
     }),
     buildRow({
       id: "p10", name: "Blog: SEO playbook 2026", route: "/blog/seo-playbook-2026", daysOld: 45,
       pillars: { crawlability: 14, structured: 17, answerability: 18, authority: 23, retrievability: 18 },
+      description: "A practical playbook for ranking across traditional and AI-driven search in 2026.",
     }),
     buildRow({
       id: "p11", name: "Solutions: marketing", route: "/solutions/marketing", daysOld: 90,
       pillars: { crawlability: 13, structured: 14, answerability: 16, authority: 20, retrievability: 16 },
+      description: "Marketing solutions for personalising and orchestrating omnichannel campaigns.",
     }),
     buildRow({
       id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
       pillars: { crawlability: 14, structured: 20, answerability: 18, authority: 22, retrievability: 18 },
+      description: "What answer-engine optimisation is and how it differs from classic SEO.",
     }),
   ];
 }

@@ -20,13 +20,13 @@ function StatusBadge({ present }: { present: boolean }) {
   if (present) {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-        <span aria-hidden>✓</span> Detected
+        <span aria-hidden>✓</span> Present
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
-      <span aria-hidden>~</span> Not found
+      <span aria-hidden>~</span> Missing
     </span>
   );
 }
