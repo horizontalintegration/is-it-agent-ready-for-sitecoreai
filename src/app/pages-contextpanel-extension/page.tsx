@@ -116,8 +116,8 @@ export default function PagesContextPanel() {
         {!showSkeleton && !engineOutput.gate.blocked && (
           <div className="flex items-center gap-2">
             <ScoreRing
-              score={engineOutput.totalScore}
-              maxScore={engineOutput.maxTotalScore}
+              score={engineOutput.maxTotalScore > 0 ? Math.round((engineOutput.totalScore / engineOutput.maxTotalScore) * 100) : 0}
+              maxScore={100}
               size={40}
             />
           </div>

@@ -5,10 +5,8 @@ import {
   EngineOutput,
   ParsedHtml,
   AuthoringFields,
-  RobotsTxt,
   PsiResult,
   AiResults,
-  CrawlerPermission,
   CheckStatus,
 } from "./types";
 
@@ -964,74 +962,7 @@ function checkFreshness(a: AuthoringFields): RuleResult {
   };
 }
 
-/** Check 16 — AI crawler permissions (6 pts) */
-function checkRobotsTxt(robots: RobotsTxt | null): RuleResult {
-  const base: Pick<
-    RuleResult,
-    "id" | "pillar" | "trigger" | "name" | "maxScore"
-  > = {
-    id: "seo-robots-txt",
-    pillar: "seo",
-    trigger: "on-load",
-    name: "AI Crawler Permissions (robots.txt)",
-    maxScore: 6,
-  };
-
-  if (!robots) {
-    return {
-      ...base,
-      status: "info",
-      score: 0,
-      value: "Not yet fetched",
-      message:
-        "Robots.txt is fetched once on app load. Refresh the page to trigger it.",
-      fixSuggestion: "",
-      details: [],
-    };
-  }
-
-  const crawlers: Array<[string, CrawlerPermission]> = [
-    ["Google-Extended", robots.googleExtended],
-    ["GPTBot", robots.gptBot],
-    ["ClaudeBot", robots.claudeBot],
-    ["PerplexityBot", robots.perplexityBot],
-    ["Amazonbot", robots.amazonBot],
-    ["Applebot-Extended", robots.appleBotExtended],
-  ];
-
-  const blocked = crawlers.filter(([, p]) => p === "blocked");
-  const details = crawlers.map(
-    ([name, p]) =>
-      `${name}: ${p === "blocked" ? "✗ blocked" : p === "allowed" ? "✓ allowed" : "~ not mentioned (allowed by default)"}`,
-  );
-
-  if (blocked.length === 0) {
-    return {
-      ...base,
-      status: "pass",
-      score: 6,
-      value: "No AI crawlers blocked",
-      message: "All major AI crawlers are permitted in robots.txt.",
-      fixSuggestion: "",
-      details,
-    };
-  }
-
-  // Partial credit: lose 1 pt per blocked crawler, down to 0
-  const score = Math.max(0, 6 - blocked.length);
-
-  return {
-    ...base,
-    status: score > 0 ? "warning" : "fail",
-    score,
-    value: `${blocked.length} AI crawler${blocked.length > 1 ? "s" : ""} blocked`,
-    message: `Blocked: ${blocked.map(([n]) => n).join(", ")}. These systems cannot index this site's content for AI features.`,
-    fixSuggestion: `Review /robots.txt and remove Disallow rules for: ${blocked.map(([n]) => n).join(", ")}.`,
-    details,
-  };
-}
-
-/** Check 17 — Page experience / PageSpeed Insights (5 pts) */
+/** Check 16 — Page experience / PageSpeed Insights (5 pts) */
 function checkPageExperience(psi: PsiResult | null): RuleResult {
   const base: Pick<
     RuleResult,
@@ -1312,7 +1243,6 @@ export function runRuleEngine(data: PageData): EngineOutput {
     checkImageAltText(data.parsedHtml),
     checkCanonical(data.pageUrl, data.parsedHtml),
     checkOgTags(data.authoring),
-    checkRobotsTxt(data.robotsTxt),
     checkAnchorText(data.parsedHtml), // info-only
 
     // AEO

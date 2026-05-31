@@ -6,6 +6,7 @@ import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { MatrixView } from "@/components/MatrixView";
 import { LlmsTxtGenerator } from "@/components/LlmsTxtGenerator";
+import { RobotsTxtPanel } from "@/components/RobotsTxtPanel";
 import { makeTestSitePages } from "@/lib/rule-engine/test-fixture";
 import type { MatrixFilter, MatrixSort, PageMatrixRow } from "@/types/dashboard";
 
@@ -32,7 +33,7 @@ export default function DashboardWidgetPage() {
   const error = useFixture ? null : live.error;
   const scanningCount = useFixture ? 0 : live.scanningCount;
 
-  const [activeTab, setActiveTab] = useState<"matrix" | "llms">("matrix");
+  const [activeTab, setActiveTab] = useState<"matrix" | "llms" | "robots">("matrix");
   const [filter, setFilter] = useState<MatrixFilter>("critical");
   const [sortBy, setSortBy] = useState<MatrixSort>("score-asc");
 
@@ -83,8 +84,9 @@ export default function DashboardWidgetPage() {
           )}
         </div>
         <nav className="px-4 flex gap-1 border-t border-gray-100" role="tablist">
-          {(["matrix", "llms"] as const).map((tab) => {
+          {(["matrix", "llms", "robots"] as const).map((tab) => {
             const active = activeTab === tab;
+            const label = tab === "matrix" ? "Page matrix" : tab === "llms" ? "LLMs.txt" : "Robots.txt";
             return (
               <button
                 key={tab}
@@ -97,7 +99,7 @@ export default function DashboardWidgetPage() {
                     : "border-transparent text-gray-600 hover:text-gray-900"
                 }`}
               >
-                {tab === "matrix" ? "Page matrix" : "LLMs.txt"}
+                {label}
               </button>
             );
           })}
@@ -131,12 +133,14 @@ export default function DashboardWidgetPage() {
             onScanAll={handleScanAll}
             onClearAndRefresh={handleClearAndRefresh}
           />
-        ) : (
+        ) : activeTab === "llms" ? (
           <LlmsTxtGenerator
             pages={pages}
             siteDomain={siteContext.domain}
             siteName={siteContext.name}
           />
+        ) : (
+          <RobotsTxtPanel siteDomain={siteContext.domain} />
         )}
       </main>
     </div>
