@@ -18,9 +18,8 @@ const TARGET_AGENTS = [
 ] as const;
 
 function evaluatePermission(disallows: string[]): CrawlerPermission {
-  if (disallows.length === 0) return "unknown";
   if (disallows.some((d) => d === "/" || d === "*")) return "blocked";
-  if (disallows.some((d) => d === "")) return "allowed";
+  // Empty or missing Disallow means the agent is explicitly allowed
   return "allowed";
 }
 
@@ -73,15 +72,18 @@ function parseRobotsTxt(body: string): RobotsTxt {
   };
 
   const wildcardDisallows = disallowsFor("*");
+  const mentionedAgents = new Set(blocks.flatMap((b) => b.agents));
 
   const result: Partial<RobotsTxt> = {};
   for (const { key, agent } of TARGET_AGENTS) {
-    const specific = disallowsFor(agent);
-    if (specific.length > 0) {
-      result[key] = evaluatePermission(specific);
-    } else if (wildcardDisallows.length > 0) {
+    if (mentionedAgents.has(agent)) {
+      // Agent has an explicit User-agent block — evaluate its own Disallow rules
+      result[key] = evaluatePermission(disallowsFor(agent));
+    } else if (mentionedAgents.has("*")) {
+      // No explicit block but wildcard exists — apply wildcard rules
       result[key] = evaluatePermission(wildcardDisallows);
     } else {
+      // Not mentioned anywhere in robots.txt
       result[key] = "unknown";
     }
   }

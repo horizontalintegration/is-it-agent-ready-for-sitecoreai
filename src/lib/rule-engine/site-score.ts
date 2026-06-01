@@ -24,6 +24,19 @@ export interface SiteScoreInput {
   ai: AiResults | null;
   updatedAt: string | null; // ISO timestamp from xmc.pages.search
   pageUrl: string;
+  /** True for the site's Home page (route "/") — gates Organization vs BreadcrumbList. */
+  isHomePage: boolean;
+  /** Sitecore template ID (with or without braces). Gates the Article-schema check. */
+  templateId: string | null;
+}
+
+// Articles use this template (Sitecore item template ID).
+// Only pages of this template are checked for Article/NewsArticle/BlogPosting schema.
+const ARTICLE_TEMPLATE_ID = "375dcaaa-f94c-42ce-b2ab-3fb1d8871fd9";
+
+function normaliseTemplateId(id: string | null | undefined): string {
+  if (!id) return "";
+  return id.toLowerCase().replace(/[{}]/g, "");
 }
 
 export interface SiteScorePillars {
@@ -35,8 +48,8 @@ export interface SiteScorePillars {
 }
 
 export interface SiteScoreResult {
-  total: number;             // 0-100
-  maxTotal: 100;
+  total: number;             // sum of pillar scores
+  maxTotal: number;          // sum of pillar maxes — varies per page (Structured is conditional)
   pillars: SiteScorePillars;
   maxPillars: SiteScorePillars;
   label: "critical" | "warning" | "good";
@@ -50,9 +63,10 @@ const MAX_PILLARS: SiteScorePillars = {
   retrievability: 20,
 };
 
-function labelFor(total: number): SiteScoreResult["label"] {
-  if (total < 40) return "critical";
-  if (total <= 70) return "warning";
+function labelFor(total: number, maxTotal: number): SiteScoreResult["label"] {
+  const pct = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
+  if (pct < 40) return "critical";
+  if (pct <= 70) return "warning";
   return "good";
 }
 
@@ -103,13 +117,52 @@ function hasJsonLdType(html: ParsedHtml, types: string[]): boolean {
   return html.jsonLdBlocks.some((b) => wanted.includes((b.type ?? "").toLowerCase()));
 }
 
-function scoreStructured(html: ParsedHtml): number {
+/**
+ * Structured-data score with per-page applicability:
+ *   - FAQPage   — only when the page has FAQ-like content (≥2 question-style H2s)
+ *   - Article   — only when the page template matches ARTICLE_TEMPLATE_ID
+ *   - Breadcrumb — only on non-home pages
+ *   - Organization — only on the home page
+ *
+ * Returns both the earned score and the max points actually checked, so pages
+ * aren't penalised for missing schemas that don't apply to them.
+ */
+function scoreStructured(
+  html: ParsedHtml,
+  isHomePage: boolean,
+  templateId: string | null,
+): { score: number; max: number } {
   let score = 0;
-  if (hasJsonLdType(html, ["FAQPage"])) score += 8;
-  if (hasJsonLdType(html, ["Article", "NewsArticle", "BlogPosting"])) score += 6;
-  if (hasJsonLdType(html, ["BreadcrumbList"])) score += 3;
-  if (hasJsonLdType(html, ["Organization"])) score += 3;
-  return Math.min(score, MAX_PILLARS.structured);
+  let max = 0;
+
+  // FAQPage (8 pts) — only when page exhibits FAQ content (heuristic: 2+ question H2s)
+  const questionH2s = html.headings.filter(
+    (h) => h.level === 2 && QUESTION_REGEX.test(h.text.trim()),
+  ).length;
+  if (questionH2s >= 2) {
+    max += 8;
+    if (hasJsonLdType(html, ["FAQPage"])) score += 8;
+  }
+
+  // Article (6 pts) — only when the page uses the Article template
+  if (normaliseTemplateId(templateId) === ARTICLE_TEMPLATE_ID) {
+    max += 6;
+    if (hasJsonLdType(html, ["Article", "NewsArticle", "BlogPosting"])) score += 6;
+  }
+
+  // BreadcrumbList (3 pts) — required everywhere except the home page
+  if (!isHomePage) {
+    max += 3;
+    if (hasJsonLdType(html, ["BreadcrumbList"])) score += 3;
+  }
+
+  // Organization (3 pts) — only on the home page (site-wide entity declaration)
+  if (isHomePage) {
+    max += 3;
+    if (hasJsonLdType(html, ["Organization"])) score += 3;
+  }
+
+  return { score, max };
 }
 
 // ── Answerability (20) ───────────────────────────────────────────────────────
@@ -238,7 +291,15 @@ function scoreRetrievability(html: ParsedHtml): number {
 // ── Public entry ─────────────────────────────────────────────────────────────
 
 export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
-  const { parsedHtml, robotsTxt, ai, updatedAt, pageUrl } = input;
+  const {
+    parsedHtml,
+    robotsTxt,
+    ai,
+    updatedAt,
+    pageUrl,
+    isHomePage,
+    templateId,
+  } = input;
 
   if (!parsedHtml) {
     return {
@@ -250,12 +311,21 @@ export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
     };
   }
 
+  const structured = scoreStructured(parsedHtml, isHomePage, templateId);
+
   const pillars: SiteScorePillars = {
     crawlability: scoreCrawlability(parsedHtml, robotsTxt, pageUrl),
-    structured: scoreStructured(parsedHtml),
+    structured: structured.score,
     answerability: scoreAnswerability(parsedHtml),
     authority: scoreAuthority(parsedHtml, ai, updatedAt),
     retrievability: scoreRetrievability(parsedHtml),
+  };
+
+  // Structured pillar's max varies per page (between 0 and 20) depending on
+  // which schema checks applied. Other pillars use the fixed defaults.
+  const maxPillars: SiteScorePillars = {
+    ...MAX_PILLARS,
+    structured: structured.max,
   };
 
   const total =
@@ -265,12 +335,19 @@ export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
     pillars.authority +
     pillars.retrievability;
 
+  const maxTotal =
+    maxPillars.crawlability +
+    maxPillars.structured +
+    maxPillars.answerability +
+    maxPillars.authority +
+    maxPillars.retrievability;
+
   return {
     total,
-    maxTotal: 100,
+    maxTotal,
     pillars,
-    maxPillars: MAX_PILLARS,
-    label: labelFor(total),
+    maxPillars,
+    label: labelFor(total, maxTotal),
   };
 }
 

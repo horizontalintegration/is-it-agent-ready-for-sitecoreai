@@ -196,6 +196,7 @@ interface GqlItemNode {
   metaTitle?: { value?: string | null } | null;
   metaDescription?: { value?: string | null } | null;
   ogDescription?: { value?: string | null } | null;
+  template?: { templateId?: string | null } | null;
   children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
@@ -215,6 +216,7 @@ function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
     name
     displayName
     path
+    template { templateId }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
@@ -456,6 +458,8 @@ export function useSitePages(
         ai,
         updatedAt: row.lastModified,
         pageUrl: row.pageUrl,
+        isHomePage: row.route === "/" || row.route === "",
+        templateId: row.templateId || null,
       });
 
       const cachedAt = new Date().toISOString();
@@ -694,7 +698,7 @@ export function useSitePages(
             name: p.displayName || p.name || "(untitled)",
             route,
             pageUrl,
-            templateId: "",
+            templateId: p.template?.templateId ?? "",
             lastModified,
             metaTitle,
             metaDescription,
