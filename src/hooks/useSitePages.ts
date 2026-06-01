@@ -44,6 +44,145 @@ interface SiteContextShape {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Site discovery — locate the site's Home item path by walking /sitecore/content
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DiscoveryNode {
+  name?: string;
+  path?: string;
+  children?: { nodes?: DiscoveryNode[] | null } | null;
+}
+
+interface DiscoveryEnvelope {
+  data?: { item?: DiscoveryNode | null };
+  errors?: Array<{ message?: string }>;
+}
+
+// 4 levels covers /sitecore/content/Tenant/Collection/Site
+const DISCOVER_SITE_QUERY = `
+  query DiscoverSite($language: String!) {
+    item(where: { path: "/sitecore/content", language: $language }) {
+      name path
+      children { nodes {
+        name path
+        children { nodes {
+          name path
+          children { nodes {
+            name path
+          }}
+        }}
+      }}
+    }
+  }
+`;
+
+async function discoverSiteHomePath(
+  client: ClientSDK,
+  siteName: string,
+  language: string,
+  sitecoreContextId: string | undefined,
+): Promise<string | null> {
+  if (!siteName) return null;
+
+  try {
+    const res = await client.mutate("xmc.authoring.graphql", {
+      params: {
+        body: { query: DISCOVER_SITE_QUERY, variables: { language } },
+        ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+      },
+    } as Parameters<ClientSDK["mutate"]>[1]);
+
+    const envelope: DiscoveryEnvelope =
+      ((res as { data?: DiscoveryEnvelope })?.data as DiscoveryEnvelope) ??
+      (res as DiscoveryEnvelope);
+
+    if (envelope?.errors?.length) {
+      console.warn(
+        "[sitePages] discoverSiteHomePath GraphQL errors:",
+        envelope.errors,
+      );
+      return null;
+    }
+
+    const root = envelope?.data?.item;
+    if (!root) return null;
+
+    const target = siteName.toLowerCase();
+    function findSiteNode(
+      node: DiscoveryNode | null | undefined,
+    ): DiscoveryNode | null {
+      if (!node) return null;
+      if ((node.name ?? "").toLowerCase() === target) return node;
+      for (const child of node.children?.nodes ?? []) {
+        const m = findSiteNode(child);
+        if (m) return m;
+      }
+      return null;
+    }
+
+    const siteNode = findSiteNode(root);
+    if (!siteNode?.path) return null;
+    return `${siteNode.path}/Home`;
+  } catch (err) {
+    console.warn("[sitePages] discoverSiteHomePath threw:", err);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// xmc.sites.retrieveSite → targetHostname + homePageId (preferred path)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SdkHost {
+  targetHostname?: string | null;
+  homePageId?: string | null;
+}
+
+interface SdkSite {
+  hosts?: SdkHost[] | null;
+}
+
+interface RetrieveSiteResult {
+  targetHostname: string | null;
+  homePageId: string | null;
+  /** Populated when the SDK envelope wraps an HTTP error (e.g. 401 M2M). */
+  apiError?: { status?: number; detail?: string; title?: string };
+}
+
+async function retrieveSiteInfo(
+  client: ClientSDK,
+  siteId: string,
+): Promise<RetrieveSiteResult> {
+  try {
+    const res = await client.query("xmc.sites.retrieveSite", {
+      params: { path: { siteId } },
+    } as Parameters<ClientSDK["query"]>[1]);
+
+    const outer = (res as { data?: unknown })?.data;
+    const apiError = (
+      outer as { error?: { status?: number; detail?: string; title?: string } }
+    )?.error;
+    if (apiError) {
+      return { targetHostname: null, homePageId: null, apiError };
+    }
+
+    // Response shape: pageRes.data.data = Site | pageRes.data = Site (proxy varies)
+    const site: SdkSite =
+      ((outer as { data?: SdkSite })?.data) ?? ((outer as SdkSite) ?? {});
+    const hosts = Array.isArray(site.hosts) ? site.hosts : [];
+    const primary = hosts.find((h) => h.targetHostname) ?? hosts[0];
+
+    return {
+      targetHostname: primary?.targetHostname ?? null,
+      homePageId: primary?.homePageId ?? null,
+    };
+  } catch (err) {
+    console.warn("[sitePages] retrieveSiteInfo threw:", err);
+    return { targetHostname: null, homePageId: null };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Authoring GraphQL — recursive children walk
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -67,8 +206,10 @@ interface GqlEnvelope {
 
 // Build a query with N nested children levels. GraphQL doesn't allow recursion,
 // so we expand it as a fixed depth tree. Items with __Renderings populated are
-// treated as pages; the rest are skipped client-side.
-function buildSitePagesQuery(depth: number): string {
+// treated as pages; the rest are skipped client-side. The lookup key can be
+// either the home item's itemId (preferred — from xmc.sites.retrieveSite) or
+// its content tree path (fallback — from the discoverSiteHomePath walk).
+function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
   const itemFields = `
     itemId
     name
@@ -84,9 +225,10 @@ function buildSitePagesQuery(depth: number): string {
   for (let i = 0; i < depth; i++) {
     inner = `children { nodes { ${itemFields} ${inner} } }`;
   }
+  const varName = by === "itemId" ? "rootItemId" : "rootPath";
   return `
-    query GetSitePages($rootPath: String!, $language: String!) {
-      item(where: { path: $rootPath, language: $language }) {
+    query GetSitePages($${varName}: String!, $language: String!) {
+      item(where: { ${by}: $${varName}, language: $language }) {
         ${itemFields}
         ${inner}
       }
@@ -368,19 +510,43 @@ export function useSitePages(
     setError(null);
 
     try {
-      // 1. Resolve domain from env variable (site.context doesn't expose targetHostname)
+      // 1. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
+      // AND homePageId (the home item ID) in one call. If the Sites scope isn't
+      // available (401 M2M error), we fall back to env domain + content-tree walk.
+      const siteInfo = await retrieveSiteInfo(client, siteId);
+      if (siteInfo.apiError) {
+        console.warn(
+          "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
+          siteInfo.apiError,
+        );
+      } else {
+        console.log(
+          "[sitePages] retrieveSite → targetHostname:",
+          siteInfo.targetHostname,
+          "homePageId:",
+          siteInfo.homePageId,
+        );
+      }
+
+      // Domain: SDK hostname wins; env is the fallback
+      const sdkDomain = siteInfo.targetHostname
+        ? siteInfo.targetHostname.startsWith("http")
+          ? siteInfo.targetHostname
+          : `https://${siteInfo.targetHostname}`
+        : "";
       const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
-      const domain = envDomain
+      const envDomainNormalized = envDomain
         ? envDomain.startsWith("http")
           ? envDomain
           : `https://${envDomain}`
         : "";
+      const domain = sdkDomain || envDomainNormalized;
 
       setSiteContext({ id: siteId, domain, name: siteName });
 
       if (!domain) {
         setError(
-          "Site domain not configured. Set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN in your .env.local.",
+          "Site domain not configured. Either configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
         );
         setPages([]);
         setIsLoading(false);
@@ -429,23 +595,50 @@ export function useSitePages(
         );
       }
 
-      // 4. Resolve site Home path: env override OR convention "/sitecore/content/{siteName}/Home"
+      // 4. Resolve site Home reference. Three-tier strategy:
+      //   a. homePageId from xmc.sites.retrieveSite (preferred — exact match)
+      //   b. content-tree walk by siteName (works without Sites M2M scope)
+      //   c. NEXT_PUBLIC_SITE_ROOT_PATH env override (manual fallback)
       const language = "en";
-      const rootPathOverride = process.env.NEXT_PUBLIC_SITE_ROOT_PATH;
-      const rootPath =
-        rootPathOverride && rootPathOverride.trim().length > 0
-          ? rootPathOverride.trim()
-          : `/sitecore/content/${siteName}/Home`;
-      console.log("[sitePages] using rootPath:", rootPath);
+      const envOverride = process.env.NEXT_PUBLIC_SITE_ROOT_PATH?.trim();
+      let lookupBy: "itemId" | "path" = "itemId";
+      let rootRef: string | null = siteInfo.homePageId ?? null;
+
+      if (rootRef) {
+        console.log("[sitePages] using homePageId from retrieveSite:", rootRef);
+      } else {
+        // Walk the content tree as fallback
+        lookupBy = "path";
+        rootRef = await discoverSiteHomePath(
+          client,
+          siteName,
+          language,
+          sitecoreContextId,
+        );
+        if (rootRef) {
+          console.log("[sitePages] auto-discovered rootPath:", rootRef);
+        } else if (envOverride) {
+          rootRef = envOverride;
+          console.warn(
+            `[sitePages] auto-discovery failed for "${siteName}"; using env override:`,
+            rootRef,
+          );
+        } else {
+          throw new Error(
+            `Could not find Home item for site "${siteName}". Configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_SITE_ROOT_PATH explicitly.`,
+          );
+        }
+      }
 
       // 5. Authoring GraphQL — walk descendants of Home to TREE_WALK_DEPTH levels
-      const query = buildSitePagesQuery(TREE_WALK_DEPTH);
+      const query = buildSitePagesQuery(TREE_WALK_DEPTH, lookupBy);
+      const variables =
+        lookupBy === "itemId"
+          ? { rootItemId: rootRef, language }
+          : { rootPath: rootRef, language };
       const gqlRes = await client.mutate("xmc.authoring.graphql", {
         params: {
-          body: {
-            query,
-            variables: { rootPath, language },
-          },
+          body: { query, variables },
           ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
         },
       } as Parameters<ClientSDK["mutate"]>[1]);
@@ -474,7 +667,7 @@ export function useSitePages(
       const root = envelope?.data?.item ?? null;
       if (!root) {
         throw new Error(
-          `No item found at path ${rootPath}. Override with NEXT_PUBLIC_SITE_ROOT_PATH.`,
+          `No item found at ${lookupBy}=${rootRef}. Verify the site's Home item exists.`,
         );
       }
 
