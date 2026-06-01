@@ -75,6 +75,12 @@ export interface ParsedHtml {
   title: string | null;
   metaDescription: string | null;
 
+  // Freshness signals from rendered HTML (preferred over Sitecore's __Updated):
+  // <meta name="last-modified" content="...">  and
+  // <meta property="article:modified_time" content="...">
+  lastModifiedMeta: string | null;
+  articleModifiedTimeMeta: string | null;
+
   // Rendered heading structure in DOM order
   headings: Array<{ level: number; text: string }>;
 

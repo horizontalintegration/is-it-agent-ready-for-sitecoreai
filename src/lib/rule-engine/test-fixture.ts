@@ -95,6 +95,8 @@ export function makeTestPageData(): PageData {
       title: "How to build an effective content strategy in 2026",
       metaDescription:
         "A practical guide to building a content strategy that delivers measurable results across SEO, AEO and AI search channels.",
+      lastModifiedMeta: null,
+      articleModifiedTimeMeta: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
       headings: [
         { level: 1, text: "How to build an effective content strategy in 2026" },
         { level: 2, text: "What is a content strategy?" },

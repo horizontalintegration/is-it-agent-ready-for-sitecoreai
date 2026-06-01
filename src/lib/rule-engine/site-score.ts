@@ -220,9 +220,15 @@ function scoreAuthority(html: ParsedHtml, ai: AiResults | null, updatedAt: strin
   }
   // If AI hasn't been evaluated, neither pass nor fail — leave 0.
 
-  // Freshness from updatedAt (8 pts)
-  if (updatedAt) {
-    const d = new Date(updatedAt);
+  // Freshness (8 pts). Prefer rendered-HTML meta tags (what AI bots actually read);
+  // fall back to Sitecore's __Updated when neither meta tag is present.
+  //   1. <meta property="article:modified_time">  (OpenGraph standard)
+  //   2. <meta name="last-modified">              (custom but common)
+  //   3. updatedAt (Sitecore __Updated field)     (admin/template edits)
+  const freshnessSource =
+    html.articleModifiedTimeMeta ?? html.lastModifiedMeta ?? updatedAt;
+  if (freshnessSource) {
+    const d = new Date(freshnessSource);
     if (!isNaN(d.getTime())) {
       const age = daysSince(d);
       if (age <= 180) score += 8;
