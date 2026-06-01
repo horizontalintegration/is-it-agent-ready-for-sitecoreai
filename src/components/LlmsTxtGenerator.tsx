@@ -14,19 +14,11 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
   const [tagline, setTagline] = useState("Digital experience platform");
   const [filterByScore, setFilterByScore] = useState(false);
   const [threshold, setThreshold] = useState(60);
-  const [includeBlog, setIncludeBlog] = useState(true);
-  const [includeProducts, setIncludeProducts] = useState(true);
-  const [includeUtility, setIncludeUtility] = useState(true);
-  const [includeDescriptions, setIncludeDescriptions] = useState(true);
   const [flashLabel, setFlashLabel] = useState<string | null>(null);
 
   // The score filter is an opt-in refinement — only meaningful once some pages
   // have been scanned. It never gates the file: generation runs off enumeration.
   const hasAnyScore = useMemo(() => pages.some((p) => p.score != null), [pages]);
-  const hasAnyDescription = useMemo(
-    () => pages.some((p) => (p.metaDescription ?? "").trim().length > 0),
-    [pages],
-  );
   const scoreThreshold = filterByScore && hasAnyScore ? threshold : null;
 
   const { content, includedCount, excludedCount } = useMemo(
@@ -35,23 +27,9 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
         siteDomain,
         siteName,
         tagline,
-        includeDescriptions,
-        includeBlog,
-        includeProducts,
-        includeUtility,
         scoreThreshold,
       }),
-    [
-      pages,
-      siteDomain,
-      siteName,
-      tagline,
-      includeDescriptions,
-      includeBlog,
-      includeProducts,
-      includeUtility,
-      scoreThreshold,
-    ],
+    [pages, siteDomain, siteName, tagline, scoreThreshold],
   );
 
   const flash = (label: string) => {
@@ -81,26 +59,6 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
 
   return (
     <div className="px-4 py-3 space-y-4">
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-        <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <div>
-          <p className="text-sm font-medium text-amber-900">Not required for Google AI features</p>
-          <p className="text-sm text-amber-800 mt-1">
-            Google&apos;s official AI optimisation guide explicitly states that LLMs.txt files have no effect on AI
-            Overviews or AI Mode. This file is an emerging convention for non-Google AI systems (Perplexity, Claude
-            browsing, open-source agents). Treat it as a low-effort courtesy — not an SEO priority.
-          </p>
-        </div>
-      </div>
-
       <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
         <div>
           <label className="text-sm font-medium text-gray-900 block mb-1">Site summary</label>
@@ -114,43 +72,9 @@ export function LlmsTxtGenerator({ pages, siteDomain, siteName }: LlmsTxtGenerat
           <p className="text-xs text-gray-500 mt-1">Shown as the blockquote summary under the title.</p>
         </div>
 
-        <fieldset className="text-sm text-gray-700">
-          <legend className="font-medium text-gray-900 mb-1.5">Sections</legend>
-          <label className="flex items-center gap-2 mb-1">
-            <input type="checkbox" checked={includeBlog} onChange={(e) => setIncludeBlog(e.target.checked)} />
-            Blog posts
-          </label>
-          <label className="flex items-center gap-2 mb-1">
-            <input
-              type="checkbox"
-              checked={includeProducts}
-              onChange={(e) => setIncludeProducts(e.target.checked)}
-            />
-            Product / solutions pages
-          </label>
-          <label className="flex items-center gap-2 mb-1">
-            <input
-              type="checkbox"
-              checked={includeUtility}
-              onChange={(e) => setIncludeUtility(e.target.checked)}
-            />
-            Utility pages (as <code>## Optional</code>: /contact, /privacy, /terms, /404, /sitemap)
-          </label>
-        </fieldset>
-
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={includeDescriptions}
-            onChange={(e) => setIncludeDescriptions(e.target.checked)}
-          />
-          Include meta description as summary
-        </label>
-        {includeDescriptions && !hasAnyDescription && (
-          <p className="text-xs text-amber-700 -mt-1">
-            No meta descriptions found on these pages — links will use the title only.
-          </p>
-        )}
+        <p className="text-xs text-gray-500">
+          Pages are grouped into sections automatically based on their structure in the CMS content tree.
+        </p>
 
         <div className="border-t border-gray-100 pt-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
