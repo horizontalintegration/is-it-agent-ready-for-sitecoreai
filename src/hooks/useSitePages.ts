@@ -13,7 +13,11 @@ import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 // Configuration
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CACHE_KEY = "aiDiscovery:scores:v1";
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v1:";
+
+function cacheKey(siteId: string): string {
+  return `${CACHE_KEY_PREFIX}${siteId}`;
+}
 const INITIAL_AUTO_SCAN_COUNT = 20;
 const CONCURRENCY = 5;
 const TREE_WALK_DEPTH = 5; // descendants levels fetched per GraphQL call
@@ -131,31 +135,31 @@ interface CachedScore {
   cachedAt: string;
 }
 
-function readCache(): Record<string, CachedScore> {
-  if (typeof window === "undefined") return {};
+function readCache(siteId: string): Record<string, CachedScore> {
+  if (typeof window === "undefined" || !siteId) return {};
   try {
-    const raw = window.localStorage.getItem(CACHE_KEY);
+    const raw = window.localStorage.getItem(cacheKey(siteId));
     return raw ? (JSON.parse(raw) as Record<string, CachedScore>) : {};
   } catch {
     return {};
   }
 }
 
-function writeCacheEntry(pageUrl: string, entry: CachedScore) {
-  if (typeof window === "undefined") return;
+function writeCacheEntry(siteId: string, pageUrl: string, entry: CachedScore) {
+  if (typeof window === "undefined" || !siteId) return;
   try {
-    const cur = readCache();
+    const cur = readCache(siteId);
     cur[pageUrl] = entry;
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(cur));
+    window.localStorage.setItem(cacheKey(siteId), JSON.stringify(cur));
   } catch {
     // ignore quota errors
   }
 }
 
-function clearCache() {
-  if (typeof window === "undefined") return;
+function clearCache(siteId: string) {
+  if (typeof window === "undefined" || !siteId) return;
   try {
-    window.localStorage.removeItem(CACHE_KEY);
+    window.localStorage.removeItem(cacheKey(siteId));
   } catch {
     /* ignore */
   }
@@ -249,6 +253,12 @@ export function useSitePages(
     pagesRef.current = pages;
   }, [pages]);
 
+  // Track the current site identity across async closures so `scanOne` writes
+  // cache entries under the right siteId, and `clearAndRefresh` clears the
+  // right bucket. Updated by the site.context subscription below.
+  const currentSiteIdRef = useRef<string>("");
+  const currentSiteNameRef = useRef<string>("");
+
   const updateRow = useCallback((id: string, patch: Partial<PageMatrixRow>) => {
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }, []);
@@ -307,7 +317,7 @@ export function useSitePages(
       });
 
       const cachedAt = new Date().toISOString();
-      writeCacheEntry(row.pageUrl, {
+      writeCacheEntry(currentSiteIdRef.current, row.pageUrl, {
         score,
         updatedAt: row.lastModified,
         cachedAt,
@@ -346,28 +356,19 @@ export function useSitePages(
   // ── Enumerate pages via xmc.authoring.graphql + auto-scan first N ───────
   const enumerateAndScan = useCallback(async () => {
     if (!client) return;
+
+    const siteId = currentSiteIdRef.current;
+    const siteName = currentSiteNameRef.current;
+    if (!siteId || !siteName) {
+      console.warn("[sitePages] enumerateAndScan called before site.context resolved");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // 1. site.context → siteId, name
-      console.log("[sitePages] step 1: querying site.context");
-      const siteRes = await client.query("site.context");
-      const siteCtx = (siteRes as { data?: SiteContextShape })?.data ?? {};
-      const siteInfo = siteCtx.siteInfo;
-      const siteId = siteInfo?.siteId ?? "";
-      const siteName = siteInfo?.name ?? "";
-      console.log("[sitePages] siteId:", siteId, "name:", siteName);
-
-      if (!siteId || !siteName) {
-        setError("Could not load site context.");
-        setPages([]);
-        setSiteContext({ id: "", domain: "", name: "" });
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Resolve domain from env variable (site.context doesn't expose targetHostname)
+      // 1. Resolve domain from env variable (site.context doesn't expose targetHostname)
       const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
       const domain = envDomain
         ? envDomain.startsWith("http")
@@ -386,7 +387,7 @@ export function useSitePages(
         return;
       }
 
-      // 3. application.context → sitecoreContextId for the GraphQL call
+      // 2. application.context → sitecoreContextId for the GraphQL call
       let sitecoreContextId: string | undefined;
       try {
         const appRes = await client.query("application.context");
@@ -418,7 +419,7 @@ export function useSitePages(
         console.warn("[sitePages] application.context query failed:", err);
       }
 
-      // 4. Fetch robots.txt once for this domain
+      // 3. Fetch robots.txt once for this domain
       if (robotsFetchedDomainRef.current !== domain) {
         robotsFetchedDomainRef.current = domain;
         robotsRef.current = await tryJson<RobotsTxt>(
@@ -428,7 +429,7 @@ export function useSitePages(
         );
       }
 
-      // 5. Resolve site Home path: env override OR convention "/sitecore/content/{siteName}/Home"
+      // 4. Resolve site Home path: env override OR convention "/sitecore/content/{siteName}/Home"
       const language = "en";
       const rootPathOverride = process.env.NEXT_PUBLIC_SITE_ROOT_PATH;
       const rootPath =
@@ -437,7 +438,7 @@ export function useSitePages(
           : `/sitecore/content/${siteName}/Home`;
       console.log("[sitePages] using rootPath:", rootPath);
 
-      // 6. Authoring GraphQL — walk descendants of Home to TREE_WALK_DEPTH levels
+      // 5. Authoring GraphQL — walk descendants of Home to TREE_WALK_DEPTH levels
       const query = buildSitePagesQuery(TREE_WALK_DEPTH);
       const gqlRes = await client.mutate("xmc.authoring.graphql", {
         params: {
@@ -480,8 +481,8 @@ export function useSitePages(
       const pageNodes = flattenPages(root);
       console.log(`[sitePages] flattened ${pageNodes.length} pages from tree`);
 
-      // 7. Sort by updated desc, build rows with cache lookup
-      const cache = readCache();
+      // 6. Sort by updated desc, build rows with cache lookup (per-site)
+      const cache = readCache(siteId);
       const rows: PageMatrixRow[] = pageNodes
         .map<PageMatrixRow>((p) => {
           const route = pathToRoute(p.path);
@@ -519,7 +520,7 @@ export function useSitePages(
       pagesRef.current = rows;
       setIsLoading(false);
 
-      // 8. Auto-scan the first N un-scanned rows
+      // 7. Auto-scan the first N un-scanned rows
       const toScan = rows
         .filter((r) => r.scanStatus === "idle")
         .slice(0, INITIAL_AUTO_SCAN_COUNT);
@@ -534,9 +535,78 @@ export function useSitePages(
     }
   }, [client, base, scanOne]);
 
+  // ── site.context subscription ────────────────────────────────────────────
+  // Pages app updates site.context when the user switches sites in the
+  // dashboard; subscribing means we auto-re-enumerate without a manual reload.
   useEffect(() => {
     if (!client || !isInitialized) return;
-    void enumerateAndScan();
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    const applySiteContext = (payload: unknown) => {
+      if (cancelled) return;
+      const ctx =
+        ((payload as { data?: SiteContextShape })?.data) ??
+        (payload as SiteContextShape) ??
+        {};
+      const info = ctx.siteInfo;
+      const newSiteId = info?.siteId ?? "";
+      const newSiteName = info?.name ?? "";
+
+      if (!newSiteId) {
+        setError("Could not load site context.");
+        setPages([]);
+        setSiteContext({ id: "", domain: "", name: "" });
+        setIsLoading(false);
+        return;
+      }
+
+      const changed = newSiteId !== currentSiteIdRef.current;
+      currentSiteIdRef.current = newSiteId;
+      currentSiteNameRef.current = newSiteName;
+
+      if (changed) {
+        console.log(
+          `[sitePages] site changed → siteId=${newSiteId} name=${newSiteName}`,
+        );
+        // Wipe rows from the previous site immediately to avoid showing stale
+        // entries while the new site enumerates.
+        setPages([]);
+        void enumerateAndScan();
+      }
+    };
+
+    (async () => {
+      try {
+        const initial = await client.query("site.context");
+        applySiteContext(initial);
+      } catch (err) {
+        console.error("[sitePages] initial site.context query failed:", err);
+        if (!cancelled) {
+          setError("Could not load site context.");
+          setIsLoading(false);
+        }
+      }
+
+      try {
+        const subRes = await client.query("site.context", {
+          subscribe: true,
+          onSuccess: (res: unknown) => applySiteContext(res),
+        } as Parameters<ClientSDK["query"]>[1]);
+        unsubscribe = (subRes as { unsubscribe?: () => void })?.unsubscribe;
+      } catch (err) {
+        console.warn("[sitePages] site.context subscription failed:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        unsubscribe?.();
+      } catch {
+        /* ignore */
+      }
+    };
   }, [client, isInitialized, enumerateAndScan]);
 
   const refresh = useCallback(() => {
@@ -544,7 +614,7 @@ export function useSitePages(
   }, [enumerateAndScan]);
 
   const clearAndRefresh = useCallback(() => {
-    clearCache();
+    clearCache(currentSiteIdRef.current);
     void enumerateAndScan();
   }, [enumerateAndScan]);
 
