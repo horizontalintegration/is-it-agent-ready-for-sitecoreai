@@ -26,19 +26,17 @@ export interface SiteScoreInput {
   pageUrl: string;
   /** True for the site's Home page (route "/") — gates Organization vs BreadcrumbList. */
   isHomePage: boolean;
-  /** Sitecore template ID (with or without braces). Gates the Article-schema check. */
-  templateId: string | null;
+  /** Sitecore template display name (e.g. "Article Detail Page"). Gates the Article-schema check. */
+  templateName: string | null;
 }
 
-// Articles use this template (Sitecore item template ID).
-// Only pages of this template are checked for Article/NewsArticle/BlogPosting schema.
-// Stored normalised (lowercase, no braces, no hyphens) to match GraphQL's
-// `template { id }` shape, which returns 32 hex chars with no separators.
-const ARTICLE_TEMPLATE_ID = "375dcaaaf94c42ceb2ab3fb1d8871fd9";
+// Only pages whose Sitecore template name matches this are checked for
+// Article/NewsArticle/BlogPosting schema. Case-insensitive compare.
+const ARTICLE_TEMPLATE_NAME = "article detail page";
 
-function normaliseTemplateId(id: string | null | undefined): string {
-  if (!id) return "";
-  return id.toLowerCase().replace(/[{}\-]/g, "");
+function isArticleTemplate(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return name.trim().toLowerCase() === ARTICLE_TEMPLATE_NAME;
 }
 
 export interface SiteScorePillars {
@@ -132,7 +130,7 @@ function hasJsonLdType(html: ParsedHtml, types: string[]): boolean {
 function scoreStructured(
   html: ParsedHtml,
   isHomePage: boolean,
-  templateId: string | null,
+  templateName: string | null,
 ): { score: number; max: number } {
   let score = 0;
   let max = 0;
@@ -147,7 +145,7 @@ function scoreStructured(
   }
 
   // Article (6 pts) — only when the page uses the Article template
-  if (normaliseTemplateId(templateId) === ARTICLE_TEMPLATE_ID) {
+  if (isArticleTemplate(templateName)) {
     max += 6;
     if (hasJsonLdType(html, ["Article", "NewsArticle", "BlogPosting"])) score += 6;
   }
@@ -306,7 +304,7 @@ export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
     updatedAt,
     pageUrl,
     isHomePage,
-    templateId,
+    templateName,
   } = input;
 
   if (!parsedHtml) {
@@ -319,7 +317,7 @@ export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
     };
   }
 
-  const structured = scoreStructured(parsedHtml, isHomePage, templateId);
+  const structured = scoreStructured(parsedHtml, isHomePage, templateName);
 
   const pillars: SiteScorePillars = {
     crawlability: scoreCrawlability(parsedHtml, robotsTxt, pageUrl),

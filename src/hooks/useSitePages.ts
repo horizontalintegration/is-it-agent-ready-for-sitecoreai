@@ -191,7 +191,7 @@ interface GqlItemNode {
   name?: string;
   displayName?: string | null;
   path?: string;
-  template?: { id?: string | null } | null;
+  template?: { name?: string | null } | null;
   updated?: { value?: string | null } | null;
   renderings?: { value?: string | null } | null;
   metaTitle?: { value?: string | null } | null;
@@ -211,16 +211,17 @@ interface GqlEnvelope {
 // either the home item's itemId (preferred — from xmc.sites.retrieveSite) or
 // its content tree path (fallback — from the discoverSiteHomePath walk).
 function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
-  // template { id } returns the template GUID as a 32-char hex string with no
-  // braces or hyphens (e.g., "B936184FFCA24ACCB7EDB9F4E6170B8C").
-  // normaliseTemplateId in site-score.ts strips braces/hyphens so the Article
-  // template constant ("375dcaaa-f94c-42ce-b2ab-3fb1d8871fd9") still matches.
+  // template { name } returns the template's display name (e.g.
+  // "Article Detail Page"). We compare against ARTICLE_TEMPLATE_NAME in
+  // site-score.ts (case-insensitive) to gate the Article-schema check —
+  // this avoids the runtime "template doesn't exist" error caused by
+  // resolving template-by-id on items with missing or zero-GUID templates.
   const itemFields = `
     itemId
     name
     displayName
     path
-    template { templateId }
+    template { name }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
@@ -463,7 +464,7 @@ export function useSitePages(
         updatedAt: row.lastModified,
         pageUrl: row.pageUrl,
         isHomePage: row.route === "/" || row.route === "",
-        templateId: row.templateId || null,
+        templateName: row.templateName || null,
       });
 
       const cachedAt = new Date().toISOString();
@@ -704,7 +705,7 @@ export function useSitePages(
             name: p.displayName || p.name || "(untitled)",
             route,
             pageUrl,
-            templateId: p.template?.id ?? "",
+            templateName: p.template?.name ?? "",
             lastModified,
             metaTitle,
             metaDescription,
