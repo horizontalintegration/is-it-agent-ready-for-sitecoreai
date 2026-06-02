@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Page Matrix Explained — For Marketers</title>
+<style>
+  :root { --accent:#5b34c4; --seo:#2563eb; --aeo:#16a34a; --geo:#9333ea; --ink:#1f2430; --muted:#5c6370; --line:#e3e6ec; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif; color: var(--ink); line-height: 1.55; max-width: 880px; margin: 0 auto; padding: 48px 40px; }
+  h1 { font-size: 30px; border-bottom: 3px solid var(--accent); padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 22px; margin-top: 34px; padding-left: 12px; border-left: 5px solid var(--accent); }
+  h3 { font-size: 17px; margin-top: 24px; color: var(--accent); }
+  p { margin: 10px 0; }
+  code { background: #f3f0fb; color: #6429c9; padding: 2px 6px; border-radius: 4px; font-family: 'Cascadia Code', Consolas, monospace; font-size: 0.88em; }
+  a { color: var(--seo); text-decoration: none; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th { background: var(--accent); color: #fff; padding: 9px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #faf9fe; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 26px 0; }
+  ul { margin: 10px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { color: #2a2f3a; }
+  blockquote { border-left: 4px solid var(--line); margin: 12px 0; padding: 4px 16px; color: var(--muted); }
+  @media print {
+    body { padding: 0; max-width: none; }
+    h2, h3 { break-after: avoid; }
+    table, tr { break-inside: avoid; }
+    a { color: inherit; }
+  }
+</style>
+</head>
+<body>
+<h1>Page Matrix Explained — A Guide for Marketers</h1>
+<p>The <strong>Page Matrix</strong> is the dashboard view that grades every page on your site across <strong>5 big-picture categories</strong>. Where the per-page checker is a detailed checklist, the Page Matrix is the <strong>scorecard at a glance</strong> — one row per page, one score per category, so you can spot weak pages instantly.</p>
+<p>This guide explains each of the 5 categories in plain language, what feeds into them, and why each matters. Use it as a demo cheat sheet.</p>
+<hr/>
+<h2>The big idea: 5 questions every page must answer</h2>
+<p>Modern search isn't just Google anymore — AI assistants (ChatGPT, Gemini, Claude, Perplexity) now read your pages to answer people's questions. The Page Matrix scores each page on the 5 things those AI systems care about, framed as 5 simple questions:</p>
+<table><thead><tr>
+<th style="text-align:left">Category</th>
+<th style="text-align:left">The question it answers</th>
+<th style="text-align:left">In one phrase</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><strong>🔵 Crawlability</strong></td>
+<td style="text-align:left">*Can AI bots reach and index this page?*</td>
+<td style="text-align:left">Can they get in?</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>🟢 Structured Data</strong></td>
+<td style="text-align:left">*Can AI understand the page's meaning from its labels?*</td>
+<td style="text-align:left">Do they understand it?</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>🟠 Answerability</strong></td>
+<td style="text-align:left">*Can AI pull a clean answer out of the content?*</td>
+<td style="text-align:left">Can they quote it?</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>🟣 Authority</strong></td>
+<td style="text-align:left">*Does AI trust this content enough to cite it?*</td>
+<td style="text-align:left">Do they trust it?</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>🔴 Retrievability</strong></td>
+<td style="text-align:left">*Does AI prefer this page when answering?*</td>
+<td style="text-align:left">Will they pick it?</td>
+</tr>
+</tbody></table>
+<p><strong>The flow makes sense in order:</strong> a bot has to *get in* (Crawlability) → *understand* what it's reading (Structured) → *find an answer* in it (Answerability) → *trust* the source (Authority) → and finally *choose* it over competitors (Retrievability).</p>
+<hr/>
+<h2>How to read the scorecard</h2>
+<ul>
+<li>Each page gets a <strong>percentage score</strong> (its earned points ÷ the points that apply to it).</li>
+<li>That percentage becomes a <strong>color-coded label</strong>:</li>
+</ul>
+<table><thead><tr>
+<th style="text-align:left">Label</th>
+<th style="text-align:left">Score</th>
+<th style="text-align:left">Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">🟢 <strong>Good</strong></td>
+<td style="text-align:left">71–100%</td>
+<td style="text-align:left">Search-ready — AI can find, trust, and use it</td>
+</tr>
+<tr>
+<td style="text-align:left">🟡 <strong>Warning</strong></td>
+<td style="text-align:left">40–70%</td>
+<td style="text-align:left">Needs work — some gaps holding it back</td>
+</tr>
+<tr>
+<td style="text-align:left">🔴 <strong>Critical</strong></td>
+<td style="text-align:left">Below 40%</td>
+<td style="text-align:left">Major issues — likely invisible to AI search</td>
+</tr>
+</tbody></table>
+<p>&gt; <strong>Smart scoring:</strong> A page is only graded on what actually applies to it. For example, your homepage isn't penalized for missing "Article" labels, and a page with no FAQs isn't marked down for missing FAQ labels. The denominator adjusts per page, so scores are always fair.</p>
+<hr/>
+<h2>🔵 Category 1: Crawlability — *Can the bots get in?* (15 points)</h2>
+<p><strong>The plain version:</strong> Before anything else, AI search bots have to be *allowed* to read your page and not get sent to the wrong copy. This category checks the "doors and signs."</p>
+<p><strong>What feeds into it:</strong></p>
+<ul>
+<li><strong>AI crawler permissions</strong> — whether your site's rulebook (robots.txt) blocks the major AI bots (GPTBot from ChatGPT, ClaudeBot, Google-Extended, PerplexityBot, and others). Blocking them means those AI tools literally cannot read your page.</li>
+<li><strong>Canonical tag</strong> — a label saying "this is the official version of this page," so duplicate copies don't split your credit.</li>
+<li><strong>Robots meta tags</strong> — a check that the page isn't accidentally tagged "do not index" or "do not show snippets."</li>
+</ul>
+<p><strong>Why it matters:</strong> This is the foundation. If bots are blocked or the page says "don't index me," nothing else you do counts — the page is invisible to AI and search no matter how good it is.</p>
+<hr/>
+<h2>🟢 Category 2: Structured Data — *Do they understand it?* (up to 20 points)</h2>
+<p><strong>The plain version:</strong> Structured data (called "schema") is invisible labeling in the code that spells out *what your content is* — "this is an FAQ," "this is an article," "this is the company info." It turns a wall of text into clearly labeled parts a machine can understand instantly.</p>
+<p><strong>What feeds into it (only the labels that fit each page):</strong></p>
+<ul>
+<li><strong>FAQ labeling</strong> — on pages with question-and-answer content.</li>
+<li><strong>Article labeling</strong> — on article/blog pages.</li>
+<li><strong>Breadcrumb labeling</strong> — on inner pages, showing where they sit in the site.</li>
+<li><strong>Organization labeling</strong> — on the homepage, identifying your brand.</li>
+</ul>
+<p><strong>Why it matters:</strong> Schema is how you earn the "rich" results — FAQ drop-downs, article cards, breadcrumb trails, and brand knowledge panels. It's also how AI confidently understands *what kind* of content it's looking at, so it can use it correctly.</p>
+<p>&gt; This is the only category where the maximum score changes per page, because different page types need different labels. The page is only judged on the labels relevant to it.</p>
+<hr/>
+<h2>🟠 Category 3: Answerability — *Can they quote it?* (20 points)</h2>
+<p><strong>The plain version:</strong> Even a page that's understood can be a messy blob of text. Answerability checks whether the content is <strong>structured and readable enough that AI can lift a clean answer out of it.</strong></p>
+<p><strong>What feeds into it:</strong></p>
+<ul>
+<li><strong>Heading structure</strong> — one clear main headline, and sub-headings in logical order (no skipped levels).</li>
+<li><strong>Question-style headings</strong> — section titles phrased as real questions ("How do I…?", "What is…?"), which match how people actually ask AI.</li>
+<li><strong>Readability</strong> — writing that's clear and not overly dense (around an early-college reading level or simpler).</li>
+<li><strong>Scannable paragraphs</strong> — paragraphs that are a comfortable length (not one-liners, not giant walls of text).</li>
+</ul>
+<p><strong>Why it matters:</strong> AI assistants and answer boxes extract *passages* — a sentence or short block — to answer a question. Clean structure and readable, well-sized paragraphs make your content easy to lift and feature. Dense, disorganized text gets skipped.</p>
+<hr/>
+<h2>🟣 Category 4: Authority — *Do they trust it?* (28 points — the heaviest category)</h2>
+<p><strong>The plain version:</strong> AI won't cite content it doesn't trust. Authority measures whether your content is <strong>original, substantial, current, and well-connected</strong> — the marks of a credible source.</p>
+<p><strong>What feeds into it:</strong></p>
+<ul>
+<li><strong>Content uniqueness</strong> *(AI-judged)* — our AI reads the page and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. <strong>This is the single biggest factor in the whole Matrix.</strong></li>
+<li><strong>Content depth</strong> — whether there's enough substance (word count) to be useful, vs. thin content.</li>
+<li><strong>Freshness</strong> — how recently the page was published or updated. Stale pages lose trust.</li>
+<li><strong>Descriptive links</strong> — whether internal links use meaningful text (not vague "click here").</li>
+</ul>
+<p><strong>Why it matters:</strong> This is the heart of getting *cited* by AI. Search and AI reward genuine expertise and originality; they bury thin, recycled, or outdated content. It's the most heavily weighted category because trust is what separates a page that gets quoted from one that's ignored.</p>
+<hr/>
+<h2>🔴 Category 5: Retrievability — *Will they pick it?* (20 points)</h2>
+<p><strong>The plain version:</strong> When several pages could answer a question, which one gets shown? Retrievability is about <strong>presentation</strong> — making your page the attractive, well-packaged choice in results and previews.</p>
+<p><strong>What feeds into it:</strong></p>
+<ul>
+<li><strong>Title length</strong> — a headline that fits search results cleanly (about 30–60 characters).</li>
+<li><strong>Meta description length</strong> — the summary snippet under the title, in the ideal range (about 120–160 characters).</li>
+<li><strong>Social sharing tags</strong> — complete preview info (title, description, image) so shared links look polished.</li>
+<li><strong>Semantic landmarks</strong> — code labels (<code>main</code>, <code>article</code>, <code>nav</code>, <code>header</code>) that mark the page's key regions, helping AI find the real content fast.</li>
+<li><strong>Image alt text</strong> — written descriptions of images so machines can "see" them.</li>
+</ul>
+<p><strong>Why it matters:</strong> This is the finishing layer. Even trusted, well-understood content needs to *look* right and be easy to navigate. Strong titles, snippets, and previews win the click; clean structure and labeled images make the page the easy pick.</p>
+<hr/>
+<h2>Quick reference: the 5-category scorecard</h2>
+<table><thead><tr>
+<th style="text-align:left">Category</th>
+<th style="text-align:right">Points</th>
+<th style="text-align:left">The question</th>
+<th style="text-align:left">What to fix if it's low</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">🔵 <strong>Crawlability</strong></td>
+<td style="text-align:right">15</td>
+<td style="text-align:left">Can AI bots get in?</td>
+<td style="text-align:left">Unblock AI crawlers, add canonical, remove accidental noindex</td>
+</tr>
+<tr>
+<td style="text-align:left">🟢 <strong>Structured Data</strong></td>
+<td style="text-align:right">up to 20</td>
+<td style="text-align:left">Can AI understand it?</td>
+<td style="text-align:left">Add the right schema (FAQ / Article / Breadcrumb / Organization)</td>
+</tr>
+<tr>
+<td style="text-align:left">🟠 <strong>Answerability</strong></td>
+<td style="text-align:right">20</td>
+<td style="text-align:left">Can AI quote it?</td>
+<td style="text-align:left">Fix headings, add question sections, simplify writing, size paragraphs</td>
+</tr>
+<tr>
+<td style="text-align:left">🟣 <strong>Authority</strong></td>
+<td style="text-align:right">28</td>
+<td style="text-align:left">Does AI trust it?</td>
+<td style="text-align:left">Make content original &amp; deeper, refresh dates, improve link text</td>
+</tr>
+<tr>
+<td style="text-align:left">🔴 <strong>Retrievability</strong></td>
+<td style="text-align:right">20</td>
+<td style="text-align:left">Will AI pick it?</td>
+<td style="text-align:left">Tune title &amp; description length, complete OG tags, add landmarks &amp; alt text</td>
+</tr>
+</tbody></table>
+<hr/>
+<h2>Demo talking points</h2>
+<ul>
+<li><strong>"Five questions, one scorecard."</strong> The Matrix turns a complex audit into five intuitive questions, scored per page — anyone can scan it and know which pages need help.</li>
+<li><strong>"It's built for the AI-search era."</strong> These categories map to how ChatGPT, Gemini, and Perplexity actually decide what to read, trust, and cite — not just old-school Google.</li>
+<li><strong>"Scoring is fair by design."</strong> Pages are only graded on what applies to them, so a clean homepage isn't punished for lacking article labels.</li>
+<li><strong>"Authority carries the most weight (28 pts)"</strong> — because original, trustworthy content is what AI rewards most, and it's the hardest thing for competitors to copy.</li>
+<li><strong>"Green / Yellow / Red, at a glance."</strong> Marketers can prioritize instantly: fix the reds first.</li>
+</ul>
+</body>
+</html>

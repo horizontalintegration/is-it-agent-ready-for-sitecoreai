@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Page Checks — Technical Reference</title>
+<style>
+  :root { --accent:#5b34c4; --seo:#2563eb; --aeo:#16a34a; --geo:#9333ea; --ink:#1f2430; --muted:#5c6370; --line:#e3e6ec; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif; color: var(--ink); line-height: 1.55; max-width: 880px; margin: 0 auto; padding: 48px 40px; }
+  h1 { font-size: 30px; border-bottom: 3px solid var(--accent); padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 22px; margin-top: 34px; padding-left: 12px; border-left: 5px solid var(--accent); }
+  h3 { font-size: 17px; margin-top: 24px; color: var(--accent); }
+  p { margin: 10px 0; }
+  code { background: #f3f0fb; color: #6429c9; padding: 2px 6px; border-radius: 4px; font-family: 'Cascadia Code', Consolas, monospace; font-size: 0.88em; }
+  a { color: var(--seo); text-decoration: none; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th { background: var(--accent); color: #fff; padding: 9px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #faf9fe; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 26px 0; }
+  ul { margin: 10px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { color: #2a2f3a; }
+  blockquote { border-left: 4px solid var(--line); margin: 12px 0; padding: 4px 16px; color: var(--muted); }
+  @media print {
+    body { padding: 0; max-width: none; }
+    h2, h3 { break-after: avoid; }
+    table, tr { break-inside: avoid; }
+    a { color: inherit; }
+  }
+</style>
+</head>
+<body>
+<h1>Page Checks — Technical Reference</h1>
+<p>A detailed, engineering-oriented breakdown of every page-level check in the Sitecore AI Page Search Readiness Checker: what it inspects, the exact thresholds and scoring math, and where it lives in the codebase.</p>
+<p><strong>Source of truth:</strong> <code>src/lib/rule-engine/engine.ts</code> (check definitions), <code>helpers.ts</code> (shared utilities), <code>types.ts</code> (interfaces), <code>site-score.ts</code> (site-level aggregation).</p>
+<hr/>
+<h2>Scoring model</h2>
+<ul>
+<li>Each check returns a status of <code>pass</code> / <code>warning</code> / <code>fail</code> and a numeric score <code>0..max</code>.</li>
+<li>Page total = sum of enabled check scores = <strong>81 points</strong> across three pillars:</li>
+</ul>
+<p>  - <strong>SEO</strong>: 35 pts (6 scored + 1 info-only)</p>
+<p>  - <strong>AEO</strong>: 23 pts (4 scored)</p>
+<p>  - <strong>Content Quality (GEO)</strong>: 23 pts (5 scored)</p>
+<ul>
+<li>Info-only checks contribute <code>0</code> to the total but emit findings/guidance.</li>
+<li>A <strong>gate check</strong> runs before scoring and short-circuits the whole panel if the page is intentionally excluded from indexing.</li>
+</ul>
+<h3>SEO / AEO / GEO definitions (technical framing)</h3>
+<table><thead><tr>
+<th style="text-align:left">Pillar</th>
+<th style="text-align:left">Optimizes for</th>
+<th style="text-align:left">Primary consumers</th>
+<th style="text-align:left">Signal type</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><strong>SEO</strong></td>
+<td style="text-align:left">Crawl + index + SERP rendering</td>
+<td style="text-align:left">Googlebot, Bingbot</td>
+<td style="text-align:left">HTML <code>&lt;head&gt;</code> metadata, document structure, link graph</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>AEO</strong></td>
+<td style="text-align:left">Featured snippets, voice, answer boxes</td>
+<td style="text-align:left">Google answer surfaces, voice assistants</td>
+<td style="text-align:left">Structured data (JSON-LD), Q&amp;A formatting</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>GEO</strong></td>
+<td style="text-align:left">LLM retrieval &amp; citation</td>
+<td style="text-align:left">ChatGPT, Gemini, Claude, Perplexity, AI Overviews</td>
+<td style="text-align:left">Content originality, readability, semantic HTML, performance</td>
+</tr>
+</tbody></table>
+<hr/>
+<h2>Gate check — noindex / nosnippet</h2>
+<p><strong>Location:</strong> <code>engine.ts:32–71</code></p>
+<p><strong>Logic:</strong> Before any scoring, evaluate exclusion signals:</p>
+<p>1. Sitecore <code>noindex</code> field set on the item, <strong>OR</strong></p>
+<p>2. <code>&lt;meta name="robots"&gt;</code> / <code>&lt;meta name="googlebot"&gt;</code> containing <code>noindex</code>, <code>nosnippet</code>, or <code>max-snippet:0</code>.</p>
+<p><strong>Behavior:</strong> If triggered, the panel is blocked and surfaces a single message; no checks are scored. Rationale: optimizing a non-indexable page produces misleading scores.</p>
+<hr/>
+<h2>SEO checks (35 pts)</h2>
+<h3>1. <code>seo-meta-title</code> — Meta Title Length</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:78</code></li>
+<li><strong>Inspects:</strong> Character length of the page title field.</li>
+<li><strong>Scoring (max 8):</strong></li>
+</ul>
+<p>  - <code>pass</code> 8 — length ∈ [50, 60]</p>
+<p>  - <code>warning</code> 5 — length ∈ [30, 49] ∪ [61, 70]</p>
+<p>  - <code>fail</code> 2 — length &lt; 30 or &gt; 70</p>
+<ul>
+<li><strong>Rationale:</strong> ~600px SERP truncation budget; titles outside the band are truncated or under-utilized.</li>
+</ul>
+<h3>2. <code>seo-meta-description</code> — Meta Description Present + Length</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:154</code></li>
+<li><strong>Inspects:</strong> Presence and length of the meta description.</li>
+<li><strong>Scoring (max 8):</strong></li>
+</ul>
+<p>  - <code>pass</code> 8 — length ∈ [120, 160]</p>
+<p>  - <code>warning</code> 4 — present but outside range</p>
+<p>  - <code>fail</code> 0 — missing</p>
+<ul>
+<li><strong>Rationale:</strong> Controls SERP snippet copy; absent → Google auto-generates from body.</li>
+</ul>
+<h3>3. <code>seo-headings</code> — H1 Count + Heading Hierarchy</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:212</code></li>
+<li><strong>Inspects:</strong> Count of <code>&lt;h1&gt;</code> and whether heading levels descend without skips.</li>
+<li><strong>Scoring (max 6 = 3 + 3):</strong></li>
+</ul>
+<p>  - H1 sub-score (3): exactly one H1 → 3; zero or 2+ → 0–1</p>
+<p>  - Hierarchy sub-score (3): no skipped levels (e.g., H2→H4) → 3; skips present → 0</p>
+<ul>
+<li><strong>Rationale:</strong> Single H1 = unambiguous topic; ordered hierarchy = parseable document outline for crawlers and assistive tech.</li>
+</ul>
+<h3>4. <code>seo-image-alt</code> — Image Alt Text Coverage</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:288</code></li>
+<li><strong>Inspects:</strong> Ratio of <code>&lt;img&gt;</code> elements with non-empty <code>alt</code>.</li>
+<li><strong>Scoring (max 5):</strong> <code>round((imagesWithAlt / totalImages) * 5)</code></li>
+</ul>
+<p>  - <code>pass</code> 5 — 100% coverage</p>
+<p>  - <code>warning</code> 1–4 — partial</p>
+<p>  - <code>fail</code> 0 — none (or no images → treated as full)</p>
+<ul>
+<li><strong>Rationale:</strong> Image search indexing + WCAG accessibility.</li>
+</ul>
+<h3>5. <code>seo-canonical</code> — Canonical Tag</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:365</code></li>
+<li><strong>Inspects:</strong> Presence and target of <code>&lt;link rel="canonical"&gt;</code>.</li>
+<li><strong>Scoring (max 5):</strong></li>
+</ul>
+<p>  - <code>pass</code> 5 — present and self-referencing</p>
+<p>  - <code>warning</code> 2 — present but points to a different URL</p>
+<p>  - <code>fail</code> 0 — missing</p>
+<ul>
+<li><strong>Rationale:</strong> Duplicate-content consolidation; prevents ranking-signal dilution across URL variants.</li>
+</ul>
+<h3>6. <code>seo-og-tags</code> — Open Graph Tags</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:426</code></li>
+<li><strong>Inspects:</strong> Presence of <code>og:title</code>, <code>og:description</code>, <code>og:image</code>.</li>
+<li><strong>Scoring (max 3):</strong> score = count of present tags</li>
+</ul>
+<p>  - <code>pass</code> 3 — all three; <code>warning</code> 2 — two of three; <code>fail</code> 0–1 — fewer</p>
+<ul>
+<li><strong>Rationale:</strong> Controls social/link-unfurl preview cards (LinkedIn, Slack, Facebook).</li>
+</ul>
+<h3>7. <code>seo-anchor-text</code> — Internal Link Anchor Text Quality *(info-only, 0 pts)*</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:472</code></li>
+<li><strong>Inspects:</strong> Internal anchors against a generic-phrase blocklist ("click here", "read more", "learn more", etc.; see <code>helpers.ts</code>).</li>
+<li><strong>Output:</strong> Count and list of generic anchors; no score.</li>
+<li><strong>Rationale:</strong> Anchor text is a relevance signal; generic anchors waste it.</li>
+</ul>
+<hr/>
+<h2>AEO checks (23 pts)</h2>
+<h3>8. <code>aeo-faq-schema</code> — FAQPage JSON-LD</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:511</code></li>
+<li><strong>Inspects:</strong> FAQ accordion items in content; <strong>generates</strong> a <code>FAQPage</code> JSON-LD block ready to paste.</li>
+<li><strong>Scoring (max 8):</strong> full score when no FAQ items present, otherwise emits generated schema.</li>
+<li><strong>Rationale:</strong> Eligibility for FAQ rich results and direct answer extraction.</li>
+</ul>
+<h3>9. <code>aeo-faq-answer-quality</code> — FAQ Answer Length &amp; Quality</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:553</code></li>
+<li><strong>Inspects:</strong> Each FAQ answer for: plain text (no HTML), length ∈ [40, 300] chars, self-contained.</li>
+<li><strong>Scoring (max 5):</strong> <code>(qualifyingAnswers / totalAnswers) * 5</code></li>
+<li><strong>Rationale:</strong> Snippet/voice extraction favors concise, standalone answers.</li>
+</ul>
+<h3>10. <code>aeo-organization-schema</code> — Organization JSON-LD</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:702</code></li>
+<li><strong>Inspects:</strong> Generates a ready-to-paste <code>Organization</code> JSON-LD snippet (name, logo, etc.).</li>
+<li><strong>Scoring (max 5):</strong> always full — provides the snippet for the global template.</li>
+<li><strong>Rationale:</strong> Knowledge-panel eligibility and entity disambiguation.</li>
+</ul>
+<h3>11. <code>aeo-structured-data</code> — Rich Results Eligibility (Breadcrumbs)</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:728</code></li>
+<li><strong>Inspects:</strong> Derives <code>BreadcrumbList</code> JSON-LD from the URL path.</li>
+<li><strong>Scoring (max 5):</strong> always full — provides generated snippet.</li>
+<li><strong>Rationale:</strong> Breadcrumb SERP rendering + site-hierarchy signal.</li>
+</ul>
+<hr/>
+<h2>Content Quality / GEO checks (23 pts)</h2>
+<h3>12. <code>cq-uniqueness</code> — Unique Content Signal</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:787</code></li>
+<li><strong>Inspects:</strong> LLM (Claude) classification of body content as <code>unique</code> / <code>borderline</code> / <code>commodity</code>.</li>
+<li><strong>Scoring (max 10):</strong> <code>unique</code> → 10 (<code>pass</code>), <code>borderline</code> → 5 (<code>warning</code>), <code>commodity</code> → 0 (<code>fail</code>).</li>
+<li><strong>Rationale:</strong> Originality is the dominant GEO/E-E-A-T signal; highest single weight by design.</li>
+</ul>
+<h3>13. <code>cq-page-experience</code> — Performance Score</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:966</code></li>
+<li><strong>Inspects:</strong> PageSpeed Insights score + Core Web Vitals (external API).</li>
+<li><strong>Scoring (max 5):</strong></li>
+</ul>
+<p>  - <code>pass</code> 5 — PSI ≥ 70</p>
+<p>  - <code>warning</code> 3 — PSI ∈ [50, 69]</p>
+<p>  - <code>fail</code> 0 — PSI &lt; 50 or page not crawlable</p>
+<ul>
+<li><strong>Rationale:</strong> Confirmed ranking factor; UX proxy.</li>
+</ul>
+<h3>14. <code>cq-agentic-readiness</code> — Semantic Landmarks</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:1048</code></li>
+<li><strong>Inspects:</strong> Presence of HTML5 landmarks <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>; also flags interactive elements missing <code>aria-label</code>.</li>
+<li><strong>Scoring (max 4):</strong> score = count of landmarks present (0–4)</li>
+</ul>
+<p>  - <code>pass</code> 4 — all four; <code>warning</code> 3; <code>fail</code> 0–2</p>
+<ul>
+<li><strong>Rationale:</strong> Agent/assistant DOM navigation; isolates primary content from chrome.</li>
+</ul>
+<h3>15. <code>cq-reading-grade</code> — Passage-level Reading Grade</h3>
+<ul>
+<li><strong>Location:</strong> <code>engine.ts:1118</code></li>
+<li><strong>Inspects:</strong> Automated Readability Index (ARI) per paragraph (paragraphs ≥ 20 words).</li>
+</ul>
+<p>  - <code>ARI = 4.71*(chars/words) + 0.5*(words/sentences) − 21.43</code></p>
+<ul>
+<li><strong>Scoring (max 4):</strong> <code>(paragraphsAtGrade≤13 / totalParagraphs) * 4</code></li>
+</ul>
+<p>  - <code>pass</code> 4 — all ≤ grade 13; <code>warning</code> 3 — ≥75%; <code>fail</code> 0–2 — &lt;75%</p>
+<ul>
+<li><strong>Rationale:</strong> Readability correlates with dwell time and clean LLM summarization/quotation.</li>
+</ul>
+<hr/>
+<h2>Disabled checks (defined, commented out in the orchestrator)</h2>
+<p>These exist in code but are not currently part of the 81-pt total. Useful to know for roadmap discussions.</p>
+<table><thead><tr>
+<th style="text-align:left">Check ID</th>
+<th style="text-align:left">Name</th>
+<th style="text-align:right">Max</th>
+<th style="text-align:left">Location</th>
+<th style="text-align:left">Notes</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><code>aeo-howto-schema</code></td>
+<td style="text-align:left">HowTo Schema</td>
+<td style="text-align:right">7</td>
+<td style="text-align:left"><code>engine.ts:626–698</code></td>
+<td style="text-align:left">Validates HowTo JSON-LD step <code>name</code>/<code>text</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>aeo-question-headings</code></td>
+<td style="text-align:left">Question-format H2s</td>
+<td style="text-align:right">0 (info)</td>
+<td style="text-align:left"><code>engine.ts:752</code></td>
+<td style="text-align:left">Regex count of interrogative H2s</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>cq-author</code></td>
+<td style="text-align:left">Author Present + Linked</td>
+<td style="text-align:right">6</td>
+<td style="text-align:left"><code>engine.ts:845</code></td>
+<td style="text-align:left">linked → 6 / name only → 3 / missing → 0</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>cq-freshness</code></td>
+<td style="text-align:left">Published Date + Freshness</td>
+<td style="text-align:right">5</td>
+<td style="text-align:left"><code>engine.ts:897</code></td>
+<td style="text-align:left">≤365d → 5 / ≤730d → 2 / &gt;730d → 0</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>cq-followup-gaps</code></td>
+<td style="text-align:left">Content follow-up gaps</td>
+<td style="text-align:right">0 (info)</td>
+<td style="text-align:left"><code>engine.ts:1193–1228</code></td>
+<td style="text-align:left">LLM-generated follow-up questions vs. coverage</td>
+</tr>
+</tbody></table>
+<hr/>
+<h2>Site-level scoring (aggregate, not page-level)</h2>
+<p><strong>Location:</strong> <code>site-score.ts:307–366</code>. Rolls page-derived HTML signals into 5 site pillars. Listed for completeness — these are separate from the per-page panel.</p>
+<table><thead><tr>
+<th style="text-align:left">Pillar</th>
+<th style="text-align:right">Max</th>
+<th style="text-align:left">Inputs</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Crawlability</td>
+<td style="text-align:right">15</td>
+<td style="text-align:left">AI-crawler permissions, canonical, robots meta</td>
+</tr>
+<tr>
+<td style="text-align:left">Structured</td>
+<td style="text-align:right">0–20</td>
+<td style="text-align:left">Conditional schema presence (FAQPage, Article, BreadcrumbList, Organization)</td>
+</tr>
+<tr>
+<td style="text-align:left">Answerability</td>
+<td style="text-align:right">20</td>
+<td style="text-align:left">H1 count, question H2s, reading grade, paragraph length</td>
+</tr>
+<tr>
+<td style="text-align:left">Authority</td>
+<td style="text-align:right">25</td>
+<td style="text-align:left">AI uniqueness, content depth, freshness, anchor-text quality</td>
+</tr>
+<tr>
+<td style="text-align:left">Retrievability</td>
+<td style="text-align:right">20</td>
+<td style="text-align:left">Title length, meta description, OG tags, landmarks, image alt coverage</td>
+</tr>
+</tbody></table>
+<hr/>
+<h2>Key files</h2>
+<table><thead><tr>
+<th style="text-align:left">File</th>
+<th style="text-align:left">Responsibility</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><code>src/lib/rule-engine/engine.ts</code></td>
+<td style="text-align:left">All check definitions, scoring logic, gate (lines 32–1324)</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/rule-engine/helpers.ts</code></td>
+<td style="text-align:left">ARI, word/char counts, anchor blocklist, shared parsing utils</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/rule-engine/types.ts</code></td>
+<td style="text-align:left">Check/result interfaces and status enums</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/rule-engine/site-score.ts</code></td>
+<td style="text-align:left">Site-level aggregation pillars</td>
+</tr>
+</tbody></table>
+</body>
+</html>
