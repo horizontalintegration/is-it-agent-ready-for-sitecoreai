@@ -8,7 +8,7 @@ const MAX_PILLARS: SiteScoreResult["maxPillars"] = {
   crawlability: 15,
   structured: 20,
   answerability: 20,
-  authority: 25,
+  authority: 28,
   retrievability: 20,
 };
 
@@ -29,7 +29,7 @@ function makeFixtureScore(
     pillars.retrievability;
   return {
     total,
-    maxTotal: 100,
+    maxTotal: 103,
     pillars,
     maxPillars: MAX_PILLARS,
     label: labelFor(total),
