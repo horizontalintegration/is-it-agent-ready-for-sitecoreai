@@ -44,13 +44,17 @@ export default function DashboardWidgetPage() {
       // Unscanned rows are excluded from label filters; visible only under "all".
       out = out.filter((p) => p.score?.label === filter);
     }
+    // Sort by normalized readiness (total / maxTotal), matching the percentage
+    // shown in the matrix — raw totals aren't comparable since maxTotal varies per page.
+    const pctOf = (p: (typeof out)[number]) =>
+      p.score && p.score.maxTotal > 0 ? p.score.total / p.score.maxTotal : -1;
     const sorted = [...out];
     sorted.sort((a, b) => {
       switch (sortBy) {
         case "score-asc":
-          return (a.score?.total ?? -1) - (b.score?.total ?? -1);
+          return pctOf(a) - pctOf(b);
         case "score-desc":
-          return (b.score?.total ?? -1) - (a.score?.total ?? -1);
+          return pctOf(b) - pctOf(a);
         case "modified":
           return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
         case "name":
