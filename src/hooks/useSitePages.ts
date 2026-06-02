@@ -257,7 +257,10 @@ function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
 function flattenPages(root: GqlItemNode | null | undefined): GqlItemNode[] {
   if (!root) return [];
   const out: GqlItemNode[] = [];
-  function walk(node: GqlItemNode) {
+  function walk(node: GqlItemNode | null | undefined) {
+    // Partial-error responses can nullify an entire node (not just its
+    // template) — skip those rather than dereferencing null.
+    if (!node) return;
     // A node is a real page when it has presentation in EITHER the shared
     // layout (__Renderings) or the final/versioned layout (__Final Renderings).
     // Some items only populate one of the two, so check both.
