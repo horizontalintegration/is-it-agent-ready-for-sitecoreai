@@ -59,7 +59,7 @@ const MAX_PILLARS: SiteScorePillars = {
   crawlability: 15,
   structured: 20,
   answerability: 20,
-  authority: 25,
+  authority: 28,
   retrievability: 20,
 };
 
@@ -219,6 +219,14 @@ function scoreAuthority(html: ParsedHtml, ai: AiResults | null, updatedAt: strin
     // commodity → 0
   }
   // If AI hasn't been evaluated, neither pass nor fail — leave 0.
+
+  // Content depth (3 pts) — thin pages read as low-authority and are exactly what
+  // drives "commodity" uniqueness ratings. Count total body words across paragraphs.
+  const totalWords = html.paragraphs.reduce((sum, p) => sum + wordCount(p), 0);
+  if (totalWords >= 800) score += 3;
+  else if (totalWords >= 400) score += 2;
+  else if (totalWords >= 150) score += 1;
+  // < 150 words → 0 (thin content)
 
   // Freshness (8 pts). Prefer rendered-HTML meta tags (what AI bots actually read);
   // fall back to Sitecore's __Updated when neither meta tag is present.

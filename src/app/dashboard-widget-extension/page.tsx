@@ -5,6 +5,7 @@ import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { MatrixView } from "@/components/MatrixView";
+import { CitationView } from "@/components/CitationView";
 import { LlmsTxtGenerator } from "@/components/LlmsTxtGenerator";
 import { RobotsTxtPanel } from "@/components/RobotsTxtPanel";
 import { FooterTrustPanel } from "@/components/FooterTrustPanel";
@@ -34,7 +35,7 @@ export default function DashboardWidgetPage() {
   const error = useFixture ? null : live.error;
   const scanningCount = useFixture ? 0 : live.scanningCount;
 
-  const [activeTab, setActiveTab] = useState<"matrix" | "llms" | "robots" | "footer">("matrix");
+  const [activeTab, setActiveTab] = useState<"matrix" | "citation" | "llms" | "robots" | "footer">("matrix");
   const [filter, setFilter] = useState<MatrixFilter>("critical");
   const [sortBy, setSortBy] = useState<MatrixSort>("score-asc");
 
@@ -89,16 +90,18 @@ export default function DashboardWidgetPage() {
           )}
         </div>
         <nav className="px-4 flex gap-1 border-t border-gray-100" role="tablist">
-          {(["matrix", "llms", "robots", "footer"] as const).map((tab) => {
+          {(["matrix", "citation", "llms", "robots", "footer"] as const).map((tab) => {
             const active = activeTab === tab;
             const label =
               tab === "matrix"
                 ? "Page matrix"
-                : tab === "llms"
-                  ? "LLMs.txt"
-                  : tab === "robots"
-                    ? "Robots.txt"
-                    : "Footer trust";
+                : tab === "citation"
+                  ? "AI Citation"
+                  : tab === "llms"
+                    ? "LLMs.txt"
+                    : tab === "robots"
+                      ? "Robots.txt"
+                      : "Footer trust";
             return (
               <button
                 key={tab}
@@ -150,6 +153,8 @@ export default function DashboardWidgetPage() {
               onClearAndRefresh={handleClearAndRefresh}
             />
           )
+        ) : activeTab === "citation" ? (
+          <CitationView pages={pages} siteDomain={siteContext.domain} />
         ) : activeTab === "llms" ? (
           <LlmsTxtGenerator
             pages={pages}

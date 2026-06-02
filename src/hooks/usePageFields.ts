@@ -1,10 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  ClientSDK,
-  ContentFieldsUpdatedData,
-} from "@sitecore-marketplace-sdk/client";
+import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import type { AuthoringFields, FaqItem } from "@/lib/rule-engine/types";
 import { stripHtml } from "@/lib/rule-engine/helpers";
 
@@ -106,11 +103,6 @@ async function fetchItemFieldsAuthoring(
       },
     } as Parameters<ClientSDK["mutate"]>[1]);
 
-    console.log(
-      `[usePageFields] authoring.graphql ref="${itemRef}" raw:`,
-      result,
-    );
-
     const envelope =
       ((result as { data?: AuthoringEnvelope })?.data as AuthoringEnvelope) ??
       (result as AuthoringEnvelope);
@@ -135,10 +127,6 @@ async function fetchItemFieldsAuthoring(
     for (const n of nodes) {
       if (n?.name && typeof n.value === "string") out[n.name] = n.value;
     }
-    console.log(
-      "[usePageFields] authoring fields resolved:",
-      Object.keys(out),
-    );
     return out;
   } catch (err) {
     console.error("[usePageFields] authoring.graphql threw:", err);
@@ -202,9 +190,7 @@ function extractSiteDomain(siteInfo: SdkSiteInfo | undefined): string {
 
   // targetHostname is a direct property on the siteInfo object (no scheme prefix)
   if (typeof siteInfo.targetHostname === "string" && siteInfo.targetHostname) {
-    const domain = `https://${siteInfo.targetHostname}`;
-    console.log("[domain] resolved from siteInfo.targetHostname:", domain);
-    return domain;
+    return `https://${siteInfo.targetHostname}`;
   }
 
   // Fallback: hosts array (older SDK shape)
@@ -217,19 +203,14 @@ function extractSiteDomain(siteInfo: SdkSiteInfo | undefined): string {
       (typeof h0.url === "string" && h0.url) ||
       "";
     if (candidate) {
-      const domain = candidate.startsWith("http") ? candidate : `https://${candidate}`;
-      console.log("[domain] resolved from hosts[0]:", domain);
-      return domain;
+      return candidate.startsWith("http") ? candidate : `https://${candidate}`;
     }
   }
 
   if (typeof siteInfo.url === "string" && siteInfo.url.length > 0) {
-    const domain = siteInfo.url.startsWith("http") ? siteInfo.url : `https://${siteInfo.url}`;
-    console.log("[domain] resolved from siteInfo.url:", domain);
-    return domain;
+    return siteInfo.url.startsWith("http") ? siteInfo.url : `https://${siteInfo.url}`;
   }
 
-  console.log("[domain] no domain found in siteInfo");
   return "";
 }
 
@@ -321,7 +302,6 @@ export function usePageFields(
 
     const site = currentSiteRef.current ?? "";
     const language = currentLanguageRef.current;
-    console.log(`[faq] refetchFaqItems: pageId=${pageId} site="${site}" lang=${language}`);
 
     try {
       // client.query extracts { params: u } from the second arg and passes u to the SDK fn.
@@ -339,10 +319,8 @@ export function usePageFields(
       // Response structure: pageRes.data.data = actual page object (double-wrapped by SDK + hey-api)
       const sdkData = (pageRes as { data?: { data?: { finalLayout?: string | null } } })?.data;
       const page = sdkData?.data;
-      console.log("[faq] page keys:", Object.keys(page ?? {}));
 
       const finalLayout = page?.finalLayout;
-      console.log("[faq] finalLayout:", typeof finalLayout, finalLayout ? `(${finalLayout.length} chars)` : finalLayout);
 
       if (!finalLayout) {
         console.warn("[faq] no finalLayout — aborting");
@@ -362,13 +340,6 @@ export function usePageFields(
         return;
       }
 
-      // Log every rendering id so we can confirm the accordion ID
-      const allIds = (parsedLayout.devices ?? []).flatMap(d =>
-        (d.renderings ?? []).map(r => r.id ?? "(no id)")
-      );
-      console.log("[faq] all rendering ids on page:", allIds);
-      console.log("[faq] looking for accordion id:", ACCORDION_ITEM_RENDERING_ID);
-
       // Only collect datasources belonging to AccordionItem renderings (matched by template ID).
       const datasources: string[] = [];
       for (const device of parsedLayout.devices ?? []) {
@@ -378,12 +349,9 @@ export function usePageFields(
           const ds = rendering.dataSource.startsWith("local:")
             ? `${currentPathRef.current}${rendering.dataSource.slice("local:".length)}`
             : rendering.dataSource;
-          console.log(`[faq] AccordionItem datasource: "${rendering.dataSource}" → "${ds}"`);
           datasources.push(ds);
         }
       }
-
-      console.log(`[faq] found ${datasources.length} AccordionItem rendering(s) on page`);
 
       if (datasources.length === 0) {
         faqItemsRef.current = [];
@@ -403,7 +371,6 @@ export function usePageFields(
         else if (r.status === "rejected") console.warn("[faq] datasource fetch rejected:", r.reason);
       }
 
-      console.log(`[faq] resolved ${items.length} AccordionItem FAQ item(s)`);
       faqItemsRef.current = items;
       rebuildFields();
     } catch (err) {
@@ -484,7 +451,6 @@ export function usePageFields(
       const fallbackDomain =
         process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
       const resolvedDomain = sdkDomain || fallbackDomain;
-      console.log("[domain] sdkDomain:", sdkDomain, "| envFallback:", fallbackDomain, "| resolved:", resolvedDomain);
       const cleanDomain = resolvedDomain.replace(/\/+$/, "");
       const route = typeof pageInfo?.route === "string" ? pageInfo.route : "";
       const routePath = route
@@ -518,12 +484,8 @@ export function usePageFields(
       }
     };
 
-    const onFieldsUpdated = (data: ContentFieldsUpdatedData) => {
+    const onFieldsUpdated = () => {
       // Notification only — re-fetch from authoring API to get authoritative values.
-      console.log(
-        "[usePageFields] fieldsUpdated notification → refetching authoring fields",
-        data,
-      );
       void refetchFields();
     };
 
@@ -537,10 +499,6 @@ export function usePageFields(
           setEditingToken(app?.editingSecret ?? "");
         }
         contextIdRef.current = pickContextId(app);
-        console.log(
-          "[usePageFields] sitecoreContextId resolved to:",
-          contextIdRef.current,
-        );
       } catch (err) {
         console.error("application.context query failed:", err);
       }

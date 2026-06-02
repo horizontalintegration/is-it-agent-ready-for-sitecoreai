@@ -71,7 +71,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "missing_url" }, { status: 400, headers: CORS_HEADERS });
   }
 
-  console.log(`[psi-check] scanning URL: ${url}`);
   const params = new URLSearchParams({ url, strategy: "mobile" });
   if (process.env.PSI_API_KEY) {
     params.set("key", process.env.PSI_API_KEY);

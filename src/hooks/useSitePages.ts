@@ -477,16 +477,6 @@ export function useSitePages(
         return;
       }
 
-      // ── AUTH-score diagnostics: surface the three inputs that drive Authority ──
-      console.log(`[useSitePages] AUTH inputs for "${row.pageUrl}":`, {
-        aiUniquenessRating: ai?.uniquenessRating ?? "(ai null)",
-        paragraphCount: parsedHtml.paragraphs.length,
-        lastModified: row.lastModified || "(empty)",
-        articleModifiedTimeMeta: parsedHtml.articleModifiedTimeMeta ?? "(none)",
-        lastModifiedMeta: parsedHtml.lastModifiedMeta ?? "(none)",
-        linkCount: parsedHtml.links.length,
-      });
-
       const score = runSiteScore({
         parsedHtml,
         robotsTxt: robotsRef.current,
@@ -496,10 +486,6 @@ export function useSitePages(
         isHomePage: row.route === "/" || row.route === "",
         templateName: row.templateName || null,
       });
-
-      console.log(
-        `[useSitePages] AUTH score for "${row.pageUrl}": ${score.pillars.authority}/${score.maxPillars.authority}`,
-      );
 
       const cachedAt = new Date().toISOString();
       writeCacheEntry(currentSiteIdRef.current, row.pageUrl, {
@@ -564,13 +550,6 @@ export function useSitePages(
           "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
           siteInfo.apiError,
         );
-      } else {
-        console.log(
-          "[sitePages] retrieveSite → targetHostname:",
-          siteInfo.targetHostname,
-          "homePageId:",
-          siteInfo.homePageId,
-        );
       }
 
       // Domain: SDK hostname wins; env is the fallback
@@ -625,7 +604,6 @@ export function useSitePages(
             break;
           }
         }
-        console.log("[sitePages] sitecoreContextId:", sitecoreContextId);
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
       }
@@ -649,9 +627,7 @@ export function useSitePages(
       let lookupBy: "itemId" | "path" = "itemId";
       let rootRef: string | null = siteInfo.homePageId ?? null;
 
-      if (rootRef) {
-        console.log("[sitePages] using homePageId from retrieveSite:", rootRef);
-      } else {
+      if (!rootRef) {
         // Walk the content tree as fallback
         lookupBy = "path";
         rootRef = await discoverSiteHomePath(
@@ -660,15 +636,13 @@ export function useSitePages(
           language,
           sitecoreContextId,
         );
-        if (rootRef) {
-          console.log("[sitePages] auto-discovered rootPath:", rootRef);
-        } else if (envOverride) {
+        if (!rootRef && envOverride) {
           rootRef = envOverride;
           console.warn(
             `[sitePages] auto-discovery failed for "${siteName}"; using env override:`,
             rootRef,
           );
-        } else {
+        } else if (!rootRef) {
           throw new Error(
             `Could not find Home item for site "${siteName}". Configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_SITE_ROOT_PATH explicitly.`,
           );
@@ -682,10 +656,6 @@ export function useSitePages(
           ? { rootItemId: rootRef, language }
           : { rootPath: rootRef, language };
 
-      console.log("[sitePages] GraphQL query:\n", query);
-      console.log("[sitePages] GraphQL variables:", variables);
-      console.log("[sitePages] sitecoreContextId:", sitecoreContextId);
-
       const gqlRes = await client.mutate("xmc.authoring.graphql", {
         params: {
           body: { query, variables },
@@ -696,19 +666,6 @@ export function useSitePages(
       const envelope: GqlEnvelope =
         ((gqlRes as { data?: GqlEnvelope })?.data as GqlEnvelope) ??
         (gqlRes as GqlEnvelope);
-
-      // Always log the full envelope. Errors come with a `path` array pointing
-      // to the failing field, which is the only way to tell which item in the
-      // tree triggered the failure.
-      try {
-        const fullJson = JSON.stringify(gqlRes, null, 2);
-        console.log(
-          `[sitePages] authoring.graphql full response (${fullJson.length} chars):`,
-          fullJson,
-        );
-      } catch (stringifyErr) {
-        console.log("[sitePages] authoring.graphql (non-serialisable):", gqlRes, stringifyErr);
-      }
 
       // GraphQL field-level errors (e.g. an item whose TemplateID is the
       // zero-GUID "{00000000-...}") come back ALONGSIDE a full partial `data`
@@ -768,7 +725,6 @@ export function useSitePages(
       }
 
       const pageNodes = flattenPages(root);
-      console.log(`[sitePages] flattened ${pageNodes.length} pages from tree`);
 
       // 6. Sort by updated desc, build rows with cache lookup (per-site)
       const cache = readCache(siteId);
@@ -855,9 +811,6 @@ export function useSitePages(
       currentSiteNameRef.current = newSiteName;
 
       if (changed) {
-        console.log(
-          `[sitePages] site changed → siteId=${newSiteId} name=${newSiteName}`,
-        );
         // Wipe rows from the previous site immediately to avoid showing stale
         // entries while the new site enumerates.
         setPages([]);
