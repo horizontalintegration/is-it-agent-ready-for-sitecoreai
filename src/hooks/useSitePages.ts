@@ -590,22 +590,28 @@ export function useSitePages(
       //    organizationId + tenantName for Pages-editor deep-links.
       let sitecoreContextId: string | undefined;
       try {
+        interface AppCtxShape {
+          organizationId?: string;
+          MarketplaceAppTenantId?: string;
+          resourceAccess?: Array<{
+            tenantName?: string;
+            tenantId?: string;
+            context?: { preview?: string; live?: string };
+          }>;
+          resources?: Array<{
+            tenantName?: string;
+            tenantId?: string;
+            context?: { preview?: string; live?: string };
+          }>;
+        }
         const appRes = await client.query("application.context");
-        const app = (
-          appRes as {
-            data?: {
-              organizationId?: string;
-              resourceAccess?: Array<{
-                tenantName?: string;
-                context?: { preview?: string; live?: string };
-              }>;
-              resources?: Array<{
-                tenantName?: string;
-                context?: { preview?: string; live?: string };
-              }>;
-            };
-          }
-        )?.data;
+        // The proxy sometimes double-wraps the envelope (data.data) like
+        // retrieveSite does — unwrap defensively so we don't miss org/tenant.
+        const outer = (appRes as { data?: unknown })?.data;
+        const app: AppCtxShape =
+          ((outer as { data?: AppCtxShape })?.data as AppCtxShape) ??
+          (outer as AppCtxShape) ??
+          {};
         const list = app?.resourceAccess ?? app?.resources ?? [];
         let tenantName = "";
         for (const r of list) {
@@ -617,6 +623,12 @@ export function useSitePages(
           }
         }
         const organization = app?.organizationId ?? "";
+        console.log("[sitePages] application.context →", {
+          organization,
+          tenantName,
+          resourceCount: list.length,
+          raw: app,
+        });
         if (organization || tenantName) {
           setSiteContext((prev) => ({ ...prev, organization, tenantName }));
         }

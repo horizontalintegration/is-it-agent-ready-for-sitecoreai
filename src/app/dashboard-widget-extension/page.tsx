@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { MatrixView } from "@/components/MatrixView";
+import { AllPagesView } from "@/components/AllPagesView";
 import { SiteSummary } from "@/components/SiteSummary";
 import { CategoryCards } from "@/components/CategoryCards";
 import { WorstPages } from "@/components/WorstPages";
@@ -104,6 +104,14 @@ export default function DashboardWidgetPage() {
       site: siteContext.name,
       lang: "en",
     });
+    console.log("[openPage] deep-link params →", {
+      tenantName: siteContext.tenantName,
+      organization: siteContext.organization,
+      site: siteContext.name,
+      itemId: row.id,
+      editorUrl,
+      fallbackPageUrl: row.pageUrl,
+    });
     const target = editorUrl ?? row.pageUrl;
     if (!target) return;
     try {
@@ -191,18 +199,18 @@ export default function DashboardWidgetPage() {
               </div>
               {showAllPages && (
                 <div className="border-t border-gray-200">
-                  <MatrixView
+                  <AllPagesView
                     pages={filteredSorted}
                     allPages={pages}
                     filter={filter}
                     sortBy={sortBy}
-                    isLoading={isLoading}
                     scanningCount={scanningCount}
                     onFilterChange={setFilter}
                     onSortChange={setSortBy}
                     onScanRow={handleScanRow}
                     onScanAll={handleScanAll}
                     onClearAndRefresh={handleClearAndRefresh}
+                    onOpenPage={handleOpenPage}
                   />
                 </div>
               )}
