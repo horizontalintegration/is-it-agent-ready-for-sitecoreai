@@ -9,7 +9,8 @@ export interface PageMatrixRow {
   route: string;
   /** Full public URL (domain + route), built once during enumeration */
   pageUrl: string;
-  templateId: string;
+  /** Sitecore template display name (e.g. "Article Detail Page") — gates the Article-schema check. */
+  templateName: string;
   /** ISO timestamp from xmc.pages.search.updatedAt */
   lastModified: string;
   /** Page "Title" field from Sitecore — used as the llms.txt link label when present. */

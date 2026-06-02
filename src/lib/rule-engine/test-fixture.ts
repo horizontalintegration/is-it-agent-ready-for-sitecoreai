@@ -185,7 +185,7 @@ function buildRow(input: FixtureRowInput): PageMatrixRow {
     name: input.name,
     route: input.route,
     pageUrl: `${SITE_DOMAIN}${input.route}`,
-    templateId: "article-template-id",
+    templateName: "Article Detail Page",
     lastModified: lastUpdated.toISOString(),
     metaTitle: input.name,
     metaDescription: input.description ?? null,
