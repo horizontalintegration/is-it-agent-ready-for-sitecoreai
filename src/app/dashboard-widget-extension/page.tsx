@@ -115,32 +115,37 @@ export default function DashboardWidgetPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        {error && !useFixture ? (
-          <div className="px-4 py-4">
-            <div className="mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
-              {error}
+        {/* The page-enumeration error only blocks the Page matrix tab. Robots,
+            Footer, and LLMs.txt rely on siteContext.domain (set before the
+            GraphQL call), so they stay usable even when enumeration fails. */}
+        {activeTab === "matrix" ? (
+          error && !useFixture ? (
+            <div className="px-4 py-4">
+              <div className="mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                {error}
+              </div>
+              <button
+                onClick={live.refresh}
+                className="text-xs px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+              >
+                Retry
+              </button>
             </div>
-            <button
-              onClick={live.refresh}
-              className="text-xs px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
-            >
-              Retry
-            </button>
-          </div>
-        ) : activeTab === "matrix" ? (
-          <MatrixView
-            pages={filteredSorted}
-            allPages={pages}
-            filter={filter}
-            sortBy={sortBy}
-            isLoading={isLoading}
-            scanningCount={scanningCount}
-            onFilterChange={setFilter}
-            onSortChange={setSortBy}
-            onScanRow={handleScanRow}
-            onScanAll={handleScanAll}
-            onClearAndRefresh={handleClearAndRefresh}
-          />
+          ) : (
+            <MatrixView
+              pages={filteredSorted}
+              allPages={pages}
+              filter={filter}
+              sortBy={sortBy}
+              isLoading={isLoading}
+              scanningCount={scanningCount}
+              onFilterChange={setFilter}
+              onSortChange={setSortBy}
+              onScanRow={handleScanRow}
+              onScanAll={handleScanAll}
+              onClearAndRefresh={handleClearAndRefresh}
+            />
+          )
         ) : activeTab === "llms" ? (
           <LlmsTxtGenerator
             pages={pages}
