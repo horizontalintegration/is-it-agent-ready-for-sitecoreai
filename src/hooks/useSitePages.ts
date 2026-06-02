@@ -168,7 +168,7 @@ async function retrieveSiteInfo(
 
     // Response shape: pageRes.data.data = Site | pageRes.data = Site (proxy varies)
     const site: SdkSite =
-      ((outer as { data?: SdkSite })?.data) ?? ((outer as SdkSite) ?? {});
+      (outer as { data?: SdkSite })?.data ?? (outer as SdkSite) ?? {};
     const hosts = Array.isArray(site.hosts) ? site.hosts : [];
     const primary = hosts.find((h) => h.targetHostname) ?? hosts[0];
 
@@ -220,7 +220,7 @@ function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
     name
     displayName
     path
-    template { id }
+    template { templateId }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
@@ -510,7 +510,9 @@ export function useSitePages(
     const siteId = currentSiteIdRef.current;
     const siteName = currentSiteNameRef.current;
     if (!siteId || !siteName) {
-      console.warn("[sitePages] enumerateAndScan called before site.context resolved");
+      console.warn(
+        "[sitePages] enumerateAndScan called before site.context resolved",
+      );
       return;
     }
 
@@ -747,7 +749,7 @@ export function useSitePages(
     const applySiteContext = (payload: unknown) => {
       if (cancelled) return;
       const ctx =
-        ((payload as { data?: SiteContextShape })?.data) ??
+        (payload as { data?: SiteContextShape })?.data ??
         (payload as SiteContextShape) ??
         {};
       const info = ctx.siteInfo;
