@@ -191,12 +191,12 @@ interface GqlItemNode {
   name?: string;
   displayName?: string | null;
   path?: string;
+  template?: { id?: string | null } | null;
   updated?: { value?: string | null } | null;
   renderings?: { value?: string | null } | null;
   metaTitle?: { value?: string | null } | null;
   metaDescription?: { value?: string | null } | null;
   ogDescription?: { value?: string | null } | null;
-  templateRef?: { value?: string | null } | null;
   children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
@@ -211,17 +211,16 @@ interface GqlEnvelope {
 // either the home item's itemId (preferred — from xmc.sites.retrieveSite) or
 // its content tree path (fallback — from the discoverSiteHomePath walk).
 function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
-  // Read the template GUID as a raw field value via __Template, NOT via
-  // `template { templateId }`. The latter forces Sitecore to resolve the
-  // template item itself, which fails on folders/system items that the caller
-  // can't read, breaking the whole tree query with a "template doesn't exist"
-  // error. The raw field is just a string and never throws.
+  // template { id } returns the template GUID as a 32-char hex string with no
+  // braces or hyphens (e.g., "B936184FFCA24ACCB7EDB9F4E6170B8C").
+  // normaliseTemplateId in site-score.ts strips braces/hyphens so the Article
+  // template constant ("375dcaaa-f94c-42ce-b2ab-3fb1d8871fd9") still matches.
   const itemFields = `
     itemId
     name
     displayName
     path
-    templateRef: field(name: "__Template") { value }
+    template { id }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
@@ -703,7 +702,7 @@ export function useSitePages(
             name: p.displayName || p.name || "(untitled)",
             route,
             pageUrl,
-            templateId: p.templateRef?.value ?? "",
+            templateId: p.template?.id ?? "",
             lastModified,
             metaTitle,
             metaDescription,
