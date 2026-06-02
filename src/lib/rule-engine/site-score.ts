@@ -32,11 +32,13 @@ export interface SiteScoreInput {
 
 // Articles use this template (Sitecore item template ID).
 // Only pages of this template are checked for Article/NewsArticle/BlogPosting schema.
-const ARTICLE_TEMPLATE_ID = "375dcaaa-f94c-42ce-b2ab-3fb1d8871fd9";
+// Stored normalised (lowercase, no braces, no hyphens) to match GraphQL's
+// `template { id }` shape, which returns 32 hex chars with no separators.
+const ARTICLE_TEMPLATE_ID = "375dcaaaf94c42ceb2ab3fb1d8871fd9";
 
 function normaliseTemplateId(id: string | null | undefined): string {
   if (!id) return "";
-  return id.toLowerCase().replace(/[{}]/g, "");
+  return id.toLowerCase().replace(/[{}\-]/g, "");
 }
 
 export interface SiteScorePillars {
