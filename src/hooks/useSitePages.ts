@@ -13,7 +13,10 @@ import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 // Configuration
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CACHE_KEY_PREFIX = "aiDiscovery:scores:v1:";
+// Bump the version suffix whenever the scoring logic changes shape (pillar maxes,
+// new checks, etc.) so cached SiteScoreResults from an older engine don't render
+// stale values like "3/20" after the structured max became per-page (commit 98c12cb).
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v2:";
 
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
@@ -474,6 +477,16 @@ export function useSitePages(
         return;
       }
 
+      // ── AUTH-score diagnostics: surface the three inputs that drive Authority ──
+      console.log(`[useSitePages] AUTH inputs for "${row.pageUrl}":`, {
+        aiUniquenessRating: ai?.uniquenessRating ?? "(ai null)",
+        paragraphCount: parsedHtml.paragraphs.length,
+        lastModified: row.lastModified || "(empty)",
+        articleModifiedTimeMeta: parsedHtml.articleModifiedTimeMeta ?? "(none)",
+        lastModifiedMeta: parsedHtml.lastModifiedMeta ?? "(none)",
+        linkCount: parsedHtml.links.length,
+      });
+
       const score = runSiteScore({
         parsedHtml,
         robotsTxt: robotsRef.current,
@@ -483,6 +496,10 @@ export function useSitePages(
         isHomePage: row.route === "/" || row.route === "",
         templateName: row.templateName || null,
       });
+
+      console.log(
+        `[useSitePages] AUTH score for "${row.pageUrl}": ${score.pillars.authority}/${score.maxPillars.authority}`,
+      );
 
       const cachedAt = new Date().toISOString();
       writeCacheEntry(currentSiteIdRef.current, row.pageUrl, {
