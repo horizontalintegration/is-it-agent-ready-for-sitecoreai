@@ -5,17 +5,26 @@ import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { MatrixView } from "@/components/MatrixView";
+import { SiteSummary } from "@/components/SiteSummary";
+import { CategoryCards } from "@/components/CategoryCards";
+import { WorstPages } from "@/components/WorstPages";
 import { CitationView } from "@/components/CitationView";
 import { LlmsTxtGenerator } from "@/components/LlmsTxtGenerator";
 import { RobotsTxtPanel } from "@/components/RobotsTxtPanel";
 import { FooterTrustPanel } from "@/components/FooterTrustPanel";
 import { makeTestSitePages } from "@/lib/rule-engine/test-fixture";
+import { aggregateSite, worstPages } from "@/lib/site-aggregate";
+import { buildPagesEditorUrl } from "@/lib/pages-editor-url";
 import type { MatrixFilter, MatrixSort, PageMatrixRow } from "@/types/dashboard";
+
+const WORST_LIMIT = 10;
 
 const DEMO_SITE_CONTEXT = {
   id: "demo",
   domain: "https://example.com",
   name: "Demo Site",
+  organization: "",
+  tenantName: "",
 };
 
 export default function DashboardWidgetPage() {
@@ -38,6 +47,11 @@ export default function DashboardWidgetPage() {
   const [activeTab, setActiveTab] = useState<"matrix" | "citation" | "llms" | "robots" | "footer">("matrix");
   const [filter, setFilter] = useState<MatrixFilter>("critical");
   const [sortBy, setSortBy] = useState<MatrixSort>("score-asc");
+  const [showAllPages, setShowAllPages] = useState(false);
+
+  // Site roll-up + "fix these first" list for the Overview.
+  const aggregate = useMemo(() => aggregateSite(pages), [pages]);
+  const worst = useMemo(() => worstPages(pages, WORST_LIMIT), [pages]);
 
   const filteredSorted = useMemo(() => {
     let out = pages;
@@ -80,6 +94,29 @@ export default function DashboardWidgetPage() {
     live.clearAndRefresh();
   };
 
+  // Hand off to the Pages editor for the chosen item. Falls back to the public
+  // page URL when the deep-link params aren't available (e.g. demo mode).
+  const handleOpenPage = async (row: PageMatrixRow) => {
+    const editorUrl = buildPagesEditorUrl({
+      tenantName: siteContext.tenantName,
+      organization: siteContext.organization,
+      itemId: row.id,
+      site: siteContext.name,
+      lang: "en",
+    });
+    const target = editorUrl ?? row.pageUrl;
+    if (!target) return;
+    try {
+      if (client && !useFixture) {
+        await client.navigateToExternalUrl(target, true);
+      } else {
+        window.open(target, "_blank", "noopener");
+      }
+    } catch {
+      window.open(target, "_blank", "noopener");
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white shrink-0">
@@ -94,7 +131,7 @@ export default function DashboardWidgetPage() {
             const active = activeTab === tab;
             const label =
               tab === "matrix"
-                ? "Page matrix"
+                ? "Overview"
                 : tab === "citation"
                   ? "AI Citation"
                   : tab === "llms"
@@ -122,7 +159,7 @@ export default function DashboardWidgetPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        {/* The page-enumeration error only blocks the Page matrix tab. Robots,
+        {/* The page-enumeration error only blocks the Overview tab. Robots,
             Footer, and LLMs.txt rely on siteContext.domain (set before the
             GraphQL call), so they stay usable even when enumeration fails. */}
         {activeTab === "matrix" ? (
@@ -139,19 +176,37 @@ export default function DashboardWidgetPage() {
               </button>
             </div>
           ) : (
-            <MatrixView
-              pages={filteredSorted}
-              allPages={pages}
-              filter={filter}
-              sortBy={sortBy}
-              isLoading={isLoading}
-              scanningCount={scanningCount}
-              onFilterChange={setFilter}
-              onSortChange={setSortBy}
-              onScanRow={handleScanRow}
-              onScanAll={handleScanAll}
-              onClearAndRefresh={handleClearAndRefresh}
-            />
+            <>
+              <div className="px-4 py-3 space-y-4">
+                <SiteSummary aggregate={aggregate} isLoading={isLoading} />
+                <CategoryCards categories={aggregate.categories} />
+                <WorstPages
+                  pages={worst}
+                  scannedCount={aggregate.scannedCount}
+                  totalCount={aggregate.totalCount}
+                  showingAll={showAllPages}
+                  onOpenPage={handleOpenPage}
+                  onToggleAll={() => setShowAllPages((v) => !v)}
+                />
+              </div>
+              {showAllPages && (
+                <div className="border-t border-gray-200">
+                  <MatrixView
+                    pages={filteredSorted}
+                    allPages={pages}
+                    filter={filter}
+                    sortBy={sortBy}
+                    isLoading={isLoading}
+                    scanningCount={scanningCount}
+                    onFilterChange={setFilter}
+                    onSortChange={setSortBy}
+                    onScanRow={handleScanRow}
+                    onScanAll={handleScanAll}
+                    onClearAndRefresh={handleClearAndRefresh}
+                  />
+                </div>
+              )}
+            </>
           )
         ) : activeTab === "citation" ? (
           <CitationView pages={pages} siteDomain={siteContext.domain} />
