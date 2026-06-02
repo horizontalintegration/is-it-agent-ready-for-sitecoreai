@@ -196,7 +196,7 @@ interface GqlItemNode {
   metaTitle?: { value?: string | null } | null;
   metaDescription?: { value?: string | null } | null;
   ogDescription?: { value?: string | null } | null;
-  template?: { templateId?: string | null } | null;
+  templateRef?: { value?: string | null } | null;
   children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
@@ -211,12 +211,17 @@ interface GqlEnvelope {
 // either the home item's itemId (preferred — from xmc.sites.retrieveSite) or
 // its content tree path (fallback — from the discoverSiteHomePath walk).
 function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
+  // Read the template GUID as a raw field value via __Template, NOT via
+  // `template { templateId }`. The latter forces Sitecore to resolve the
+  // template item itself, which fails on folders/system items that the caller
+  // can't read, breaking the whole tree query with a "template doesn't exist"
+  // error. The raw field is just a string and never throws.
   const itemFields = `
     itemId
     name
     displayName
     path
-    template { templateId }
+    templateRef: field(name: "__Template") { value }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
@@ -698,7 +703,7 @@ export function useSitePages(
             name: p.displayName || p.name || "(untitled)",
             route,
             pageUrl,
-            templateId: p.template?.templateId ?? "",
+            templateId: p.templateRef?.value ?? "",
             lastModified,
             metaTitle,
             metaDescription,
