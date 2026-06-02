@@ -29,7 +29,7 @@ export function ScorePill({ score, max, size = "sm" }: ScorePillProps) {
         size === "sm" ? "text-xs px-2 py-0.5 min-w-[2rem]" : "text-sm px-3 py-1 min-w-[2.5rem]"
       }`}
     >
-      {Math.round(score)}
+      {Math.round(score)}/{max}
     </span>
   );
 }

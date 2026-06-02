@@ -271,7 +271,7 @@ export function MatrixView({
                             />
                           </div>
                           <span className="text-xs text-gray-700 font-medium tabular-nums">
-                            {Math.round(score.total)}
+                            {Math.round(pct * 100)}%
                           </span>
                         </div>
                       ) : (
