@@ -21,7 +21,6 @@ const CACHE_KEY_PREFIX = "aiDiscovery:scores:v2:";
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
 }
-const INITIAL_AUTO_SCAN_COUNT = 20;
 const CONCURRENCY = 5;
 const TREE_WALK_DEPTH = 5; // descendants levels fetched per GraphQL call
 
@@ -383,7 +382,15 @@ async function withConcurrency<T>(
 
 export interface UseSitePagesResult {
   pages: PageMatrixRow[];
-  siteContext: { id: string; domain: string; name: string };
+  siteContext: {
+    id: string;
+    domain: string;
+    name: string;
+    /** Org id (org_…) from application.context — for Pages editor deep-links. */
+    organization: string;
+    /** Tenant name from application.context resourceAccess — for Pages editor deep-links. */
+    tenantName: string;
+  };
   isLoading: boolean;
   error: string | null;
   /** Number of pages currently in `scanning` state (for header progress). */
@@ -407,6 +414,8 @@ export function useSitePages(
     id: "",
     domain: "",
     name: "",
+    organization: "",
+    tenantName: "",
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -566,7 +575,7 @@ export function useSitePages(
         : "";
       const domain = sdkDomain || envDomainNormalized;
 
-      setSiteContext({ id: siteId, domain, name: siteName });
+      setSiteContext((prev) => ({ ...prev, id: siteId, domain, name: siteName }));
 
       if (!domain) {
         setError(
@@ -577,32 +586,39 @@ export function useSitePages(
         return;
       }
 
-      // 2. application.context → sitecoreContextId for the GraphQL call
+      // 2. application.context → sitecoreContextId for the GraphQL call, plus
+      //    organizationId + tenantName for Pages-editor deep-links.
       let sitecoreContextId: string | undefined;
       try {
         const appRes = await client.query("application.context");
         const app = (
           appRes as {
             data?: {
+              organizationId?: string;
               resourceAccess?: Array<{
+                tenantName?: string;
                 context?: { preview?: string; live?: string };
               }>;
               resources?: Array<{
+                tenantName?: string;
                 context?: { preview?: string; live?: string };
               }>;
             };
           }
         )?.data;
         const list = app?.resourceAccess ?? app?.resources ?? [];
+        let tenantName = "";
         for (const r of list) {
-          if (r?.context?.preview) {
+          if (!tenantName && r?.tenantName) tenantName = r.tenantName;
+          if (!sitecoreContextId && r?.context?.preview) {
             sitecoreContextId = r.context.preview;
-            break;
-          }
-          if (r?.context?.live) {
+          } else if (!sitecoreContextId && r?.context?.live) {
             sitecoreContextId = r.context.live;
-            break;
           }
+        }
+        const organization = app?.organizationId ?? "";
+        if (organization || tenantName) {
+          setSiteContext((prev) => ({ ...prev, organization, tenantName }));
         }
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
@@ -765,10 +781,10 @@ export function useSitePages(
       pagesRef.current = rows;
       setIsLoading(false);
 
-      // 7. Auto-scan the first N un-scanned rows
-      const toScan = rows
-        .filter((r) => r.scanStatus === "idle")
-        .slice(0, INITIAL_AUTO_SCAN_COUNT);
+      // 7. Background scan-all: score every un-scanned row at CONCURRENCY.
+      // Scores stream into `pages` as each completes, so the Overview hero,
+      // category cards, and worst-pages list fill in live with a progress bar.
+      const toScan = rows.filter((r) => r.scanStatus === "idle");
       await withConcurrency(toScan, CONCURRENCY, async (row) => {
         await scanOne(row);
       });
@@ -801,7 +817,7 @@ export function useSitePages(
       if (!newSiteId) {
         setError("Could not load site context.");
         setPages([]);
-        setSiteContext({ id: "", domain: "", name: "" });
+        setSiteContext({ id: "", domain: "", name: "", organization: "", tenantName: "" });
         setIsLoading(false);
         return;
       }
