@@ -200,9 +200,16 @@ interface GqlItemNode {
   children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
+interface GqlError {
+  message?: string;
+  path?: Array<string | number>;
+  locations?: Array<{ line?: number; column?: number }>;
+  extensions?: Record<string, unknown>;
+}
+
 interface GqlEnvelope {
   data?: { item?: GqlItemNode | null };
-  errors?: Array<{ message?: string }>;
+  errors?: GqlError[];
 }
 
 // Build a query with N nested children levels. GraphQL doesn't allow recursion,
@@ -647,6 +654,11 @@ export function useSitePages(
         lookupBy === "itemId"
           ? { rootItemId: rootRef, language }
           : { rootPath: rootRef, language };
+
+      console.log("[sitePages] GraphQL query:\n", query);
+      console.log("[sitePages] GraphQL variables:", variables);
+      console.log("[sitePages] sitecoreContextId:", sitecoreContextId);
+
       const gqlRes = await client.mutate("xmc.authoring.graphql", {
         params: {
           body: { query, variables },
@@ -654,20 +666,79 @@ export function useSitePages(
         },
       } as Parameters<ClientSDK["mutate"]>[1]);
 
-      try {
-        console.log(
-          "[sitePages] authoring.graphql JSON:",
-          JSON.stringify(gqlRes, null, 2).slice(0, 2000),
-        );
-      } catch {
-        console.log("[sitePages] authoring.graphql (proxy):", gqlRes);
-      }
-
       const envelope: GqlEnvelope =
         ((gqlRes as { data?: GqlEnvelope })?.data as GqlEnvelope) ??
         (gqlRes as GqlEnvelope);
 
+      // Always log the full envelope. Errors come with a `path` array pointing
+      // to the failing field, which is the only way to tell which item in the
+      // tree triggered the failure.
+      try {
+        const fullJson = JSON.stringify(gqlRes, null, 2);
+        console.log(
+          `[sitePages] authoring.graphql full response (${fullJson.length} chars):`,
+          fullJson,
+        );
+      } catch (stringifyErr) {
+        console.log("[sitePages] authoring.graphql (non-serialisable):", gqlRes, stringifyErr);
+      }
+
       if (envelope?.errors?.length) {
+        console.error(
+          `[sitePages] GraphQL returned ${envelope.errors.length} error(s):`,
+        );
+        envelope.errors.forEach((e, i) => {
+          console.error(`  error[${i}] message:`, e.message);
+          console.error(`  error[${i}] path:`, e.path);
+          console.error(`  error[${i}] locations:`, e.locations);
+          console.error(`  error[${i}] extensions:`, e.extensions);
+        });
+
+        // Try to walk the partial `data` (Sitecore returns partial data along
+        // with errors) and identify the item at the error path. That's the
+        // item whose template is unresolvable.
+        const partialItem = envelope?.data?.item;
+        if (partialItem) {
+          console.log(
+            "[sitePages] partial data.item (depth-1 children only):",
+            {
+              itemId: partialItem.itemId,
+              name: partialItem.name,
+              path: partialItem.path,
+              template: partialItem.template,
+              childrenCount: partialItem.children?.nodes?.length ?? 0,
+            },
+          );
+          // For each error path, navigate the partial tree to find the
+          // offending item and log its identity. Path looks like:
+          // ["item","children","nodes",3,"children","nodes",1,"template"]
+          envelope.errors.forEach((e, errIdx) => {
+            if (!e.path) return;
+            let cursor: unknown = envelope.data;
+            const trail: Array<{ key: string | number; itemId?: string; name?: string; path?: string }> = [];
+            for (const segment of e.path) {
+              if (cursor && typeof cursor === "object") {
+                cursor = (cursor as Record<string | number, unknown>)[segment];
+                if (cursor && typeof cursor === "object" && "itemId" in cursor) {
+                  const item = cursor as GqlItemNode;
+                  trail.push({
+                    key: segment,
+                    itemId: item.itemId,
+                    name: item.name,
+                    path: item.path,
+                  });
+                }
+              } else {
+                break;
+              }
+            }
+            console.error(
+              `[sitePages] error[${errIdx}] item trail (items touched along error path):`,
+              trail,
+            );
+          });
+        }
+
         const detail = envelope.errors
           .map((e) => e.message)
           .filter(Boolean)
