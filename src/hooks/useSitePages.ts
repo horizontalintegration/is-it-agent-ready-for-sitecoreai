@@ -194,6 +194,7 @@ interface GqlItemNode {
   template?: { name?: string | null } | null;
   updated?: { value?: string | null } | null;
   renderings?: { value?: string | null } | null;
+  finalRenderings?: { value?: string | null } | null;
   metaTitle?: { value?: string | null } | null;
   metaDescription?: { value?: string | null } | null;
   ogDescription?: { value?: string | null } | null;
@@ -231,6 +232,7 @@ function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
     template { name }
     updated: field(name: "__Updated") { value }
     renderings: field(name: "__Renderings") { value }
+    finalRenderings: field(name: "__Final Renderings") { value }
     metaTitle: field(name: "${FIELD_TITLE}") { value }
     metaDescription: field(name: "${FIELD_META_DESCRIPTION}") { value }
     ogDescription: field(name: "${FIELD_OG_DESCRIPTION}") { value }
@@ -256,8 +258,13 @@ function flattenPages(root: GqlItemNode | null | undefined): GqlItemNode[] {
   if (!root) return [];
   const out: GqlItemNode[] = [];
   function walk(node: GqlItemNode) {
+    // A node is a real page when it has presentation in EITHER the shared
+    // layout (__Renderings) or the final/versioned layout (__Final Renderings).
+    // Some items only populate one of the two, so check both.
     const hasLayout =
-      !!node.renderings?.value && node.renderings.value.trim().length > 0;
+      (!!node.renderings?.value && node.renderings.value.trim().length > 0) ||
+      (!!node.finalRenderings?.value &&
+        node.finalRenderings.value.trim().length > 0);
     if (hasLayout) out.push(node);
     const kids = node.children?.nodes ?? [];
     for (const k of kids) walk(k);
@@ -683,73 +690,60 @@ export function useSitePages(
         console.log("[sitePages] authoring.graphql (non-serialisable):", gqlRes, stringifyErr);
       }
 
+      // GraphQL field-level errors (e.g. an item whose TemplateID is the
+      // zero-GUID "{00000000-...}") come back ALONGSIDE a full partial `data`
+      // tree — the offending node simply has `template: null`. These are NOT
+      // fatal: the bad item is typically a non-page item (data/settings folder
+      // or an item with no version in this language) that flattenPages filters
+      // out anyway, and a null template name correctly fails the Article check.
+      // Only a missing `data.item` (bad root, auth failure) is fatal.
+      const root = envelope?.data?.item ?? null;
+
       if (envelope?.errors?.length) {
-        console.error(
-          `[sitePages] GraphQL returned ${envelope.errors.length} error(s):`,
+        console.warn(
+          `[sitePages] GraphQL returned ${envelope.errors.length} non-fatal error(s) (proceeding with partial data):`,
         );
         envelope.errors.forEach((e, i) => {
-          console.error(`  error[${i}] message:`, e.message);
-          console.error(`  error[${i}] path:`, e.path);
-          console.error(`  error[${i}] locations:`, e.locations);
-          console.error(`  error[${i}] extensions:`, e.extensions);
-        });
+          console.warn(`  error[${i}] message:`, e.message);
+          console.warn(`  error[${i}] path:`, e.path);
 
-        // Try to walk the partial `data` (Sitecore returns partial data along
-        // with errors) and identify the item at the error path. That's the
-        // item whose template is unresolvable.
-        const partialItem = envelope?.data?.item;
-        if (partialItem) {
-          console.log(
-            "[sitePages] partial data.item (depth-1 children only):",
-            {
-              itemId: partialItem.itemId,
-              name: partialItem.name,
-              path: partialItem.path,
-              template: partialItem.template,
-              childrenCount: partialItem.children?.nodes?.length ?? 0,
-            },
-          );
-          // For each error path, navigate the partial tree to find the
-          // offending item and log its identity. Path looks like:
-          // ["item","children","nodes",3,"children","nodes",1,"template"]
-          envelope.errors.forEach((e, errIdx) => {
-            if (!e.path) return;
+          // Navigate the partial tree to identify the offending item. Path
+          // looks like ["item","children","nodes",3,"children","nodes",1,"template"]
+          if (e.path) {
             let cursor: unknown = envelope.data;
-            const trail: Array<{ key: string | number; itemId?: string; name?: string; path?: string }> = [];
+            let offending: { itemId?: string; name?: string; path?: string } | null =
+              null;
             for (const segment of e.path) {
               if (cursor && typeof cursor === "object") {
                 cursor = (cursor as Record<string | number, unknown>)[segment];
                 if (cursor && typeof cursor === "object" && "itemId" in cursor) {
                   const item = cursor as GqlItemNode;
-                  trail.push({
-                    key: segment,
+                  offending = {
                     itemId: item.itemId,
                     name: item.name,
                     path: item.path,
-                  });
+                  };
                 }
               } else {
                 break;
               }
             }
-            console.error(
-              `[sitePages] error[${errIdx}] item trail (items touched along error path):`,
-              trail,
-            );
-          });
-        }
-
-        const detail = envelope.errors
-          .map((e) => e.message)
-          .filter(Boolean)
-          .join("; ");
-        throw new Error(`GraphQL errors: ${detail || "unknown"}`);
+            if (offending) {
+              console.warn(`  error[${i}] offending item:`, offending);
+            }
+          }
+        });
       }
 
-      const root = envelope?.data?.item ?? null;
       if (!root) {
+        const detail = envelope?.errors
+          ?.map((e) => e.message)
+          .filter(Boolean)
+          .join("; ");
         throw new Error(
-          `No item found at ${lookupBy}=${rootRef}. Verify the site's Home item exists.`,
+          detail
+            ? `GraphQL errors with no usable data: ${detail}`
+            : `No item found at ${lookupBy}=${rootRef}. Verify the site's Home item exists.`,
         );
       }
 
