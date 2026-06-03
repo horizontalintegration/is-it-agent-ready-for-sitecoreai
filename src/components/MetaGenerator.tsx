@@ -10,15 +10,15 @@ interface FieldConfig {
   key: MetaField;
   label: string;
   maxChars: number;
-  /** Key into PageWriteContext.fieldIds (metaTitle is stored under pageTitle). */
-  idKey: keyof PageWriteContext["fieldIds"];
+  /** Key into PageWriteContext.fieldNames (metaTitle is stored under pageTitle). */
+  nameKey: keyof PageWriteContext["fieldNames"];
 }
 
 const FIELDS: FieldConfig[] = [
-  { key: "metaTitle", label: "Meta title", maxChars: 60, idKey: "pageTitle" },
-  { key: "metaDescription", label: "Meta description", maxChars: 155, idKey: "metaDescription" },
-  { key: "ogTitle", label: "OG title", maxChars: 70, idKey: "ogTitle" },
-  { key: "ogDescription", label: "OG description", maxChars: 200, idKey: "ogDescription" },
+  { key: "metaTitle", label: "Meta title", maxChars: 60, nameKey: "pageTitle" },
+  { key: "metaDescription", label: "Meta description", maxChars: 155, nameKey: "metaDescription" },
+  { key: "ogTitle", label: "OG title", maxChars: 70, nameKey: "ogTitle" },
+  { key: "ogDescription", label: "OG description", maxChars: 200, nameKey: "ogDescription" },
 ];
 
 interface MetaGeneratorProps {
@@ -46,7 +46,7 @@ interface FieldRowProps {
   field: MetaField;
   label: string;
   maxChars: number;
-  idKey: keyof PageWriteContext["fieldIds"];
+  nameKey: keyof PageWriteContext["fieldNames"];
   client: ClientSDK | null;
   writeContext: MetaGeneratorProps["writeContext"];
   currentValue: string;
@@ -58,7 +58,7 @@ function FieldRow({
   field,
   label,
   maxChars,
-  idKey,
+  nameKey,
   client,
   writeContext,
   currentValue,
@@ -72,8 +72,8 @@ function FieldRow({
   const [populated, setPopulated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fieldId = writeContext.fieldIds[idKey];
-  const canPopulate = Boolean(client && writeContext.pageId && fieldId);
+  const fieldName = writeContext.fieldNames[nameKey];
+  const canPopulate = Boolean(client && writeContext.pageId && fieldName);
 
   async function generate() {
     setIsGenerating(true);
@@ -100,7 +100,7 @@ function FieldRow({
   }
 
   async function populate() {
-    if (!client || !writeContext.pageId || !fieldId || !suggestion) return;
+    if (!client || !writeContext.pageId || !fieldName || !suggestion) return;
     setIsPopulating(true);
     setError(null);
     try {
@@ -109,7 +109,7 @@ function FieldRow({
           path: { pageId: writeContext.pageId },
           body: {
             language: writeContext.language,
-            fields: [{ id: fieldId, value: suggestion }],
+            fields: [{ name: fieldName, value: suggestion }],
           },
           ...(writeContext.sitecoreContextId
             ? { query: { sitecoreContextId: writeContext.sitecoreContextId } }
@@ -231,7 +231,7 @@ export function MetaGenerator({
             field={f.key}
             label={f.label}
             maxChars={f.maxChars}
-            idKey={f.idKey}
+            nameKey={f.nameKey}
             client={client}
             writeContext={writeContext}
             currentValue={current[f.key] ?? ""}

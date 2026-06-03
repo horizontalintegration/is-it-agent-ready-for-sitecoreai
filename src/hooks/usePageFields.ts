@@ -7,15 +7,15 @@ import { stripHtml } from "@/lib/rule-engine/helpers";
 
 /**
  * Everything the "Populate field" action needs to write a value back via
- * `xmc.pages.updateFields`. `fieldIds` maps each meta/social field to its
- * Sitecore field id (GUID) on the current page item — null when the page's
- * template doesn't define that field.
+ * `xmc.pages.updateFields`. `fieldNames` maps each meta/social field to its
+ * Sitecore field name on the current page item — null when the page's template
+ * doesn't define that field. (updateFields matches fields by name, not GUID.)
  */
 export interface PageWriteContext {
   pageId: string | null;
   language: string;
   sitecoreContextId: string | undefined;
-  fieldIds: {
+  fieldNames: {
     pageTitle: string | null;
     metaDescription: string | null;
     ogTitle: string | null;
@@ -82,7 +82,6 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
       name
       fields(ownFields: false) {
         nodes {
-          id
           name
           value
         }
@@ -92,7 +91,6 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
 `;
 
 interface AuthoringItemFieldNode {
-  id?: string;
   name?: string;
   value?: string;
 }
@@ -108,10 +106,10 @@ interface AuthoringEnvelope {
 }
 
 interface FieldFetchResult {
-  /** Field name → value */
+  /** Lower-cased field name → value */
   values: Record<string, string>;
-  /** Field name → field id (GUID), needed for write-back via updateFields */
-  ids: Record<string, string>;
+  /** Lower-cased field name → original field name, used for write-back via updateFields (which matches by name). */
+  names: Record<string, string>;
 }
 
 async function fetchItemFieldsAuthoring(
@@ -151,13 +149,19 @@ async function fetchItemFieldsAuthoring(
       return null;
     }
 
+    // Key by lower-cased field name so lookups are case-insensitive — Sitecore
+    // field-name casing varies by template (the FAQ fetcher below does the same).
+    // `names` records the field's original name (and its existence on the page)
+    // for write-back, since updateFields matches fields by name.
     const values: Record<string, string> = {};
-    const ids: Record<string, string> = {};
+    const names: Record<string, string> = {};
     for (const n of nodes) {
-      if (n?.name && typeof n.value === "string") values[n.name] = n.value;
-      if (n?.name && typeof n.id === "string") ids[n.name] = n.id;
+      if (!n?.name) continue;
+      const key = n.name.toLowerCase();
+      names[key] = n.name;
+      if (typeof n.value === "string") values[key] = n.value;
     }
-    return { values, ids };
+    return { values, names };
   } catch (err) {
     console.error("[usePageFields] authoring.graphql threw:", err);
     return null;
@@ -261,7 +265,7 @@ function mapFieldsToAuthoring(
   faqItems: FaqItem[] = [],
 ): Partial<AuthoringFields> {
   const get = (name: string): string | null => {
-    const v = fieldMap[name];
+    const v = fieldMap[name.toLowerCase()];
     return typeof v === "string" && v.length > 0 ? v : null;
   };
 
@@ -269,10 +273,10 @@ function mapFieldsToAuthoring(
   const noIndexField = robotsMetaTag.includes("noindex");
 
   return {
-    pageTitle: get("pageTitle") ?? pageName ?? null,
-    metaDescription: get("MetaDescription"),
-    ogTitle: get("OpenGraphTitle"),
-    ogDescription: get("OpenGraphDescription"),
+    pageTitle: get(META_FIELD_NAMES.pageTitle) ?? pageName ?? null,
+    metaDescription: get(META_FIELD_NAMES.metaDescription),
+    ogTitle: get(META_FIELD_NAMES.ogTitle),
+    ogDescription: get(META_FIELD_NAMES.ogDescription),
     ogImage: get("OpenGraphImage"),
     author: null,
     publishDate: null,
@@ -294,21 +298,25 @@ function mapFieldsToAuthoring(
 const ACCORDION_ITEM_RENDERING_ID = "286d51ef-1a33-4920-9009-569a66a27629";
 
 // Sitecore field names for the four meta/social fields the generator targets.
+// Overridable per-tenant via env (mirrors useSitePages.ts), since field names
+// vary between SXA and custom templates.
 const META_FIELD_NAMES = {
-  pageTitle: "pageTitle",
-  metaDescription: "MetaDescription",
-  ogTitle: "OpenGraphTitle",
-  ogDescription: "OpenGraphDescription",
+  pageTitle: process.env.NEXT_PUBLIC_FIELD_TITLE ?? "pageTitle",
+  metaDescription: process.env.NEXT_PUBLIC_FIELD_META_DESCRIPTION ?? "MetaDescription",
+  ogTitle: process.env.NEXT_PUBLIC_FIELD_OG_TITLE ?? "OpenGraphTitle",
+  ogDescription: process.env.NEXT_PUBLIC_FIELD_OG_DESCRIPTION ?? "OpenGraphDescription",
 } as const;
 
-function buildFieldIds(
-  idMap: Record<string, string>,
-): PageWriteContext["fieldIds"] {
+function buildFieldNames(
+  nameMap: Record<string, string>,
+): PageWriteContext["fieldNames"] {
+  // nameMap is keyed by lower-cased field name → original name (see fetchItemFieldsAuthoring).
+  // A null entry means the field isn't present on the page's template.
   return {
-    pageTitle: idMap[META_FIELD_NAMES.pageTitle] ?? null,
-    metaDescription: idMap[META_FIELD_NAMES.metaDescription] ?? null,
-    ogTitle: idMap[META_FIELD_NAMES.ogTitle] ?? null,
-    ogDescription: idMap[META_FIELD_NAMES.ogDescription] ?? null,
+    pageTitle: nameMap[META_FIELD_NAMES.pageTitle.toLowerCase()] ?? null,
+    metaDescription: nameMap[META_FIELD_NAMES.metaDescription.toLowerCase()] ?? null,
+    ogTitle: nameMap[META_FIELD_NAMES.ogTitle.toLowerCase()] ?? null,
+    ogDescription: nameMap[META_FIELD_NAMES.ogDescription.toLowerCase()] ?? null,
   };
 }
 
@@ -329,7 +337,7 @@ export function usePageFields(
     pageId: null,
     language: "en",
     sitecoreContextId: undefined,
-    fieldIds: {
+    fieldNames: {
       pageTitle: null,
       metaDescription: null,
       ogTitle: null,
@@ -339,7 +347,7 @@ export function usePageFields(
 
   // Refs hold the latest values across async closures.
   const fieldMapRef = useRef<Record<string, string>>({});
-  const fieldIdMapRef = useRef<Record<string, string>>({});
+  const fieldNameMapRef = useRef<Record<string, string>>({});
   const currentPathRef = useRef<string | undefined>(undefined);
   const currentPageIdRef = useRef<string | undefined>(undefined);
   const currentLanguageRef = useRef<string>("en");
@@ -357,7 +365,7 @@ export function usePageFields(
       pageId: currentPageIdRef.current ?? null,
       language: currentLanguageRef.current,
       sitecoreContextId: contextIdRef.current,
-      fieldIds: buildFieldIds(fieldIdMapRef.current),
+      fieldNames: buildFieldNames(fieldNameMapRef.current),
     });
   }, []);
 
@@ -470,7 +478,7 @@ export function usePageFields(
       const result = await p;
       if (result) {
         fieldMapRef.current = result.values;
-        fieldIdMapRef.current = result.ids;
+        fieldNameMapRef.current = result.names;
         rebuildFields();
       }
     } finally {
@@ -542,7 +550,7 @@ export function usePageFields(
       if (pageChanged) {
         // Discard fields and FAQ items from the previous page and refetch
         fieldMapRef.current = {};
-        fieldIdMapRef.current = {};
+        fieldNameMapRef.current = {};
         faqItemsRef.current = [];
         rebuildFields();
         void refetchFields();
