@@ -5,12 +5,31 @@ import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import type { AuthoringFields, FaqItem } from "@/lib/rule-engine/types";
 import { stripHtml } from "@/lib/rule-engine/helpers";
 
+/**
+ * Everything the "Populate field" action needs to write a value back via
+ * `xmc.pages.updateFields`. `fieldIds` maps each meta/social field to its
+ * Sitecore field id (GUID) on the current page item — null when the page's
+ * template doesn't define that field.
+ */
+export interface PageWriteContext {
+  pageId: string | null;
+  language: string;
+  sitecoreContextId: string | undefined;
+  fieldIds: {
+    pageTitle: string | null;
+    metaDescription: string | null;
+    ogTitle: string | null;
+    ogDescription: string | null;
+  };
+}
+
 interface UsePageFieldsResult {
   fields: Partial<AuthoringFields> | null;
   pageUrl: string;
   siteDomain: string;
   editingToken: string;
   isLoading: boolean;
+  writeContext: PageWriteContext;
 }
 
 type SdkPageInfo = {
@@ -63,6 +82,7 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
       name
       fields(ownFields: false) {
         nodes {
+          id
           name
           value
         }
@@ -72,6 +92,7 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
 `;
 
 interface AuthoringItemFieldNode {
+  id?: string;
   name?: string;
   value?: string;
 }
@@ -86,12 +107,19 @@ interface AuthoringEnvelope {
   errors?: Array<{ message?: string }>;
 }
 
+interface FieldFetchResult {
+  /** Field name → value */
+  values: Record<string, string>;
+  /** Field name → field id (GUID), needed for write-back via updateFields */
+  ids: Record<string, string>;
+}
+
 async function fetchItemFieldsAuthoring(
   client: ClientSDK,
   itemRef: string,
   language: string,
   sitecoreContextId: string | undefined,
-): Promise<Record<string, string> | null> {
+): Promise<FieldFetchResult | null> {
   try {
     const result = await client.mutate("xmc.authoring.graphql", {
       params: {
@@ -123,11 +151,13 @@ async function fetchItemFieldsAuthoring(
       return null;
     }
 
-    const out: Record<string, string> = {};
+    const values: Record<string, string> = {};
+    const ids: Record<string, string> = {};
     for (const n of nodes) {
-      if (n?.name && typeof n.value === "string") out[n.name] = n.value;
+      if (n?.name && typeof n.value === "string") values[n.name] = n.value;
+      if (n?.name && typeof n.id === "string") ids[n.name] = n.id;
     }
-    return out;
+    return { values, ids };
   } catch (err) {
     console.error("[usePageFields] authoring.graphql threw:", err);
     return null;
@@ -263,6 +293,25 @@ function mapFieldsToAuthoring(
 // Rendering template ID that identifies AccordionItem components in the layout.
 const ACCORDION_ITEM_RENDERING_ID = "286d51ef-1a33-4920-9009-569a66a27629";
 
+// Sitecore field names for the four meta/social fields the generator targets.
+const META_FIELD_NAMES = {
+  pageTitle: "pageTitle",
+  metaDescription: "MetaDescription",
+  ogTitle: "OpenGraphTitle",
+  ogDescription: "OpenGraphDescription",
+} as const;
+
+function buildFieldIds(
+  idMap: Record<string, string>,
+): PageWriteContext["fieldIds"] {
+  return {
+    pageTitle: idMap[META_FIELD_NAMES.pageTitle] ?? null,
+    metaDescription: idMap[META_FIELD_NAMES.metaDescription] ?? null,
+    ogTitle: idMap[META_FIELD_NAMES.ogTitle] ?? null,
+    ogDescription: idMap[META_FIELD_NAMES.ogDescription] ?? null,
+  };
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Hook
 // ────────────────────────────────────────────────────────────────────────────
@@ -276,9 +325,21 @@ export function usePageFields(
   const [siteDomain, setSiteDomain] = useState<string>("");
   const [editingToken, setEditingToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [writeContext, setWriteContext] = useState<PageWriteContext>({
+    pageId: null,
+    language: "en",
+    sitecoreContextId: undefined,
+    fieldIds: {
+      pageTitle: null,
+      metaDescription: null,
+      ogTitle: null,
+      ogDescription: null,
+    },
+  });
 
   // Refs hold the latest values across async closures.
   const fieldMapRef = useRef<Record<string, string>>({});
+  const fieldIdMapRef = useRef<Record<string, string>>({});
   const currentPathRef = useRef<string | undefined>(undefined);
   const currentPageIdRef = useRef<string | undefined>(undefined);
   const currentLanguageRef = useRef<string>("en");
@@ -292,6 +353,12 @@ export function usePageFields(
     setFields(
       mapFieldsToAuthoring(fieldMapRef.current, currentPageNameRef.current, faqItemsRef.current),
     );
+    setWriteContext({
+      pageId: currentPageIdRef.current ?? null,
+      language: currentLanguageRef.current,
+      sitecoreContextId: contextIdRef.current,
+      fieldIds: buildFieldIds(fieldIdMapRef.current),
+    });
   }, []);
 
   // Fetch AccordionItem datasource fields and rebuild FAQ items for the current page.
@@ -402,7 +469,8 @@ export function usePageFields(
     try {
       const result = await p;
       if (result) {
-        fieldMapRef.current = result;
+        fieldMapRef.current = result.values;
+        fieldIdMapRef.current = result.ids;
         rebuildFields();
       }
     } finally {
@@ -474,6 +542,7 @@ export function usePageFields(
       if (pageChanged) {
         // Discard fields and FAQ items from the previous page and refetch
         fieldMapRef.current = {};
+        fieldIdMapRef.current = {};
         faqItemsRef.current = [];
         rebuildFields();
         void refetchFields();
@@ -551,7 +620,7 @@ export function usePageFields(
   }, [client, isInitialized, refetchFields, refetchFaqItems, rebuildFields]);
 
   return useMemo(
-    () => ({ fields, pageUrl, siteDomain, editingToken, isLoading }),
-    [fields, pageUrl, siteDomain, editingToken, isLoading],
+    () => ({ fields, pageUrl, siteDomain, editingToken, isLoading, writeContext }),
+    [fields, pageUrl, siteDomain, editingToken, isLoading, writeContext],
   );
 }

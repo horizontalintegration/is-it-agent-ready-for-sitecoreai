@@ -12,6 +12,7 @@ import { ScoreRing } from "@/components/ScoreRing";
 import { GateBanner } from "@/components/GateBanner";
 import { PillarSection } from "@/components/PillarSection";
 import { ScanBar } from "@/components/ScanBar";
+import { MetaGenerator } from "@/components/MetaGenerator";
 
 function SkeletonRows() {
   return (
@@ -25,7 +26,7 @@ function SkeletonRows() {
 
 export default function PagesContextPanel() {
   const { client, isInitialized } = useMarketplaceClient();
-  const { fields, pageUrl, siteDomain, editingToken, isLoading } =
+  const { fields, pageUrl, siteDomain, editingToken, isLoading, writeContext } =
     usePageFields(client, isInitialized);
 
   // Fixture data is opt-in via `?demo=1` in the URL — never auto-activated
@@ -163,6 +164,18 @@ export default function PagesContextPanel() {
               isPsiScanning={scan.isPsiScanning}
               onAiScan={scan.runAiScan}
               onPsiScan={scan.runPsiScan}
+            />
+            <MetaGenerator
+              client={client}
+              writeContext={writeContext}
+              current={{
+                metaTitle: effectiveAuthoring?.pageTitle ?? "",
+                metaDescription: effectiveAuthoring?.metaDescription ?? "",
+                ogTitle: effectiveAuthoring?.ogTitle ?? "",
+                ogDescription: effectiveAuthoring?.ogDescription ?? "",
+              }}
+              pageTitle={pageTitle}
+              bodyText={bodyText}
             />
           </>
         )}
