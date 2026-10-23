@@ -1,0 +1,542 @@
+# "Is It Agent-Ready?" — v2 Implementation Plan
+
+> **How to use this file:** start a new Claude Code session in this repo and say:
+> *"Read `docs/IS-IT-AGENT-READY-PLAN.md`. We are starting Phase 0. Follow the working agreement in section 1."*
+> Work one phase at a time. Each phase has its own branch, PR, and acceptance criteria.
+
+---
+
+## 1. Working agreement (for the implementing session)
+
+1. **One phase per branch:** `feature/v2-phase-<n>-<slug>`, PR into `main`, matching the repo's existing PR flow. Don't start the next phase until the user approves the PR.
+2. **Read before changing.** Every phase lists the key files, but confirm current behaviour in the code first. This plan was written on 2026-10-23 against commit `28963dc`.
+3. **Keep demo mode working.** Every new check or screen needs fixture data in `src/lib/rule-engine/test-fixture.ts` so `?demo=1` shows it. The Symposium demo depends on this.
+4. **Keep the docs current.** Update `docs/*-EXPLAINED.md` (for marketers) and `docs/*-TECHNICAL.md` (for engineers) in the same PR, then rebuild them with `node docs/build-docs.js`.
+5. **Prefer the SDK.** Use Marketplace SDK calls (`client.query` / `client.mutate`, `xmc.*`) over custom workarounds. This is a standing user preference.
+6. **Spikes come first.** Questions marked **[SPIKE]** must be answered with real output and written to `docs/SPIKE-FINDINGS.md` before any code that depends on them.
+7. **No Scrunch.** The user doesn't have a Scrunch subscription. Don't add Scrunch dependencies. A connector may be added later (section 11).
+8. **The design reference is the Symposium mockups:** https://claude.ai/artifact/W14BiRPGnEoUwitMkPeB7D
+   - It's a private claude.ai artifact. Read it with the Artifact tool (`action: "read"`); each screen is a `project/*.dc.html` file.
+   - Screens: Cover, Current → v2 mapping, Page Builder (Score / Agent View / AI Assist), Dashboard (Overview / Pages / Agent access / AI citations / Files).
+   - When this plan and the mockups disagree on layout or copy, follow the mockups. When they disagree on behaviour or scoring, follow this plan.
+
+---
+
+## 2. Background (why v2)
+
+| Change in the market | What it means for this app |
+|---|---|
+| Sitecore bought **Scrunch** (June 2026). SitecoreAI now has "AI discoverability powered by Scrunch": Signals, AEO opportunities in Page Builder, AXP agent-readable pages, and Knowledge Studio. | That covers brand-level monitoring and content rewrites, but only for customers with a separate Scrunch subscription. It doesn't check whether agents can technically reach and parse the site, and it doesn't write technical fixes into Sitecore. **Our position: technical agent-readiness plus fixes inside the editor, for every SitecoreAI customer, with no extra licence.** |
+| Agent-readiness scanners are now public: **isitagentready.com** (Cloudflare) and **is-agentic.com**. | Agent-readiness is now its own category. We adopt their strongest checks and their scoring style: Essential / Recommended / Bonus, with N/A checks excluded. |
+| **Markdown for agents** has become a convention: send `Accept: text/markdown` and get Markdown back (accept.md, Cloudflare Markdown for Agents). | New "Agent View" tab plus checks in the style of the accept.md audit. |
+| **`getPageHTML()`** was added to the Marketplace SDK client on 2026-09-17. It returns the rendered canvas HTML of the page open in Page Builder, without the editor's markup. | Content checks can run on the **draft** without a network fetch. It also fixes the bug where Claude receives an empty page body. |
+| Claude API: `claude-sonnet-4-6` → current models, structured outputs, server-side web search (`web_search_20260209`). | Better, cheaper AI calls, and **measured** citation probes instead of guessed stars. |
+
+Reference URLs:
+- https://doc.sitecore.com/sai/en/users/sitecoreai/ai-discoverability-powered-by-scrunch.html
+- https://is-agentic.com/methodology
+- https://isitagentready.com
+- https://www.accept.md/markdown-audit
+- https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/get-the-page-html.html
+- https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/
+- https://blog.cloudflare.com/content-signals/
+
+---
+
+## 3. Current state (as of `28963dc`)
+
+Sitecore Marketplace app (Next.js 15, React 19, Tailwind 4, `node-html-parser`) with two extension points:
+
+- **Pages Context Panel** (`src/app/pages-contextpanel-extension/page.tsx`): 15 checks, 81 points, 3 groups (Technical SEO, Structured Data, Content Quality), a noindex gate, and an AI meta/OG generator that writes 4 fields through `xmc.pages.updateFields`.
+- **Dashboard Widget** (`src/app/dashboard-widget-extension/page.tsx`): a separate 5-pillar model (Crawlability / Structured / Answerability / Authority / Retrievability), worst pages, a page matrix, and the AI Citation, LLMs.txt, Robots.txt and Footer trust tabs.
+
+Key files: `src/lib/rule-engine/{engine,types,helpers,site-score}.ts`, `src/lib/site-aggregate.ts`, `src/hooks/{usePageFields,useScan,useSitePages}.ts`, `src/app/api/*/route.ts`, `src/lib/server/extract-html.ts`, `src/components/*`.
+
+### Known defects to fix (Phase 1)
+
+| # | Defect | Where |
+|---|---|---|
+| D1 | The panel sends `richTextFull` (always `""`) as `bodyText`, so the uniqueness check and the meta generator only see the title | `pages-contextpanel-extension/page.tsx`, `mapFieldsToAuthoring` |
+| D2 | `aeo-organization-schema`, `aeo-structured-data` and `aeo-faq-schema` always pass. They output a snippet but never check the page | `src/lib/rule-engine/engine.ts` |
+| D3 | The Organization JSON-LD and the brand document are hardcoded to "BrandX" | `helpers.ts` `buildOrganizationJsonLd`, `src/lib/brand/brand-document.ts` |
+| D4 | Two scoring models with different thresholds (ScoreRing green ≥ 80%, site "good" > 70%) | `ScoreRing.tsx`, `site-aggregate.ts` |
+| D5 | Comments disagree with the code (Authority "25" vs `MAX_PILLARS` 28; Structured "0–20" vs a reachable max of 17) | `site-score.ts` |
+| D6 | `/api/rescan-page` is unused | `src/app/api/rescan-page` |
+| D7 | Starter branding left over: `package.json` name `xmcloud-extension-starter`, the starter README, title "Sitecore Marketplace Extensions" | root, `src/app/layout.tsx` |
+| D8 | The dashboard calls Claude for every page on every scan, with no cache keyed on content | `useSitePages.ts`, `api/ai-check` |
+| D9 | **SSRF risk:** server routes fetch caller-supplied URLs (`preview-fetch?url=`, robots, footer, citation) without checking the host | `src/app/api/*` |
+| D10 | The AI uniqueness check re-runs on every page change in the panel | `useScan.ts` |
+
+---
+
+## 4. Name and branding
+
+- **App name:** **Is It Agent-Ready?**
+- **Marketplace listing:** "Is It Agent-Ready? for SitecoreAI". The suffix is required to tell us apart from Cloudflare's "Is It Agent Ready?" (isitagentready.com). Never shorten the name in a way that drops the hyphen and the "for SitecoreAI".
+- **Panel headline:** "Is this page agent-ready?" **Dashboard headline:** "Is this site agent-ready?"
+- **Verdicts:** **Agent-ready** (≥ 80) · **Almost there** (60–79) · **Not ready** (< 60). Use the same thresholds everywhere (fixes D4).
+- **Tagline:** "Make every page reachable, readable and citable by AI agents, then fix it right in Sitecore."
+- **Rename touch points:**
+  - `package.json` (`"name": "is-it-agent-ready"`)
+  - `src/app/layout.tsx` metadata
+  - README (rewrite it; drop the starter text)
+  - Panel and dashboard headers
+  - `docs/*`
+  - The app registration in the Sitecore Cloud Portal (manual step for the user)
+- **Keep these unchanged:** the localStorage key prefixes, so existing caches survive. If a key must change, bump its version.
+
+---
+
+## 5. Target scoring model (replaces both current models)
+
+### 5.1 Structure
+
+- **Four categories**, phrased as plain-language questions and used in both the panel and the dashboard:
+
+  | Category | Question shown to authors | Covers |
+  |---|---|---|
+  | **Reach** | Can AI agents get to it? | Bot access, robots, canonical, indexability, sitemap, status codes |
+  | **Read** | Can they read it? | Markdown negotiation, content without JS, landmarks, speed |
+  | **Understand** | Do they understand it? | Headings, title and meta, JSON-LD, FAQ, readability |
+  | **Trust** | Will they trust and cite it? | Uniqueness, author, freshness, depth, trust pages |
+
+- **Three tiers**, after is-agentic:
+  - **Essential:** 80-point pool.
+  - **Recommended:** 20-point pool.
+  - **Bonus:** up to +5. The total is capped at 100.
+  - Each pool is split equally across the checks that apply. A partial pass earns partial credit (0–1). **N/A checks are excluded, never failed.**
+- **Gate:** keep the existing noindex / nosnippet gate. A blocked page shows the gate instead of a score.
+- **Two scopes:**
+  - **Site checks:** computed once per site, shown on the dashboard, and summarised in the panel as "Site issues affecting this page".
+  - **Page checks:** computed per page in the panel and in dashboard scans.
+- **Site type setting** (dashboard, stored per site): Content site (default) / Commerce / App or API. It decides which Bonus protocol checks apply.
+
+### 5.2 Check registry
+
+Create `src/lib/checks/registry.ts`. Each check is a typed object:
+
+```ts
+interface CheckDef {
+  id: string;                      // e.g. "reach.ai-bot-access"
+  title: string;                   // outcome phrasing, e.g. "AI agents can open your site"
+  why: string;                     // one sentence on why it matters to AI
+  category: "reach" | "read" | "understand" | "trust";
+  tier: "essential" | "recommended" | "bonus";
+  scope: "site" | "page";
+  source: "draft" | "live" | "fields" | "ai" | "psi" | "probe";  // shown as a chip in the UI
+  owner: "author" | "developer";   // who can fix it; drives the "You can fix" / "Developer" badge
+  applies(ctx): boolean;           // N/A logic
+  run(ctx): Promise<CheckResult>;  // returns credit 0..1, status, evidence, fix
+  fix?: FixAction;                 // generate | apply-field | copy-snippet | send-to-developer
+}
+```
+
+- **Data sources:**
+  - `draft` = `getPageHTML()` (Phase 4)
+  - `live` = HTTP fetch of the published URL
+  - `fields` = authoring GraphQL
+  - `ai` = Claude
+  - `psi` = PageSpeed Insights
+  - `probe` = citation probe
+- **Site checks** (dashboard; S = site):
+
+| ID | Title (author-facing) | Tier | Cat. | Source | Notes |
+|---|---|---|---|---|---|
+| S1 `reach.ai-bot-access` | AI agents can open your site | Essential | Reach | live | Fetch the home page and 2 sample pages using the user agents of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, Amazonbot and meta-externalagent. Compare status and body size with a browser user agent. Catches WAF/CDN blocks that robots.txt doesn't show. |
+| S2 `reach.robots-ai-rules` | robots.txt lets AI search in | Essential | Reach | live | Group bots by purpose: **search / user-fetch / training**. Blocking search or user-fetch bots = fail. Blocking only training bots = pass with an "info" note (a legitimate choice). Replaces the 6-bot check. |
+| S3 `read.markdown-site` | Your site can serve Markdown to agents | Essential | Read | live | The accept.md checks (see P5), run on the home page |
+| S4 `reach.sitemap` | Sitemap is published and linked | Recommended | Reach | live | `/sitemap.xml` (or the robots `Sitemap:` line) returns 200, is valid XML and has `lastmod` |
+| S5 `read.llms-txt` | llms.txt is published | Recommended | Read | live | `/llms.txt` returns 200, follows the llmstxt.org format, and has a "when to use this site" section. Link to the existing generator. |
+| S6 `trust.trust-pages` | About, contact and privacy pages exist | Recommended | Trust | live | Upgrades the footer-trust check: each linked page returns 200, and privacy has ≥ 500 characters |
+| S7 `understand.org-schema` | Your organisation is described for AI | Recommended | Understand | live | Home page Organization JSON-LD with name, url, logo, sameAs, contactPoint and PostalAddress. Replaces the hardcoded BrandX snippet. |
+| S8 `reach.not-found` | Missing pages return a real 404 | Recommended | Reach | live | A random path must return 404, not a soft 404 |
+| S9 `reach.content-signals` | Content-use signals are declared | Bonus | Reach | live | `Content-Signal:` directive in robots.txt |
+| S10 `read.link-headers` | Discovery links in HTTP headers | Bonus | Read | live | RFC 8288 `Link` headers on the home page (e.g. to llms.txt or the sitemap) |
+| S11 `read.agent-protocols` | Agent protocols published | Bonus | Read | live | MCP server card, WebMCP, A2A agent card, agent skills, API catalog, OAuth discovery. **Applies only to the App/API site type.** |
+| S12 `read.commerce-protocols` | Agentic checkout protocols | Bonus | Read | live | ACP, UCP, x402, MPP. **Applies only to the Commerce site type.** |
+
+- **Page checks** (panel and dashboard; P = page):
+
+| ID | Title | Tier | Cat. | Source | Notes / origin |
+|---|---|---|---|---|---|
+| P1 `reach.indexable` | Page is indexable and snippet-eligible | Gate | Reach | fields + live | Existing gate |
+| P2 `reach.canonical` | Canonical points to this page | Essential | Reach | live | Existing `seo-canonical` |
+| P3 `read.no-js-content` | Content is visible without JavaScript | Essential | Read | draft vs live | Compare the main text of `getPageHTML()` with the raw server HTML. Flag components that only render in the browser. **[SPIKE: does `getPageHTML` include content rendered by client-side scripts?]** |
+| P4 `read.landmarks` | Page structure is machine-readable | Recommended | Read | draft | Existing `cq-agentic-readiness` (landmarks plus unlabelled controls) |
+| P5 `read.markdown-page` | Agents can get this page as Markdown | Essential | Read | live | accept.md checks: (a) 200 + `text/markdown` + a Markdown body; (b) HTML fallback for `text/html`; (c) `Vary: Accept`; (d) Markdown differs from the HTML, with the size saving. Details in Phase 7. |
+| P6 `read.markdown-quality` | The Markdown version is complete | Recommended | Read | live + fields | Front matter title and description match the Sitecore fields; ≥ 90% coverage of headings, paragraphs and FAQ answers; layout chrome (nav/footer) < 25% of tokens. **N/A if P5 fails.** |
+| P7 `read.speed` | Page loads fast | Recommended | Read | psi | Existing `cq-page-experience`, still on demand |
+| P8 `understand.headings` | One clear H1 and logical headings | Essential | Understand | draft | Existing `seo-headings` |
+| P9 `understand.title-meta` | Title and description are set | Essential | Understand | fields + live | Merges `seo-meta-title` and `seo-meta-description` |
+| P10 `understand.json-ld` | Structured data is present and valid | Essential | Understand | live (+ draft) | **Fixes D2.** Parse the real `application/ld+json`. Expect BreadcrumbList on inner pages, FAQPage when there are Q&A pairs, and Article/BlogPosting on article templates. Check that it parses and that required properties exist. Keep the snippet generator as the fix. |
+| P11 `understand.metadata` | Page identity metadata is complete | Recommended | Understand | live | `html lang`, `og:type`, `og:image`, `og:title`/`og:description` (extends `seo-og-tags`) |
+| P12 `understand.faq-quality` | FAQ answers are quotable | Recommended | Understand | draft | Existing check, but find Q&A in **any** component (not only the AccordionItem rendering ID) |
+| P13 `understand.question-headings` | Sections answer real questions | Recommended | Understand | draft | Re-enable `aeo-question-headings` (currently disabled) |
+| P14 `understand.readability` | Easy to read and quote | Recommended | Understand | draft | Reading grade plus paragraph length (merges the panel and matrix versions) |
+| P15 `understand.image-alt` | Images are described | Recommended | Understand | draft | Existing `seo-image-alt` |
+| P16 `trust.uniqueness` | Content is original, not generic | Recommended | Trust | ai (draft body) | Existing check, now receiving the full body (fixes D1) |
+| P17 `trust.author` | Author is named and linked | Recommended | Trust | draft + fields | Re-enable `cq-author`. **Applies only to article templates.** |
+| P18 `trust.freshness` | Content is recently updated | Recommended | Trust | live + fields | Re-enable `cq-freshness` |
+| P19 `trust.depth` | Enough depth to be cited | Recommended | Trust | draft | Word count (from the matrix) |
+| P20 `trust.anchor-text` | Links say where they go | Recommended | Trust | draft | Existing `seo-anchor-text`, now scored |
+| P21 `trust.follow-up-gaps` | Answers the next question too | Bonus | Trust | ai | Re-enable `cq-followup-gaps` |
+
+- **Weights:** set by the pool formula in 5.1, not by hand. If a demo needs tuning, add an optional `weight` multiplier to `CheckDef`, defaulting to 1.
+
+### 5.3 Current → v2 mapping (nothing is removed)
+
+**Page Builder panel checks**
+
+| Current check (code ID) | v2 check |
+|---|---|
+| Noindex gate | P1 `reach.indexable` |
+| `seo-canonical` | P2 `reach.canonical` |
+| `seo-meta-title` + `seo-meta-description` | P9 `understand.title-meta` (merged) |
+| `seo-headings` | P8 `understand.headings` |
+| `seo-image-alt` | P15 `understand.image-alt`, plus an AI alt-text fix |
+| `seo-og-tags` | P11 `understand.metadata` (adds `html lang`, `og:type`) |
+| `seo-anchor-text` (info only) | P20 `trust.anchor-text` (now scored) |
+| `aeo-organization-schema` | S7 `understand.org-schema` (becomes a site check) |
+| `aeo-structured-data` + `aeo-faq-schema` | P10 `understand.json-ld` (real detection; merged) |
+| `aeo-faq-answer-quality` | P12 `understand.faq-quality` (any component) |
+| `cq-uniqueness` | P16 `trust.uniqueness` (full body) |
+| `cq-page-experience` | P7 `read.speed` |
+| `cq-agentic-readiness` | P4 `read.landmarks` |
+| `cq-reading-grade` | P14 `understand.readability` (plus paragraph length from the matrix) |
+| Disabled: `cq-author`, `cq-freshness`, `aeo-question-headings`, `cq-followup-gaps` | P17, P18, P13, P21 (switched back on) |
+| Disabled: `aeo-howto-schema` | **Stays off.** Revisit only if HowTo content templates exist. |
+| `MetaGenerator` | AI Assist tab (Phase 9) |
+
+**Dashboard**
+
+| Current feature | v2 |
+|---|---|
+| 5 pillars | Replaced by the 4 categories |
+| Site summary and category cards | Overview tab |
+| Worst 10 pages and all-pages matrix | Pages tab (heatmap) |
+| Robots.txt tab | Agent access tab (S1/S2) and Files tab (robots.txt helper) |
+| Footer trust tab | S6 `trust.trust-pages` in Agent access |
+| LLMs.txt tab | Files tab (generator) and S5 `read.llms-txt` |
+| AI Citation tab | AI citations tab (section 8) |
+| Matrix-only signals (word count, freshness, question H2s, paragraph length) | P19, P18, P13, P14 |
+
+---
+
+## 6. UI / UX redesign
+
+### 6.1 Problems with the current UI
+
+1. **Two vocabularies.**
+   - Panel: "Page health" with Technical SEO / Structured Data / Content Quality.
+   - Dashboard: "Site content health" / "AI Search Readiness" with Crawlability / Structured / Answerability / Authority / Retrievability, abbreviated in the matrix as CRAWL / STRUCT / ANSWER / AUTH / RETRIEV.
+2. **Points jargon.** "5 / 8", "35 pts" and different maximums per page mean nothing to a marketer.
+3. **Diagnosis without direction.**
+   - Results come back as a long flat list in rule order, with no "fix this first".
+   - Fixes are blue "→" text or raw JSON-LD code blocks.
+4. **Hard to scan.**
+   - Status dots are 4 px (`w-1 h-1`), and colour is the only status signal (an accessibility problem).
+   - Tiny 10–11 px grey text.
+5. **Tabs named after files.** "LLMs.txt", "Robots.txt" and "Footer trust" are implementation details, not outcomes.
+6. **It doesn't say who should act.** A marketer can't tell which fixes are theirs and which need a developer.
+7. **It looks generic.** Plain Tailwind greys that don't match the SitecoreAI shell, and no visual identity.
+8. **Hidden actions.** PSI and AI checks need a small "Run scan" chip, and the AI meta generator sits at the bottom of a long scroll.
+
+### 6.2 Design principles
+
+1. **Answer first.** One verdict, one score and one sentence at the top: "Almost there: 2 quick fixes would make this page agent-ready."
+2. **Act, don't just diagnose.** A **"Top fixes"** list ranked by points gained. Every fix has a verb button: *Generate*, *Apply*, *Copy snippet*, *Send to developer*.
+3. **One language everywhere.**
+   - Use the four categories **Reach · Read · Understand · Trust**, written as questions.
+   - Name checks by their outcome ("AI agents can open your site"), not the mechanism ("robots.txt").
+   - Put jargon such as AEO, GEO and JSON-LD in an info tooltip.
+4. **Say who fixes it.** Every check shows a **You can fix** badge (author) or a **Developer** badge.
+5. **Show, don't tell.** The Agent View shows what an AI actually receives.
+6. **Status never by colour alone.** Every status has an icon, a colour and a word:
+   - ✓ Pass
+   - ! Improve
+   - ✕ Fix
+   - — N/A
+7. **Show the data source.**
+   - A small chip on every check: **Draft** (from `getPageHTML`), **Live** (published site) or **AI**.
+   - A banner when the draft differs from the live page.
+8. **Show progress.** A score change since the last scan ("▲ 6"), an animated ring, and a positive empty state when everything passes.
+9. **Look native.** Use Sitecore's **Blok** design system if it's practical **[SPIKE: package or registry, and how it fits Tailwind 4]**. Otherwise build Tailwind tokens that copy SitecoreAI's typography, radius and colours.
+   - Panel minimum width: 320 px.
+   - Body text ≥ 13 px.
+   - Support both light and dark themes if the host passes a theme.
+
+### 6.3 Page Builder panel: target layout
+
+Header:
+- App mark, then "Is It Agent-Ready?"
+- Draft/Live chip
+- Re-scan icon
+
+Tabs: **Score · Agent View · AI Assist**
+
+**Score tab**
+1. **Verdict card:**
+   - Score ring (0–100) and verdict.
+   - "▲ 6 since last scan".
+   - A one-sentence summary.
+2. **Category bars:** Reach / Read / Understand / Trust. Each is a mini progress bar with a score; tapping it filters the list.
+3. **Top fixes (3):**
+   - Each row shows the title, "+N pts", a You can fix or Developer badge, and the primary action button.
+4. **Site issues strip.** Shown only when site checks fail, e.g. "2 site issues affect every page: ChatGPT-User is blocked by your firewall · View in dashboard".
+5. **All checks:**
+   - Grouped by category, with a filter: Needs work / All.
+   - Each row: status icon, outcome title, source chip, credit.
+   - Expanding a row shows why it matters, the evidence and the fix.
+   - Code snippets sit behind a "Show code" toggle.
+
+**Agent View tab** (Phase 7)
+- A status row with the 4 accept.md checks.
+- A token savings bar (HTML tokens vs Markdown tokens).
+- A Human / Agent toggle: the rendered Markdown, or the local conversion preview labelled "Preview: your site doesn't serve this yet".
+- Markdown quality checks.
+- How-to-fix cards.
+
+**AI Assist tab** (Phase 9)
+- The existing meta & social generator, plus alt text, FAQ answers, question headings and a summary paragraph.
+- Every suggestion shows before → after, with an **Apply to field** button (staged as a draft, respecting workflow) or **Copy**.
+
+### 6.4 Dashboard: target layout
+
+Header:
+- App name and site name
+- Site type selector
+- "Last scan 2 h ago"
+- **Scan site** button
+
+Tabs: **Overview · Pages · Agent access · AI citations · Files**
+
+**Overview**
+- **Hero:** site score ring, verdict, a trend sparkline of the last 8 scans, and page counts (Agent-ready / Almost there / Not ready).
+- **Four category cards:** question, score, pages failing, and "What's included".
+- **Fix first (grouped by issue, not by page).** For example:
+  - "14 pages: meta description missing → **Generate for all**"
+  - "ChatGPT-User blocked by firewall → **Developer**"
+- **What changed since last scan.** Replaces Scrunch Signals. Lists score drops, newly blocked bots, and pages that got worse after publishing.
+
+**Pages**
+- A heatmap matrix with full category names (no abbreviations), search, filter chips, and sorting.
+- Each row has "Open in Page Builder".
+
+**Agent access**
+- Site checks S1–S12 as a checklist.
+- The S1 bot × status grid, grouped Search / User / Training, each with ✓ / ✕ and the HTTP status.
+
+**AI citations** (Phase 8): see section 8.
+
+**Files**
+- **llms.txt generator** (existing), with:
+  - a "Published? ✓/✕" status
+  - the score filter
+  - a new editable "When should AI tools use this site?" text, which becomes a `## When to use this site` section
+  - Copy, Download and Send to developer buttons
+- **robots.txt helper:**
+  - Checkboxes for search bots, user-fetch bots, training bots and the Content-Signal line.
+  - The generated text updates live, using Allow/Disallow per group, the `Content-Signal: search=…, ai-input=…, ai-train=…` line, and the Sitemap line.
+  - A note that robots.txt is a request and the firewall decides real access, linking to Agent access.
+
+### 6.5 Visual identity
+
+- **Accent colour.** One brand accent for the app mark and primary buttons: a deep indigo/violet that reads as "AI" and sits well next to SitecoreAI's UI.
+- **Status colours** stay semantic (green / amber / red / grey) and always come with an icon.
+- **Category colours:** a fixed palette for Reach / Read / Understand / Trust, used consistently in bars, chips and the heatmap legend.
+- **Type and spacing:**
+  - Panel: one size scale (12 / 13 / 15 / 20 / 28).
+  - Card radius 8–10 px, 1 px borders, soft shadows only on the hero.
+- **Icons:** one icon set (e.g. `lucide-react` at a pinned version) instead of inline one-off SVGs.
+
+---
+
+## 7. Data sources: draft vs live
+
+- **Draft = `client.getPageHTML()`.** Works only in Page Builder extension points. It is a snapshot, so call it again (debounced 1–2 s) on `pages.content.fieldsUpdated` and on page change.
+- **Live = the existing `/api/preview-fetch`** for anything that needs HTTP headers or status codes, the `<head>`, robots, the sitemap or Markdown negotiation.
+- **Fallback:** if `getPageHTML()` rejects (unsupported host), use `preview-fetch` with the editing secret, as today, and mark checks "Live".
+- **The dashboard** can't use `getPageHTML`. It stays live-only.
+
+**[SPIKE — answer all of these before Phase 4]:**
+1. Exact return type after the SDK upgrade: `string` (Sitecore docs) or `{ html }` (blog example)?
+2. Is `<head>` included (title, canonical, meta, JSON-LD)?
+3. Are unsaved edits included, or only saved ones?
+4. Is content rendered by client-side scripts included?
+5. Do placeholders, empty datasources or leftover editor attributes (`data-*`) appear?
+6. Which extension points support it (the context panel, for certain)?
+
+---
+
+## 8. AI citations without Scrunch (replaces the current forecast)
+
+**What exists today.** `api/citation-forecast` asks Claude to *guess* 1–5 stars for ChatGPT, Perplexity, Copilot and Gemini from the page, the home page and robots.txt. Nothing is measured, and one model is pretending to be four engines.
+
+**v2 has two layers, clearly labelled.**
+
+### Layer 1 — Readiness estimate (instant, free, deterministic)
+
+- Derived from the category scores plus each engine's bot access (from S1/S2). For example, if PerplexityBot or Perplexity-User is blocked, Perplexity shows **"Can't cite: blocked"**.
+- Shown per engine as **Ready / Limited / Blocked**, with the reasons. There is no LLM call, so it's explainable and repeatable.
+
+### Layer 2 — Citation probes (measured, on demand)
+
+1. Claude generates 5–10 realistic **non-branded** questions the page should answer (structured output; the user can edit them).
+2. Each question goes to Claude with the server-side **web search tool** (`web_search_20260209`, `max_uses` ≈ 3, optional `user_location`).
+3. Measured in code from the response, not by asking the model:
+   - **Found:** the site's domain or page URL appears in the `web_search_tool_result` results.
+   - **Cited:** it appears in the citation locations attached to the answer text.
+   - **Cited instead:** the other domains cited, used as a competitor list.
+4. Show the totals, e.g. **"Cited in 2 of 8 questions · Found in 5 of 8"**, plus a table of questions → our status → who was cited instead.
+5. **Optional extra engines.** When their API keys are configured, run the same questions through engines that return sources:
+   - Perplexity Sonar API
+   - Gemini API with Google Search grounding
+   - OpenAI Responses API web search
+
+   Each engine gets its own label. Hide any engine whose key is missing. The default is Claude only.
+6. **Cost and controls:**
+   - Probes run only on demand, never in bulk dashboard scans.
+   - Cache results for 7 days per page and question set, and rate-limit per site.
+   - Show the date of each run.
+   - **[SPIKE] Confirm current web search pricing per 1,000 searches.**
+7. **Honesty caveat in the UI:** "AI answers vary by time, location and engine. This is a sample, not a ranking."
+8. **History:** store each probe run so the trend shows. Use localStorage first; Phase 8 asks the user about server storage.
+
+### Other things that assumed Scrunch, re-analysed
+
+| Was | Now |
+|---|---|
+| Scrunch Signals | **"What changed since last scan"**: compare score snapshots per page and per site. Needs history storage. Today localStorage holds history per browser; **decide in Phase 8** whether to add shared server storage (e.g. Vercel KV / Upstash Redis or Postgres). |
+| Scrunch AEO opportunities | **AI Assist suggestions** (Phase 9): question headings, quotable FAQ answers, a summary paragraph, meta, and alt text. Generated from the draft HTML, applied through `updateFields` where a field exists, and copy-only otherwise. |
+| Scrunch AXP (agent-readable pages) | The **Agent View** fix guidance: `npx accept-md init` in the Next.js head app, Cloudflare Markdown for Agents, or custom Next.js middleware. |
+| Scrunch Knowledge Studio | Dropped (DAM-specific, out of scope). |
+| "Complements Scrunch" positioning | **"Works for every SitecoreAI customer, with no extra licence."** A Scrunch connector stays an optional future item (section 11). |
+
+---
+
+## 9. Claude API modernisation
+
+- **Switch from raw `fetch`** to the official `@anthropic-ai/sdk` (TypeScript) in `api/ai-check`, `api/citation-forecast` (to become `api/citation-probe`) and `api/generate-meta`. Put shared client setup in `src/lib/server/anthropic.ts`.
+- **Model:** default `claude-opus-5-5`, configurable through `ANTHROPIC_MODEL`.
+  - The app used Sonnet before. If the user wants lower cost for high-volume dashboard scans, `claude-sonnet-5-5` is the current Sonnet. **Ask the user; don't downgrade silently.**
+- **Opus 5.5 specifics:**
+  - Thinking can't be disabled. Control depth with `output_config.effort`: use `low` for classification, ratings and meta copy, and `medium` for question generation. The default is `medium`, so always set it explicitly.
+  - Forced `tool_choice` returns a 400. Use `auto`.
+  - Use **structured outputs** (`output_config: { format: … }`) for every JSON response instead of "respond with JSON only" prompts.
+  - Enable server-side **refusal fallbacks**: beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`. Check `stop_reason` before reading content.
+- **Web search tool:**
+  - `{ type: "web_search_20260209", name: "web_search", max_uses: 3 }`.
+  - Search errors come back as HTTP 200 with an error object in `web_search_tool_result.content`; check the shape before indexing into it.
+  - Don't declare `code_execution` alongside it.
+- **Prompt caching:** use stable system prompts with `cache_control: { type: "ephemeral" }`, and put per-page content after the cached prefix. Verify with `usage.cache_read_input_tokens`.
+- **Cache AI results by content hash** (SHA-256 of the normalised body text plus the check ID). Re-run only when the content changes (fixes D8 and D10).
+- **Read the claude-api skill** (`/claude-api`) before writing this code.
+
+---
+
+## 10. Phases
+
+### Phase 0 — Setup and spikes (no user-visible change)
+- Upgrade `@sitecore-marketplace-sdk/client` and `@sitecore-marketplace-sdk/xmc` to their latest versions. Fix any breaking changes.
+- Add `vitest` for unit tests of the pure rule-engine functions.
+- **Spike: `getPageHTML`** (section 7 questions). Add a temporary debug button in the panel that logs the output for 3 pages: a simple page, an article, and a page with an FAQ.
+- **Spike: Blok** design system feasibility with Tailwind 4 and React 19.
+- **Spike: web search pricing** and a single test probe.
+- Write `docs/SPIKE-FINDINGS.md`.
+- **Accept when:** findings are documented, the app builds and runs on the new SDK, and `npm run lint` and `vitest` pass.
+
+### Phase 1 — Rename, clean-up, correctness and security
+- Rename (section 4) and rewrite the README (what it is, setup, env vars, extension points, demo mode).
+- Fix D1: body text comes from `getPageHTML` if the spike confirms it, otherwise from the main text parsed out of `preview-fetch`.
+- Fix D3: Organization data comes from config or site settings. Replace the BrandX brand document with a configurable brand-voice file and env vars. Keep BrandX as demo fixture data only.
+- Fix D5 and D6.
+- Fix D9: create `src/lib/server/safe-fetch.ts`. It allows only `http(s)`, blocks private, loopback and link-local IPs after DNS resolution, limits redirects, times out, and caps response size. Use it in every server route.
+- **Accept when:** the AI uniqueness check sees the full body (shown in a debug log), no starter branding remains, and SSRF unit tests pass.
+
+### Phase 2 — Claude API modernisation (section 9)
+- **Accept when:** all AI routes use the SDK with structured outputs, the model comes from env, caching hits show on repeat calls, and fixtures are unchanged.
+
+### Phase 3 — Unified scoring engine (section 5)
+- Build the check registry, the tier/pool scoring, the gate, N/A handling and site type.
+- Move every existing check to its new ID. Delete `site-score.ts` and the old pillar types once nothing imports them.
+- Make D2 real JSON-LD detection (P10).
+- The engine is UI-agnostic. Keep the old UI temporarily through an adapter.
+- **Accept when:** vitest covers the scoring maths (pools, partial credit, N/A, bonus cap, gate), and the panel and dashboard show the **same** score for the same page.
+
+### Phase 4 — Draft and live data sources (section 7)
+- Create a `usePageHtml` hook (getPageHTML with debounced refresh on `fieldsUpdated`, plus fallback).
+- Show a source chip on each result.
+- Show a "Draft differs from live" banner when the main-text hashes differ.
+- Add P3 (content without JS) if the spike allows it.
+- **Accept when:** an unpublished page scores from its draft, and editing a heading updates the score without a manual re-scan.
+
+### Phase 5 — UI redesign shell (section 6)
+- Design tokens and the icon set, then new shared components: `VerdictCard`, `CategoryBars`, `TopFixes`, `CheckRow` (with source chip and owner badge), `StatusIcon`, `Tabs`, `EmptyState`.
+- Rebuild the panel (Score tab) and the dashboard (Overview, Pages, Agent access, Files) on the new engine.
+- Agent View, AI Assist and AI citations can be placeholder tabs until their phases.
+- **Accept when:**
+  - The UI matches the approved Symposium mockups (section 1, item 8).
+  - No points jargon is visible except "+N pts" on fixes.
+  - All statuses have icon + text.
+  - Keyboard navigation works.
+  - The panel works at 320 px.
+
+### Phase 6 — Site agent-access checks (S1–S12)
+- Create `api/agent-access` (bot user-agent matrix, robots parsing with bot groups, sitemap, llms.txt, trust pages, 404, Content-Signal, Link headers, protocol well-knowns).
+- Build the Agent access tab and the panel's site-issues strip.
+- Extend the robots.txt helper to generate the AI rules and Content-Signal lines.
+- **Accept when:** a demo fixture shows a blocked user agent (403 for ChatGPT-User), and a real site scan finishes in under 20 s.
+
+### Phase 7 — Agent View tab (Markdown)
+- Create `api/markdown-check`. Fetch the URL twice (`Accept: text/markdown`, then `Accept: text/html`). Return the status, `Content-Type`, `Vary`, sizes, an estimated token count (Markdown chars / 4, or the Claude token counter if cheap) and the first 50 KB of each body.
+- Local conversion preview with `node-html-markdown` (pinned), from the draft HTML when available.
+- Score P5 and P6. Roll P5 up into S3 and into the dashboard's "% of pages serving Markdown".
+- Fix cards: `npx accept-md init` (verify it coexists with the Sitecore Content SDK middleware for redirects, personalisation and multisite **[SPIKE]**), Cloudflare Markdown for Agents, and a custom middleware snippet.
+- **Accept when:** a supported site shows 4/4 green, and an unsupported site shows the local preview with the estimated saving.
+
+### Phase 8 — AI citations v2 and "What changed"
+- Layer 1 estimate, Layer 2 probes (`api/citation-probe`), the question editor, the results table and the history.
+- Snapshot storage. **Ask the user:** localStorage only, or shared server storage (pick a provider).
+- Build the "What changed" card on the Overview.
+- **Accept when:** probes report Found and Cited counts computed from tool results (not model self-report), re-running within 7 days uses the cache, and the caveat is visible.
+
+### Phase 9 — AI Assist and write-back fixes
+- Extend `MetaGenerator` into an AI Assist tab:
+  - alt text, written to the media item's Alt field through authoring GraphQL (**[SPIKE]** on the mutation shape)
+  - FAQ answer rewrites, question headings, a summary paragraph, and JSON-LD
+  - an **author byline picker** listing people from the site's Authors folder (no AI; **[SPIKE]** on where author items and the byline field live in the customer's templates)
+- JSON-LD writes to a configurable field when the template has one. Otherwise it's copy-only.
+- All writes go into the current version and workflow (no auto-publish). Show before → after with a confirm step.
+- Dashboard **bulk "Generate for all"** for missing meta descriptions, with a review step for each item before writing.
+- **Accept when:** every write needs explicit confirmation and respects the field mapping, a missing field disables Apply with a reason, and there's an audit log (a console line plus a toast).
+
+### Phase 10 — Docs, demo and Symposium package
+- Rewrite the four docs for the new model.
+- Create `docs/SYMPOSIUM-DEMO-SCRIPT.md`: a 5-minute flow covering panel verdict → Top fixes → Apply → Agent View → dashboard → citations.
+- Refresh the demo fixtures so they tell that story.
+- **Accept when:** a full demo runs with `?demo=1` and no network.
+
+### Phase 11 — (Stretch) Public scanner
+- A route `/scan/[domain]` outside the Marketplace iframe that runs the site checks (S1–S12) plus the home page checks, with a shareable report URL and a badge.
+- **Needs:** SSRF-safe fetch (from Phase 1), rate limiting, and caching.
+- Doubles as lead generation for the agency.
+
+---
+
+## 11. Out of scope / future
+
+- **Scrunch connector:** if a customer has Scrunch, read its citation and Signal data and show it in place of the probe estimate. The interface should stay pluggable (`CitationProvider`).
+- **DNS-AID, Web Bot Auth:** informational only. Revisit if adoption grows.
+- **Personalisation variants and non-web channels.**
+
+---
+
+## 12. Open decisions for the user
+
+| # | Decision | Default if not answered |
+|---|---|---|
+| 1 | Claude model for bulk dashboard scans: `claude-opus-5-5` or `claude-sonnet-5-5` | `claude-opus-5-5` |
+| 2 | Shared history storage for trends, "What changed" and probes | localStorage only |
+| 3 | Optional extra citation engines (Perplexity / Gemini / OpenAI keys) | Claude only |
+| 4 | Blok vs custom tokens | Decided by the Phase 0 spike |
+| 5 | Build the public scanner (Phase 11)? | Not now |

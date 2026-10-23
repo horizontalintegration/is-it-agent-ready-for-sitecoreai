@@ -13,6 +13,7 @@ import { GateBanner } from "@/components/GateBanner";
 import { PillarSection } from "@/components/PillarSection";
 import { ScanBar } from "@/components/ScanBar";
 import { MetaGenerator } from "@/components/MetaGenerator";
+import { PageHtmlSpike, usePageHtmlSpikeEnabled } from "@/components/spike/PageHtmlSpike";
 
 function SkeletonRows() {
   return (
@@ -33,6 +34,7 @@ export default function PagesContextPanel() {
   // by the SDK's transient un-initialized state (which flickers during the
   // Strict-Mode mount/cleanup/remount cycle and during the SDK handshake).
   const useFixture = useDemoMode();
+  const showSpike = usePageHtmlSpikeEnabled();
   const fixture = useMemo(
     () => (useFixture ? makeTestPageData() : null),
     [useFixture],
@@ -126,6 +128,15 @@ export default function PagesContextPanel() {
       </header>
 
       <main className="flex-1 overflow-y-auto py-3">
+        {showSpike && (
+          <PageHtmlSpike
+            client={client}
+            pageId={writeContext.pageId}
+            pageTitle={effectiveAuthoring?.pageTitle ?? null}
+            pageUrl={pageUrl}
+            editingToken={editingToken}
+          />
+        )}
         {showSkeleton ? (
           <SkeletonRows />
         ) : engineOutput.gate.blocked ? (
