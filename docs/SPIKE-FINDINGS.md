@@ -112,19 +112,27 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
   Source: https://platform.claude.com/docs/en/about-claude/pricing
 - **Code execution is free when used with `web_search_20260209` or later**: dynamic filtering runs inside code execution, and there's no extra charge for it.
 
-**Rough cost per probe run** (to be replaced by measured numbers):
+**Measured cost per question** (Confirmed; 2026-10-23, one question each, `effort: low`, US location):
 
-- Assumptions: 8 questions × up to 3 searches = at most 24 searches, or **$0.24**. Tokens are probably larger: around 10–20k input per question with search results gives roughly **$0.40–0.80 per run** at `effort: low`. That totals about **$0.60–1.00 per page run**.
-- The 7-day cache and per-site rate limit (plan section 8) are therefore worth building.
+| Mode | Searches | Results | Citations | Input / output tokens | Cost | Time |
+|---|---|---|---|---|---|---|
+| Dynamic filtering (tool default) | 2 | 18 | **0** | 29,919 / 1,368 | $0.167 | 26 s |
+| **Direct** (`allowed_callers: ["direct"]`) | 1 | 9 | **6** | 11,408 / 1,201 | **$0.080** | ~20 s |
+
+- At about $0.08 per question, an 8-question page run costs about **$0.65**.
+- The 7-day cache and per-site rate limit (plan section 8) are worth building.
+- Run the questions in parallel. Running them one after another would take about 3 minutes per page.
 
 **Changes the plan should pick up:**
 
 1. **There's a newer tool version, `web_search_20260318`**, which adds `response_inclusion`. Keep `20260209`, or use `20260318` with `response_inclusion: "full"` (the default).
    - `"excluded"` drops search-result blocks that were used inside code execution. "Found" would then be under-counted, because it's measured from those blocks.
-2. **Search results can be nested.** With dynamic filtering (the default from `20260209`), searches run *inside code execution*. The `server_tool_use` and `web_search_tool_result` pairs still appear in `content`, but carry a `caller` field.
-   - "Found" must scan every `web_search_tool_result` regardless of `caller`.
-   - Alternatively, set `allowed_callers: ["direct"]` to turn off dynamic filtering. That costs more tokens but gives simpler, more complete result lists.
-   - The probe records `nestedResultBlocks` so we can see which happens.
+2. **Dynamic filtering breaks "Cited". Use `allowed_callers: ["direct"]`** (Confirmed).
+   - With the tool default (dynamic filtering, from `20260209`), Claude ran both searches inside code execution: `caller: { type: "code_execution_20260120" }`.
+   - It read the results through encrypted code output, and the answer had **no `web_search_result_location` citations**.
+   - "Found" still works in that mode, because nested `web_search_tool_result` blocks keep their URLs. "Cited" and "Cited instead" can't be measured at all.
+   - Direct mode returned 6 citations, used fewer tokens, and cost half as much.
+   - **Plan section 8 step 2 and section 9 should specify `allowed_callers: ["direct"]`.** With direct calls, `response_inclusion` doesn't matter.
 3. **Search errors return HTTP 200.** `content` is then an object with `error_code` instead of a list (as the plan says). An empty list means no results, not an error.
 4. **`pause_turn` can happen** on long search turns. The probe resends the paused assistant turn, up to 3 times.
 5. **`@anthropic-ai/sdk` 1.0.0 was released on 2026-10-21** (a new major; 1.2.0 is from 2026-10-23). The spike pins **1.2.0 as a devDependency** only. Phase 2 must choose 1.x or the last 0.x (0.137.0) and read the TypeScript SDK changelog for 1.0 breaking changes.
@@ -134,16 +142,24 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
 - Settings:
   - model: `claude-opus-5-5`
   - `effort: low`
-  - `web_search_20260209` with `max_uses: 3`
+  - `web_search_20260209` with `max_uses: 3` and `allowed_callers: ["direct"]` (`--dynamic` runs the tool default instead, for comparison)
   - server-side refusal fallback: `server-side-fallback-2026-07-01`, `fallbacks: "default"`
 - Found, Cited and "cited instead" are computed in code from `web_search_tool_result` and `web_search_result_location` blocks, never from the model's own answer.
 - **Confirmed:**
   - The script type-checks under strict `nodenext` settings.
   - It runs on Node 24 type stripping.
   - It handles auth errors (it reached the API and got a 401 with a dummy key).
-- **Open:** no `ANTHROPIC_API_KEY` or `ant` profile is configured on the dev machine. Run once with a real key and paste the output here:
+- **Confirmed with a real run** (key from `.env.local`):
 
-```sh
-ANTHROPIC_API_KEY=… npm run spike:citation-probe -- --domain <site domain> \
-  --question "<a non-branded question the site should answer>" --country US --out probe.json
-```
+  ```sh
+  node --env-file=.env.local scripts/spikes/citation-probe.mts \
+    --domain https://blueprint-brandx.horizontaldigital.com \
+    --question "How do I choose a financial advisor to help me plan for retirement?" --country US
+  ```
+
+  Result in direct mode:
+  - `found: false`, `cited: false`
+  - `stop_reason: end_turn`; no refusal
+  - Cited instead: truewealthstewardship.com, troweprice.com, themadisonpartners.com, savvywealth.com, apsitaxes.com, experian.com
+
+  The BrandX demo site isn't in the results for this question. Phase 10's demo fixtures should show a mix of Cited / Found / Not found rather than rely on live results.

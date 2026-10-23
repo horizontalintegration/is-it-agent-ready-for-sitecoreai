@@ -382,7 +382,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 ### Layer 2 — Citation probes (measured, on demand)
 
 1. Claude generates 5–10 realistic **non-branded** questions the page should answer (structured output; the user can edit them).
-2. Each question goes to Claude with the server-side **web search tool** (`web_search_20260209`, `max_uses` ≈ 3, optional `user_location`).
+2. Each question goes to Claude with the server-side **web search tool** (`web_search_20260209`, `max_uses` ≈ 3, `allowed_callers: ["direct"]`, optional `user_location`). Direct calls are required: with the default dynamic filtering the answer carries no citations (see `docs/SPIKE-FINDINGS.md` §5).
 3. Measured in code from the response, not by asking the model:
    - **Found:** the site's domain or page URL appears in the `web_search_tool_result` results.
    - **Cited:** it appears in the citation locations attached to the answer text.
@@ -398,7 +398,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
    - Probes run only on demand, never in bulk dashboard scans.
    - Cache results for 7 days per page and question set, and rate-limit per site.
    - Show the date of each run.
-   - **[SPIKE] Confirm current web search pricing per 1,000 searches.**
+   - Web search costs $10 per 1,000 searches. A measured probe cost about $0.08 per question in direct mode (`docs/SPIKE-FINDINGS.md` §5).
 7. **Honesty caveat in the UI:** "AI answers vary by time, location and engine. This is a sample, not a ranking."
 8. **History:** store each probe run so the trend shows. Use localStorage first; Phase 8 asks the user about server storage.
 
@@ -425,7 +425,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
   - Use **structured outputs** (`output_config: { format: … }`) for every JSON response instead of "respond with JSON only" prompts.
   - Enable server-side **refusal fallbacks**: beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`. Check `stop_reason` before reading content.
 - **Web search tool:**
-  - `{ type: "web_search_20260209", name: "web_search", max_uses: 3 }`.
+  - `{ type: "web_search_20260209", name: "web_search", max_uses: 3, allowed_callers: ["direct"] }`. Dynamic filtering (the tool default) runs searches inside code execution and returns no citations.
   - Search errors come back as HTTP 200 with an error object in `web_search_tool_result.content`; check the shape before indexing into it.
   - Don't declare `code_execution` alongside it.
 - **Prompt caching:** use stable system prompts with `cache_control: { type: "ephemeral" }`, and put per-page content after the cached prefix. Verify with `usage.cache_read_input_tokens`.

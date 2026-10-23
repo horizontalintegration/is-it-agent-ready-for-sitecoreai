@@ -9,7 +9,12 @@
 //
 // Usage (Node 24 strips types natively):
 //   ANTHROPIC_API_KEY=... node scripts/spikes/citation-probe.mts \
-//     --domain example.com --question "How do I ...?" [--country US] [--out probe.json]
+//     --domain example.com --question "How do I ...?" [--country US] [--out probe.json] [--dynamic]
+//
+// Search runs with allowed_callers: ["direct"] by default. With dynamic
+// filtering (--dynamic, the tool's own default) searches run inside code
+// execution and the answer carries no web_search_result_location citations,
+// so "cited" can't be measured (see docs/SPIKE-FINDINGS.md section 5).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { writeFileSync } from "node:fs";
@@ -28,6 +33,7 @@ const { values } = parseArgs({
     question: { type: "string" },
     country: { type: "string" },
     out: { type: "string" },
+    dynamic: { type: "boolean", default: false },
   },
 });
 if (!values.domain || !values.question) {
@@ -71,6 +77,7 @@ async function run(): Promise<{ messages: BetaMessage[] }> {
           type: "web_search_20260209",
           name: "web_search",
           max_uses: 3,
+          ...(values.dynamic ? {} : { allowed_callers: ["direct" as const] }),
           ...(values.country ? { user_location: { type: "approximate" as const, country: values.country } } : {}),
         },
       ],
@@ -132,6 +139,7 @@ function measure(messages: BetaMessage[]) {
     stopReason: last.stop_reason,
     stopDetails: last.stop_details ?? null,
     continuations: messages.length - 1,
+    mode: values.dynamic ? "dynamic-filtering" : "direct",
     domain: targetHost,
     question: values.question,
     found: searchResultUrls.some(isTarget),
