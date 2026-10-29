@@ -136,6 +136,10 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
 3. **Search errors return HTTP 200.** `content` is then an object with `error_code` instead of a list (as the plan says). An empty list means no results, not an error.
 4. **`pause_turn` can happen** on long search turns. The probe resends the paused assistant turn, up to 3 times.
 5. **`@anthropic-ai/sdk` 1.0.0 was released on 2026-10-21** (a new major; 1.2.0 is from 2026-10-23). The spike pins **1.2.0 as a devDependency** only. Phase 2 must choose 1.x or the last 0.x (0.137.0) and read the TypeScript SDK changelog for 1.0 breaking changes.
+6. **Claude doesn't always search** (Confirmed; follow-up runs below). With `tool_choice: auto` it can answer from its own knowledge, which yields `found: false, cited: false` with zero searches.
+   - That must be reported as **Not searched**, not Not found, and left out of the "Cited in X of N" totals.
+   - Forced `tool_choice` returns a 400 on Opus 5.5 (plan section 9), so use a system prompt that requires a search, and retry once when `usage.server_tool_use.web_search_requests` is 0.
+7. **Host matching is exact (plus subdomains), so sibling hosts of the same site count as competitors** (Confirmed). `blueprint-brandx-dev.horizontaldigital.com` showed up under "cited instead" for BrandX. Let the user list extra hosts that count as the site's own (dev, staging, regional domains).
 
 **Test probe:** `scripts/spikes/citation-probe.mts` (run with `npm run spike:citation-probe -- …`).
 
@@ -163,3 +167,16 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
   - Cited instead: truewealthstewardship.com, troweprice.com, themadisonpartners.com, savvywealth.com, apsitaxes.com, experian.com
 
   The BrandX demo site isn't in the results for this question. Phase 10's demo fixtures should show a mix of Cited / Found / Not found rather than rely on live results.
+
+- **Follow-up runs** (Confirmed; 2026-10-29, direct mode, US location, about $0.18 in total). These check the positive case, which the first run never reached:
+
+  | Domain | Question | Searches | Found | Cited | Cost |
+  |---|---|---|---|---|---|
+  | irs.gov | "What are the 2026 IRA contribution limits?" | 1 | **true** | **true** | $0.075 |
+  | blueprint-brandx.horizontaldigital.com | "What financial services does BrandX (blueprint-brandx.horizontaldigital.com) offer?" | 1 | **true** | **true** | $0.072 |
+  | troweprice.com | "How do I choose a financial advisor to help me plan for retirement?" | **0** | false | false | $0.031 |
+
+  - **Found and Cited detection works.** IRS results came from `www.irs.gov`, and the `www.` prefix was stripped correctly.
+  - **BrandX is in the search index** even though its `robots.txt` has `Disallow: /`. It's found and cited when named, but not for the generic question above.
+  - **The T. Rowe Price run never searched.** The response was a single `text` block. troweprice.com was cited for the same question on 2026-10-23, so this `false` says nothing about the site (see item 6 above).
+  - **BrandX's dev site is publicly indexed** and was cited next to the live site (see item 7 above). That's worth raising with the site owner on its own merits.

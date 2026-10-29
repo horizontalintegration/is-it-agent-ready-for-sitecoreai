@@ -383,11 +383,14 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 
 1. Claude generates 5–10 realistic **non-branded** questions the page should answer (structured output; the user can edit them).
 2. Each question goes to Claude with the server-side **web search tool** (`web_search_20260209`, `max_uses` ≈ 3, `allowed_callers: ["direct"]`, optional `user_location`). Direct calls are required: with the default dynamic filtering the answer carries no citations (see `docs/SPIKE-FINDINGS.md` §5).
+   - Claude can skip searching and answer from its own knowledge, and forced `tool_choice` isn't available (section 9). The system prompt must require a search. Retry once when `usage.server_tool_use.web_search_requests` is 0.
 3. Measured in code from the response, not by asking the model:
    - **Found:** the site's domain or page URL appears in the `web_search_tool_result` results.
    - **Cited:** it appears in the citation locations attached to the answer text.
+   - **Not searched:** no search ran, even after the retry. Found and Cited are unknown, not false.
    - **Cited instead:** the other domains cited, used as a competitor list.
-4. Show the totals, e.g. **"Cited in 2 of 8 questions · Found in 5 of 8"**, plus a table of questions → our status → who was cited instead.
+   - "The site" means its domain plus any extra hosts the user marks as its own (dev, staging, regional domains). Otherwise those hosts show up as competitors.
+4. Show the totals, e.g. **"Cited in 2 of 8 questions · Found in 5 of 8"**, plus a table of questions → our status → who was cited instead. Not-searched questions are left out of the totals and listed separately (e.g. "1 question not searched").
 5. **Optional extra engines.** When their API keys are configured, run the same questions through engines that return sources:
    - Perplexity Sonar API
    - Gemini API with Google Search grounding
