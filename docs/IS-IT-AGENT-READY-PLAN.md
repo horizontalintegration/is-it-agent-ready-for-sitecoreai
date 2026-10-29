@@ -29,7 +29,7 @@
 | Sitecore bought **Scrunch** (June 2026). SitecoreAI now has "AI discoverability powered by Scrunch": Signals, AEO opportunities in Page Builder, AXP agent-readable pages, and Knowledge Studio. | That covers brand-level monitoring and content rewrites, but only for customers with a separate Scrunch subscription. It doesn't check whether agents can technically reach and parse the site, and it doesn't write technical fixes into Sitecore. **Our position: technical agent-readiness plus fixes inside the editor, for every SitecoreAI customer, with no extra licence.** |
 | Agent-readiness scanners are now public: **isitagentready.com** (Cloudflare) and **is-agentic.com**. | Agent-readiness is now its own category. We adopt their strongest checks and their scoring style: Essential / Recommended / Bonus, with N/A checks excluded. |
 | **Markdown for agents** has become a convention: send `Accept: text/markdown` and get Markdown back (accept.md, Cloudflare Markdown for Agents). | New "Agent View" tab plus checks in the style of the accept.md audit. |
-| **`getPageHTML()`** was added to the Marketplace SDK client on 2026-09-17. It returns the rendered canvas HTML of the page open in Page Builder, without the editor's markup. | Content checks can run on the **draft** without a network fetch. It also fixes the bug where Claude receives an empty page body. |
+| **`getPageHTML()`** was added to the Marketplace SDK client on 2026-09-17. It returns the rendered canvas HTML of the page open in Page Builder, including unsaved edits. It has no `<head>` or scripts, and it keeps some editor artifacts that must be removed (`docs/SPIKE-FINDINGS.md` §3). | Content checks can run on the **draft** without a network fetch. It also fixes the bug where Claude receives an empty page body. |
 | Claude API: `claude-sonnet-4-6` → current models, structured outputs, server-side web search (`web_search_20260209`). | Better, cheaper AI calls, and **measured** citation probes instead of guessed stars. |
 
 Reference URLs:
@@ -168,7 +168,7 @@ interface CheckDef {
 | P7 `read.speed` | Page loads fast | Recommended | Read | psi | Existing `cq-page-experience`, still on demand |
 | P8 `understand.headings` | One clear H1 and logical headings | Essential | Understand | draft | Existing `seo-headings` |
 | P9 `understand.title-meta` | Title and description are set | Essential | Understand | fields + live | Merges `seo-meta-title` and `seo-meta-description` |
-| P10 `understand.json-ld` | Structured data is present and valid | Essential | Understand | live (+ draft) | **Fixes D2.** Parse the real `application/ld+json`. Expect BreadcrumbList on inner pages, FAQPage when there are Q&A pairs, and Article/BlogPosting on article templates. Check that it parses and that required properties exist. Keep the snippet generator as the fix. |
+| P10 `understand.json-ld` | Structured data is present and valid | Essential | Understand | live (+ draft) | **Fixes D2.** Parse the real `application/ld+json` from the live page; the draft has no scripts, so it's used only to detect Q&A pairs. Expect BreadcrumbList on inner pages, FAQPage when there are Q&A pairs, and Article/BlogPosting on article templates. Check that it parses and that required properties exist. Keep the snippet generator as the fix. |
 | P11 `understand.metadata` | Page identity metadata is complete | Recommended | Understand | live | `html lang`, `og:type`, `og:image`, `og:title`/`og:description` (extends `seo-og-tags`) |
 | P12 `understand.faq-quality` | FAQ answers are quotable | Recommended | Understand | draft | Existing check, but find Q&A in **any** component (not only the AccordionItem rendering ID) |
 | P13 `understand.question-headings` | Sections answer real questions | Recommended | Understand | draft | Re-enable `aeo-question-headings` (currently disabled) |
@@ -354,11 +354,13 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 ## 7. Data sources: draft vs live
 
 - **Draft = `client.getPageHTML()`.** Works only in Page Builder extension points. It is a snapshot, so call it again (debounced 1–2 s) on `pages.content.fieldsUpdated` and on page change.
+  - It returns the `<body>` only, with an empty `<head>` and no scripts, so it's good for body checks only. Head checks (title, canonical, meta, OG, JSON-LD) stay on `live` and `fields`.
+  - Run every capture through a **sanitiser** before any check: strip `Fallback: …` hint text, `[No text in field]` placeholders, `contenteditable`, the `editing-mode` wrapper, and empty-datasource messages. Unit-test it with fixtures taken from the spike captures.
 - **Live = the existing `/api/preview-fetch`** for anything that needs HTTP headers or status codes, the `<head>`, robots, the sitemap or Markdown negotiation.
 - **Fallback:** if `getPageHTML()` rejects (unsupported host), use `preview-fetch` with the editing secret, as today, and mark checks "Live".
 - **The dashboard** can't use `getPageHTML`. It stays live-only.
 
-**[SPIKE — answer all of these before Phase 4]:**
+**[SPIKE — answer all of these before Phase 4]:** all answered on 2026-10-29/30 (see `docs/SPIKE-FINDINGS.md` §3): `string`; no `<head>`; unsaved edits included; client-rendered content included (but client-fetched listings can be empty in the editor); editor artifacts present; works in the context panel.
 1. Exact return type after the SDK upgrade: `string` (Sitecore docs) or `{ html }` (blog example)?
 2. Is `<head>` included (title, canonical, meta, JSON-LD)?
 3. Are unsaved edits included, or only saved ones?
@@ -450,7 +452,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 
 ### Phase 1 — Rename, clean-up, correctness and security
 - Rename (section 4) and rewrite the README (what it is, setup, env vars, extension points, demo mode).
-- Fix D1: body text comes from `getPageHTML` if the spike confirms it, otherwise from the main text parsed out of `preview-fetch`.
+- Fix D1: body text comes from the main text parsed out of `preview-fetch`. Phase 4 switches it to the sanitised `getPageHTML` body (the spike confirmed it carries the full draft body).
 - Fix D3: Organization data comes from config or site settings. Replace the BrandX brand document with a configurable brand-voice file and env vars. Keep BrandX as demo fixture data only.
 - Fix D5 and D6.
 - Fix D9: create `src/lib/server/safe-fetch.ts`. It allows only `http(s)`, blocks private, loopback and link-local IPs after DNS resolution, limits redirects, times out, and caps response size. Use it in every server route.
@@ -468,9 +470,11 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 
 ### Phase 4 — Draft and live data sources (section 7)
 - Create a `usePageHtml` hook (getPageHTML with debounced refresh on `fieldsUpdated`, plus fallback).
+- Add the draft HTML sanitiser (section 7) and use it in the hook, so no check ever sees raw editor output.
+- Decode HTML entities (`&nbsp;` etc.) in `preview-fetch` text extraction, so draft and live text compare cleanly.
 - Show a source chip on each result.
 - Show a "Draft differs from live" banner when the main-text hashes differ.
-- Add P3 (content without JS) if the spike allows it.
+- Add P3 (content without JS). The spike confirmed the draft includes client-rendered content. Compare the sanitised draft with the full server `<body>` text, and treat empty-state messages ("No articles found") as "couldn't render in the editor", not content. Use the BrandX Related Articles cards as the test case.
 - **Accept when:** an unpublished page scores from its draft, and editing a heading updates the score without a manual re-scan.
 
 ### Phase 5 — UI redesign shell (section 6)
