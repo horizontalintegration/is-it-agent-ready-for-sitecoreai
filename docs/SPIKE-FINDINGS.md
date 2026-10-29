@@ -25,7 +25,10 @@ Date: 2026-10-23 · Branch: `feature/v2-phase-0-setup` · Base: `28963dc`
 - **xmc 0.4.1 → 0.4.4:** the HTTP layer moved from `@hey-api/client-fetch` to an internal `shared/src/http`.
   - The result envelope is still `{ data, error, request, response }`, so the existing `pageRes.data.data` unwrapping in `usePageFields.ts` and `useSitePages.ts` still type-checks.
   - The request and response types for `retrievePage`, `updateFields`, `retrieveSite` and `authoring.graphql` are unchanged. The diff is only type reordering, doc comments, and `[key: string]: unknown` index signatures.
-- **Open:** a runtime smoke test inside Page Builder. Load the panel, change page, and run **Generate → Populate** in the meta generator. Then load the dashboard and run a site scan.
+- **Runtime smoke test** (2026-10-29, after merging to `main`):
+  - **Confirmed:** the context panel and the dashboard both load in Sitecore on the new SDK, and `getPageHTML` works in the panel (section 3).
+  - The dashboard shows errors, but the same errors appear in the v1 app, so they aren't caused by the upgrade. Re-check them after the planned changes.
+  - **Not yet run:** meta **Generate → Populate**, the only path that writes to Sitecore (`updateFields`). Its request types are unchanged, so the risk is low.
 
 Other setup notes:
 
@@ -62,12 +65,58 @@ Implementation: `src/components/spike/PageHtmlSpike.tsx` (temporary; remove in P
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| 1 | Return type: `string` or `{ html }`? | Declared as `Promise<string>`. The implementation is a pass-through, `coreSdk.request("pages.getPageHTML", {})`, so the real shape is whatever the host returns. The spike records `typeof` and the object keys. Phase 4 should accept both until this is confirmed. | From types · **Open** (runtime) |
-| 2 | Is `<head>` included (title, canonical, meta, JSON-LD)? | Spike reports title, canonical, description, `og:` count and JSON-LD `@type`s | **Open** |
-| 3 | Are unsaved edits included, or only saved ones? | Spike "unsaved-edit" + marker check | **Open** |
-| 4 | Is content rendered by client-side scripts included? | Spike diffs draft headings and paragraphs against `/api/preview-fetch` (server HTML). Text only in the draft means client-rendered content is captured. | **Open** |
-| 5 | Placeholders, empty datasources, editor `data-*`? | Spike counts editor-chrome patterns and the top 25 `data-*` attribute names | **Open** |
-| 6 | Which extension points support it? | Plan says Page Builder only. The spike runs in the context panel; the dashboard isn't tested. | **Open** (context panel) |
+| 1 | Return type: `string` or `{ html }`? | A plain `string`, in all 5 captures. | **Confirmed** |
+| 2 | Is `<head>` included (title, canonical, meta, JSON-LD)? | **No.** The HTML starts with an empty `<head></head>`, with no doctype or `<html>` tag. It contains **no `<script>` elements at all**, so JSON-LD isn't there either. | **Confirmed** |
+| 3 | Are unsaved edits included, or only saved ones? | **Unsaved edits are included.** The marker typed into a heading without saving was found (`h2: zebra7731`). | **Confirmed** |
+| 4 | Is content rendered by client-side scripts included? | **Yes.** The article's Related Articles cards are fetched in the browser (not in the server HTML at all), and the draft capture contains them. But client-fetched listings can render an empty state in the editor. See the notes below. | **Confirmed** |
+| 5 | Placeholders, empty datasources, editor `data-*`? | **Yes, editor artifacts are present** and must be removed before scoring. No Sitecore chrome (`<code type=text/sitecore>`, `data-sc-*`) appeared. See the list below. | **Confirmed** |
+| 6 | Which extension points support it? | Works in the **context panel**. The dashboard wasn't tested; the plan already keeps it live-only. | **Confirmed** (context panel) |
+
+**Captures** (Confirmed; 2026-10-29, BrandX in Page Builder, context panel):
+
+| Kind | Page | HTML size | Time |
+|---|---|---|---|
+| simple | Home | 125 KB | 32 ms |
+| FAQ | /Contact-and-Support/FAQs | 109 KB | 32 ms |
+| empty placeholder | /st-patricks-day-2026 | 84 KB | 33 ms |
+| article | …/Banking-Sector-Earnings-Point-to-Resilience | 94 KB | 44 ms |
+| unsaved edit | Home, with `zebra7731` typed into an h2 | 126 KB | 51 ms |
+
+The call takes about 30–50 ms, so it's cheap enough to re-run on every `fieldsUpdated` (with the planned debounce).
+
+**Editor artifacts in the draft HTML** (item 5). Phase 4 needs a sanitiser that removes these before any check runs:
+
+- **`Fallback: …` text appended to headings.** Page Builder renders a fallback hint next to fields that use one, e.g. the FAQ h1 reads `Frequently Asked QuestionsFallback: Frequently Asked Questions` and the article h1 reads `Fallback: Banking Sector Earnings Point to Resilience`. Left in, this breaks P8 (headings), P13 (question headings) and any text comparison.
+- **`[No text in field]`** for empty fields: 14 on the home page, 3 on the FAQ page. Some render as headings (`h2: [No text in field]`), which would count as real headings.
+- **`contenteditable`** attributes (1–36 per page), a `placeholder` class (1–2 per page), one `scEmpty*` class, and an `editing-mode` wrapper class.
+- **Empty-datasource messages** such as "No articles found" (St. Patrick's Day page), which the published page doesn't show.
+- **Not editor markup:** `data-component` and `data-icon` also appear on the published site, so they're the site's own attributes.
+
+**Item 4 notes (client-rendered content):**
+
+- **How it was checked** (Confirmed; 2026-10-30): all 74 English pages in the BrandX sitemap were loaded twice, as raw server HTML and in headless Chrome with JavaScript (`--dump-dom`). Text found only in the rendered DOM was grouped by its `authorable/` component.
+
+  | Component | Pages with client-only text | Example |
+  |---|---|---|
+  | `relatedarticles` | 38 (every article page) | related-article cards: title, summary, date, "Read More" |
+  | `articlelisting` | 6 (listing pages, St. Patrick's Day) | the full article list |
+  | form inside `mainlayout` | 2 (Contact-and-Support, Schedule-a-Consultation) | form intro text and field labels |
+  | `searchresult` | 1 (/Search) | facets and results |
+  | `statsitem` | 1 (Recognition-and-Awards) | a count-up number ("178") |
+
+- **The draft includes client-rendered content.** "Retail Investor Participation Hits Record High" (a Related Articles card on the Banking article) isn't in that page's server HTML at all, not even in `__NEXT_DATA__`. The `getPageHTML` capture of the same article contains it, with its summary and date.
+- **But the editor's version can differ from what visitors see.** The St. Patrick's Day article listing renders a full list for visitors, but "No articles found" in the draft. Client-fetched listings may get no data in editing mode.
+- **Consequences for P3 (content without JS):**
+  - "In the sanitised draft but not in the server HTML" is a valid signal for client-only content.
+  - Compare against the full server `<body>` text, not only `<main>` paragraphs as the spike did.
+  - Treat empty-state messages as "couldn't render in the editor", not as content.
+- Script and results: in the session scratchpad (`csr-scan/scan.mjs`), not committed.
+
+**Other observations:**
+
+- `preview-fetch` doesn't decode `&nbsp;` in headings and paragraphs (the article's server side shows `h3: &nbsp;` and 10 `&nbsp;` paragraphs). The draft side decodes it. Fix this before P3 compares the two.
+- On the St. Patrick's Day page, the published paragraph "Celebrate St. Patrick's Day with BrandX…" isn't in the draft. Either the draft has changed since publishing or that component renders differently in editing mode. P3 must not report this as "content missing without JavaScript".
+- The footer contains a literal `© {{year}}` token in the draft. On the published page, JavaScript replaces it in the browser ("© 2026"), so the sanitiser should ignore `{{…}}` tokens.
 
 ## 4. Blok design system (plan section 6.2, item 9)
 
