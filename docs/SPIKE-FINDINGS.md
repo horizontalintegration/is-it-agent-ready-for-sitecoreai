@@ -30,6 +30,11 @@ Date: 2026-10-23 · Branch: `feature/v2-phase-0-setup` · Base: `28963dc`
   - The dashboard shows errors, but the same errors appear in the v1 app, so they aren't caused by the upgrade. Re-check them after the planned changes.
   - **Confirmed (2026-10-30):** meta **Generate → Populate**, the only path that writes to Sitecore (`updateFields`), runs without errors for every field.
   - It generated the same text as the existing values. That's expected while D1 is open: the panel sends an empty `bodyText`, so the model sees only the page title and the current value. Re-check that the output follows the page content once Phase 1 fixes D1.
+  - **Confirmed after the D1 fix (2026-10-31, Phase 1 branch):**
+    - The panel console shows `[scan] ai-check body: N chars of main text — …` with the page's real text. This was Phase 1's acceptance check.
+    - Generate no longer repeats the current value. The meta title came back as "BrandX Financial Planning: Wealth, Tax & Retirement Strategies", with the BrandX brand voice from `BRAND_VOICE_FILE`.
+    - It's 62 characters, over the 60-character target. The limit is only an instruction in the prompt, and the UI flags the overrun in amber. Phase 2's structured outputs should enforce length.
+    - Caveat: wealth, tax and retirement are also listed under the brand document's Products & Services, so this result alone doesn't show which source the wording came from. To check, generate on a narrow page (e.g. a single article) and confirm the title names that article's topic.
 
 Other setup notes:
 
