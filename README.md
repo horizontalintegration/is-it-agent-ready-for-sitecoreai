@@ -54,6 +54,8 @@ Put these in `.env.local` for development and in your host's settings for deploy
 | Variable | Required | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes, for AI features | Claude API key for `ai-check`, `generate-meta` and `citation-forecast`. |
+| `ANTHROPIC_MODEL` | No | Claude model for `generate-meta` and `citation-forecast`. Default `claude-opus-5-5`. |
+| `ANTHROPIC_MODEL_BULK` | No | Claude model for `ai-check`, which the dashboard runs for every page (the panel uses it too, so both show the same rating). Defaults to `ANTHROPIC_MODEL`. `claude-sonnet-5-5` costs about half as much as Opus 5.5. |
 | `PSI_API_KEY` | No | Google PageSpeed Insights key. Works without one at low rate limits. |
 | `BRAND_VOICE_FILE` | No | Markdown brand-voice document, relative to the project root, used to ground meta generation (e.g. `brand/brandx.md`). Without it, a neutral default voice is used. |
 | `BRAND_NAME` | No | Brand name used in the generation prompts (e.g. `BrandX`). |
@@ -69,6 +71,12 @@ Put these in `.env.local` for development and in your host's settings for deploy
 | `NEXT_PUBLIC_FIELD_TITLE`, `NEXT_PUBLIC_FIELD_META_DESCRIPTION`, `NEXT_PUBLIC_FIELD_OG_TITLE`, `NEXT_PUBLIC_FIELD_OG_DESCRIPTION` | No | Sitecore field names for the meta fields, if your templates don't use `pageTitle`, `MetaDescription`, `OpenGraphTitle`, `OpenGraphDescription`. |
 | `NEXT_PUBLIC_ORG_NAME`, `NEXT_PUBLIC_ORG_URL`, `NEXT_PUBLIC_ORG_LOGO`, `NEXT_PUBLIC_ORG_DESCRIPTION`, `NEXT_PUBLIC_ORG_SAME_AS` | No | Organization details for the Organization JSON-LD snippet. `SAME_AS` is a comma-separated list of profile URLs. Without them, the name and URL come from the site in Sitecore, and the rest are placeholders. |
 | `NEXT_PUBLIC_SPIKE_DEBUG` | No | `1` shows the temporary `getPageHTML` spike box in the panel (same as `?spike=1`). |
+
+### Claude API
+
+The AI routes call Claude through `@anthropic-ai/sdk`, with the shared setup in `src/lib/server/anthropic.ts`. Every call returns JSON through structured outputs, sets its effort level explicitly, and falls back to another model on the server when the first one declines (`server-side-fallback-2026-07-01`).
+
+AI check results are cached by a hash of the page title and text, in the browser (localStorage) and on the server (in memory, per instance), so Claude only runs again when the content changes. After changing `ANTHROPIC_MODEL_BULK`, bump `AI_CHECK_VERSION` in `src/lib/ai/content-key.ts` so browsers drop results from the old model.
 
 ### Brand voice
 

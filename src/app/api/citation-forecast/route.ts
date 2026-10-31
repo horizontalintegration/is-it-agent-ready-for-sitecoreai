@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { contentKey } from "@/lib/ai/content-key";
+import {
+  aiErrorResponse,
+  aiResultCache,
+  failureResponse,
+  getModel,
+  hasApiKey,
+  structuredCall,
+} from "@/lib/server/anthropic";
 import { extractParsedHtml } from "@/lib/server/extract-html";
 import { safeFetch, SafeFetchError, validateUrl } from "@/lib/server/safe-fetch";
 import { QUESTION_REGEX, wordCount } from "@/lib/rule-engine/helpers";
@@ -15,8 +25,28 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
+/** Bump when the prompt or schema changes, so cached forecasts aren't reused. */
+const FORECAST_VERSION = "2026-10-31.1";
+
+const SYSTEM =
+  "You are an AI-search visibility analyst. You estimate how likely specific AI answer engines are to cite a web page, based on the signals provided.";
+
+const EngineForecastSchema = z.object({
+  stars: z.number().int().describe("1 to 5"),
+  reasoning: z.string().describe("One short, system-specific reason"),
+});
+
+const ForecastSchema = z.object({
+  systems: z.object({
+    chatgpt: EngineForecastSchema,
+    perplexity: EngineForecastSchema,
+    copilot: EngineForecastSchema,
+    gemini: EngineForecastSchema,
+  }),
+  topRecommendation: z
+    .string()
+    .describe("One sentence: the single highest-leverage change to improve citation likelihood"),
+});
 
 // Which robots.txt user-agents gate each answer engine. An engine is treated as
 // blocked only when *every* bot that feeds it is disallowed at the site root.
@@ -26,47 +56,6 @@ const ENGINE_CRAWLERS: Record<CitationSystem, string[]> = {
   copilot: ["bingbot", "msnbot"], // Copilot leans on the Bing index
   gemini: ["google-extended", "googlebot"],
 };
-
-function stripJsonFences(s: string): string {
-  return s.replace(/```json\s*/gi, "").replace(/```\s*$/g, "").trim();
-}
-
-interface AnthropicMessageResponse {
-  content?: Array<{ type: string; text?: string }>;
-}
-
-async function callAnthropic(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
-  const body = {
-    model: MODEL,
-    max_tokens: maxTokens,
-    system:
-      "You are an AI-search visibility analyst. You estimate how likely specific AI answer engines are to cite a web page, based on the signals provided. Respond ONLY with valid JSON — no markdown, no explanation, no code fences.",
-    messages: [{ role: "user", content: prompt }],
-  };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const res = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`anthropic ${res.status}: ${errText.slice(0, 200)}`);
-    }
-    const data = (await res.json()) as AnthropicMessageResponse;
-    return stripJsonFences(data.content?.find((c) => c.type === "text")?.text ?? "");
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * Coarse per-engine crawl access from robots.txt. We only need to know whether an
@@ -169,16 +158,7 @@ SITE-LEVEL SIGNALS:
 Homepage schema types: ${siteSchemas.length ? siteSchemas.join(", ") : "(none)"}
 AI crawler access: ${accessLine}
 
-Respond with exactly this JSON shape:
-{
-  "systems": [
-    { "system": "chatgpt", "stars": 3, "reasoning": "..." },
-    { "system": "perplexity", "stars": 3, "reasoning": "..." },
-    { "system": "copilot", "stars": 3, "reasoning": "..." },
-    { "system": "gemini", "stars": 3, "reasoning": "..." }
-  ],
-  "topRecommendation": "one sentence, the single highest-leverage change to improve citation likelihood"
-}`;
+Finish with the single highest-leverage change to improve citation likelihood, in one sentence.`;
 }
 
 function clampStars(v: unknown): number {
@@ -192,8 +172,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!hasApiKey()) {
     return NextResponse.json({ error: "api_key_missing" }, { status: 500, headers: CORS_HEADERS });
   }
 
@@ -264,47 +243,53 @@ export async function POST(req: NextRequest) {
 
   const prompt = buildPrompt({ pageUrl, page, homepage, engineAccess });
 
-  let raw: string;
-  try {
-    raw = await callAnthropic(apiKey, prompt, 600);
-  } catch (err) {
-    return NextResponse.json(
-      { error: "ai_failed", detail: err instanceof Error ? err.message : "unknown_error" },
-      { status: 502, headers: CORS_HEADERS },
-    );
-  }
-
-  let parsed: { systems?: Array<{ system?: string; stars?: unknown; reasoning?: unknown }>; topRecommendation?: unknown };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return NextResponse.json({ error: "parse_error" }, { status: 502, headers: CORS_HEADERS });
+  // The prompt carries every input (page content, schemas, robots access), so
+  // its hash identifies the forecast.
+  const model = getModel();
+  const key = await contentKey(["citation-forecast", FORECAST_VERSION, model, prompt]);
+  let parsed = aiResultCache.get(key) as z.infer<typeof ForecastSchema> | undefined;
+  if (parsed) {
+    console.info(`[citation-forecast] server cache hit ${key.slice(0, 8)}`);
+  } else {
+    try {
+      const res = await structuredCall({
+        label: "citation-forecast",
+        model,
+        effort: "low",
+        schema: ForecastSchema,
+        system: SYSTEM,
+        messages: [{ role: "user", content: prompt }],
+      });
+      if (!res.ok) {
+        const { status, body: errBody } = failureResponse(res);
+        return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+      }
+      parsed = res.data;
+      aiResultCache.set(key, parsed);
+    } catch (err) {
+      const { status, body: errBody } = aiErrorResponse(err);
+      return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+    }
   }
 
   const order: CitationSystem[] = ["chatgpt", "perplexity", "copilot", "gemini"];
-  const byKey = new Map<string, { system?: string; stars?: unknown; reasoning?: unknown }>();
-  for (const s of parsed.systems ?? []) {
-    if (typeof s.system === "string") byKey.set(s.system.toLowerCase(), s);
-  }
-
-  const systems: CitationSystemForecast[] = order.map((key) => {
-    const found = byKey.get(key);
+  const systems: CitationSystemForecast[] = order.map((engine) => {
+    const found = parsed.systems[engine];
     // Hard cap: a robots-blocked engine can never cite, regardless of the model.
-    const stars = engineAccess[key] ? clampStars(found?.stars) : 1;
+    const stars = engineAccess[engine] ? clampStars(found.stars) : 1;
     const reasoning =
-      typeof found?.reasoning === "string" && found.reasoning.length > 0
+      found.reasoning.length > 0
         ? found.reasoning
-        : engineAccess[key]
+        : engineAccess[engine]
           ? "No system-specific reasoning returned."
           : "Blocked in robots.txt — this engine cannot crawl or cite the page.";
-    return { system: key, stars, reasoning };
+    return { system: engine, stars, reasoning };
   });
 
   const result: Omit<CitationForecast, "generatedAt"> = {
     pageUrl,
     systems,
-    topRecommendation:
-      typeof parsed.topRecommendation === "string" ? parsed.topRecommendation : "",
+    topRecommendation: parsed.topRecommendation,
   };
 
   return NextResponse.json(result, { headers: CORS_HEADERS });

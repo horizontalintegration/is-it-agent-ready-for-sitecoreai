@@ -119,7 +119,7 @@ Think of these as three different "audiences" reading your page:
 ## 🟣 Content Quality Checks — Earning AI's Trust / GEO (23 points)
 
 ### 12. Unique Content Signal — *10 points (the biggest single check)*
-**What it checks:** Our AI reads the page's main text (headings, paragraphs and lists, without the menu and footer) and judges whether the content is genuinely **unique and valuable** versus generic, "could've-been-copied-from-anywhere" filler.
+**What it checks:** Our AI reads the page's main text (headings, paragraphs and lists, without the menu and footer) and judges whether the content is genuinely **unique and valuable** versus generic, "could've-been-copied-from-anywhere" filler. The answer is remembered until the page's text changes, so revisiting a page you haven't edited shows the same rating straight away.
 
 **Why it matters:** This is the heart of GEO. AI assistants and modern search reward original insight, expertise, and real value. Thin, commodity content gets ignored or buried. Unique content is what gets cited and ranked. This carries the most weight because it matters the most.
 
@@ -177,6 +177,7 @@ Below the checks, the panel can write the **meta title, meta description, Open G
 
 - Suggestions are written **from the page's main text**, so they describe what the page actually says. The button waits until the page scan has read the text.
 - They follow your **brand voice document**: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.
+- Suggestions **stay within the character limit** shown next to them (60 for the meta title, 155 for the meta description, 70 and 200 for the Open Graph fields). If the first draft runs long, the tool asks the AI for a shorter one. In the rare case that it's still over, the count turns amber so you can trim it before populating.
 - Nothing is saved until you click **Populate field**.
 
 ---

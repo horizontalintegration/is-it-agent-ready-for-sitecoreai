@@ -566,7 +566,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 
 | # | Decision | Default if not answered |
 |---|---|---|
-| 1 | Claude model for bulk dashboard scans: `claude-opus-5-5` or `claude-sonnet-5-5` | `claude-opus-5-5` |
+| 1 | Claude model for bulk dashboard scans: `claude-opus-5-5` or `claude-sonnet-5-5` | **Decided 2026-10-31 (Phase 2):** `ANTHROPIC_MODEL_BULK` sets the `ai-check` model (panel and dashboard alike, so both show the same rating), intended for `claude-sonnet-5-5`. `generate-meta` and `citation-forecast` stay on `ANTHROPIC_MODEL` (default `claude-opus-5-5`). |
 | 2 | Shared history storage for trends, "What changed" and probes | localStorage only |
 | 3 | Optional extra citation engines (Perplexity / Gemini / OpenAI keys) | Claude only |
 | 4 | Blok vs custom tokens | Decided by the Phase 0 spike |
