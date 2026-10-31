@@ -148,12 +148,29 @@ interface CheckDef {
 | S4 `reach.sitemap` | Sitemap is published and linked | Recommended | Reach | live | `/sitemap.xml` (or the robots `Sitemap:` line) returns 200, is valid XML and has `lastmod` |
 | S5 `read.llms-txt` | llms.txt is published | Recommended | Read | live | `/llms.txt` returns 200, follows the llmstxt.org format, and has a "when to use this site" section. Link to the existing generator. |
 | S6 `trust.trust-pages` | About, contact and privacy pages exist | Recommended | Trust | live | Upgrades the footer-trust check: each linked page returns 200, and privacy has ≥ 500 characters |
-| S7 `understand.org-schema` | Your organisation is described for AI | Recommended | Understand | live | Home page Organization JSON-LD with name, url, logo, sameAs, contactPoint and PostalAddress. Replaces the hardcoded BrandX snippet. |
+| S7 `understand.org-schema` | Your organisation is described for AI | Recommended | Understand | live | Home page Organization JSON-LD, read from the live site and graded with the four agreed rules (see the note below the table). Required: `name`, `url` on the site's own domain, `logo`. Recommended: `sameAs`, `description`, `contactPoint`. Bonus: `address` (PostalAddress), `legalName`. Built in Phase 3. |
 | S8 `reach.not-found` | Missing pages return a real 404 | Recommended | Reach | live | A random path must return 404, not a soft 404 |
 | S9 `reach.content-signals` | Content-use signals are declared | Bonus | Reach | live | `Content-Signal:` directive in robots.txt |
 | S10 `read.link-headers` | Discovery links in HTTP headers | Bonus | Read | live | RFC 8288 `Link` headers on the home page (e.g. to llms.txt or the sitemap) |
 | S11 `read.agent-protocols` | Agent protocols published | Bonus | Read | live | MCP server card, WebMCP, A2A agent card, agent skills, API catalog, OAuth discovery. **Applies only to the App/API site type.** |
 | S12 `read.commerce-protocols` | Agentic checkout protocols | Bonus | Read | live | ACP, UCP, x402, MPP. **Applies only to the Commerce site type.** |
+
+- **S7 scoring rules** (agreed with the user on 2026-10-31). The check runs once per site on the home page, not on every page. In the panel it shows as a site issue, and as a full check only when the home page is open.
+
+  | What the home page has | Score | What the user sees |
+  |---|---|---|
+  | Organization schema, complete | Full | Pass |
+  | Organization schema, missing fields | Partial | Warning listing the missing fields, plus a corrected snippet |
+  | No Organization schema (page fetched fine) | 0, shown as a warning (amber), not a red fail | "Not added yet" and a ready-to-paste snippet from `NEXT_PUBLIC_ORG_*` ("+N pts") |
+  | Couldn't check (site unreachable or unpublished) | N/A, excluded from the score | "Couldn't check" and the snippet |
+
+  - **Detection:** parse every `application/ld+json` block, including `@graph` bundles, `@type` arrays (`["Organization", "LocalBusiness"]`) and Organization subtypes (`Corporation`, `LocalBusiness`, `FinancialService`, `BankOrCreditUnion`, …). A `WebSite.publisher` that points to an Organization by `@id` also counts. A block that doesn't parse is a fail, with the parse error shown.
+  - **Config is the expected value, not the result:** when `NEXT_PUBLIC_ORG_*` is set, a schema naming a different organisation or domain is a warning.
+  - **The fix snippet** starts from the schema already on the site and fills only the gaps from config.
+  - Duplicate Organization entries with conflicting data are a warning; Organization schema on inner pages is fine.
+  - Live only: the `getPageHTML` draft has no `<head>` scripts.
+  - Today's `extract-html.ts` reads only top-level `@type` strings, so it misses all of these patterns. The shared P10/S7 parser must fix that for the dashboard's schema checks too.
+  - Evidence (2026-10-31): the BrandX home page has no JSON-LD at all, yet the current `aeo-organization-schema` gives it 5/5.
 
 - **Page checks** (panel and dashboard; P = page):
 
@@ -196,7 +213,7 @@ interface CheckDef {
 | `seo-image-alt` | P15 `understand.image-alt`, plus an AI alt-text fix |
 | `seo-og-tags` | P11 `understand.metadata` (adds `html lang`, `og:type`) |
 | `seo-anchor-text` (info only) | P20 `trust.anchor-text` (now scored) |
-| `aeo-organization-schema` | S7 `understand.org-schema` (becomes a site check) |
+| `aeo-organization-schema` | S7 `understand.org-schema` (becomes a site check, built in Phase 3) |
 | `aeo-structured-data` + `aeo-faq-schema` | P10 `understand.json-ld` (real detection; merged) |
 | `aeo-faq-answer-quality` | P12 `understand.faq-quality` (any component) |
 | `cq-uniqueness` | P16 `trust.uniqueness` (full body) |
@@ -465,8 +482,9 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 - Build the check registry, the tier/pool scoring, the gate, N/A handling and site type.
 - Move every existing check to its new ID. Delete `site-score.ts` and the old pillar types once nothing imports them.
 - Make D2 real JSON-LD detection (P10).
+- Build S7 `understand.org-schema` with the same JSON-LD parser, using the four scoring rules in section 5.2. Its home-page detection and grading move here from Phase 6, so the false 5/5 is gone before the UI redesign. Phase 6 only adds it to the Agent access tab.
 - The engine is UI-agnostic. Keep the old UI temporarily through an adapter.
-- **Accept when:** vitest covers the scoring maths (pools, partial credit, N/A, bonus cap, gate), and the panel and dashboard show the **same** score for the same page.
+- **Accept when:** vitest covers the scoring maths (pools, partial credit, N/A, bonus cap, gate), and the panel and dashboard show the **same** score for the same page. S7 has vitest cases for all four rules, plus `@graph`, `@type` arrays and subtypes, and BrandX's home page (no JSON-LD) scores 0 with a warning and a snippet.
 
 ### Phase 4 — Draft and live data sources (section 7)
 - Create a `usePageHtml` hook (getPageHTML with debounced refresh on `fieldsUpdated`, plus fallback).
@@ -490,7 +508,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 
 ### Phase 6 — Site agent-access checks (S1–S12)
 - Create `api/agent-access` (bot user-agent matrix, robots parsing with bot groups, sitemap, llms.txt, trust pages, 404, Content-Signal, Link headers, protocol well-knowns).
-- Build the Agent access tab and the panel's site-issues strip.
+- Build the Agent access tab and the panel's site-issues strip. S7 (organisation schema) comes from Phase 3; this phase only displays it.
 - Extend the robots.txt helper to generate the AI rules and Content-Signal lines.
 - **Accept when:** a demo fixture shows a blocked user agent (403 for ChatGPT-User), and a real site scan finishes in under 20 s.
 
