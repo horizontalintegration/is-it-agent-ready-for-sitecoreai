@@ -17,6 +17,7 @@ import {
   daysSince,
   normaliseUrl,
 } from "./helpers";
+import { labelForPct, type ScoreLabel } from "@/lib/score-thresholds";
 
 export interface SiteScoreInput {
   parsedHtml: ParsedHtml | null;
@@ -41,9 +42,9 @@ function isArticleTemplate(name: string | null | undefined): boolean {
 
 export interface SiteScorePillars {
   crawlability: number;      // 0-15
-  structured: number;        // 0-20
+  structured: number;        // 0-17, and the max varies per page (see scoreStructured)
   answerability: number;     // 0-20
-  authority: number;         // 0-25
+  authority: number;         // 0-28
   retrievability: number;    // 0-20
 }
 
@@ -52,22 +53,21 @@ export interface SiteScoreResult {
   maxTotal: number;          // sum of pillar maxes — varies per page (Structured is conditional)
   pillars: SiteScorePillars;
   maxPillars: SiteScorePillars;
-  label: "critical" | "warning" | "good";
+  label: ScoreLabel;
 }
 
+// `structured` is the ceiling: runSiteScore replaces it with the per-page max
+// from scoreStructured (FAQPage 8 + Article 6 + BreadcrumbList or Organization 3).
 const MAX_PILLARS: SiteScorePillars = {
   crawlability: 15,
-  structured: 20,
+  structured: 17,
   answerability: 20,
   authority: 28,
   retrievability: 20,
 };
 
 function labelFor(total: number, maxTotal: number): SiteScoreResult["label"] {
-  const pct = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
-  if (pct < 40) return "critical";
-  if (pct <= 70) return "warning";
-  return "good";
+  return labelForPct(maxTotal > 0 ? (total / maxTotal) * 100 : 0);
 }
 
 // ── Crawlability (15) ────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ function scoreCrawlability(html: ParsedHtml, robots: RobotsTxt | null, pageUrl: 
   return Math.min(score, MAX_PILLARS.crawlability);
 }
 
-// ── Structured (20) ──────────────────────────────────────────────────────────
+// ── Structured (0–17, per page) ──────────────────────────────────────────────
 
 function hasJsonLdType(html: ParsedHtml, types: string[]): boolean {
   const wanted = types.map((t) => t.toLowerCase());
@@ -120,7 +120,7 @@ function hasJsonLdType(html: ParsedHtml, types: string[]): boolean {
 /**
  * Structured-data score with per-page applicability:
  *   - FAQPage   — only when the page has FAQ-like content (≥2 question-style H2s)
- *   - Article   — only when the page template matches ARTICLE_TEMPLATE_ID
+ *   - Article   — only when the page template name matches ARTICLE_TEMPLATE_NAME
  *   - Breadcrumb — only on non-home pages
  *   - Organization — only on the home page
  *
@@ -207,7 +207,7 @@ function scoreAnswerability(html: ParsedHtml): number {
   return Math.min(score, MAX_PILLARS.answerability);
 }
 
-// ── Authority (25) ───────────────────────────────────────────────────────────
+// ── Authority (28) ───────────────────────────────────────────────────────────
 
 function scoreAuthority(html: ParsedHtml, ai: AiResults | null, updatedAt: string | null): number {
   let score = 0;
@@ -335,7 +335,7 @@ export function runSiteScore(input: SiteScoreInput): SiteScoreResult {
     retrievability: scoreRetrievability(parsedHtml),
   };
 
-  // Structured pillar's max varies per page (between 0 and 20) depending on
+  // Structured pillar's max varies per page (between 0 and 17) depending on
   // which schema checks applied. Other pillars use the fixed defaults.
   const maxPillars: SiteScorePillars = {
     ...MAX_PILLARS,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractParsedHtml, fetchWithTimeout } from "@/lib/server/extract-html";
+import { extractParsedHtml } from "@/lib/server/extract-html";
+import { safeFetch, SafeFetchError, validateUrl } from "@/lib/server/safe-fetch";
 import { QUESTION_REGEX, wordCount } from "@/lib/rule-engine/helpers";
 import type { ParsedHtml } from "@/lib/rule-engine/types";
 import type {
@@ -207,6 +208,12 @@ export async function POST(req: NextRequest) {
   if (!pageUrl) {
     return NextResponse.json({ error: "missing_pageUrl" }, { status: 400, headers: CORS_HEADERS });
   }
+  try {
+    validateUrl(pageUrl);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    return NextResponse.json({ error: "blocked_url", detail }, { status: 400, headers: CORS_HEADERS });
+  }
 
   const fetchHeaders: Record<string, string> = {};
   if (body.token) fetchHeaders["x-prerender-revalidate"] = body.token;
@@ -225,25 +232,27 @@ export async function POST(req: NextRequest) {
 
   // Fetch the page, the homepage (site-level schema), and robots.txt in parallel.
   const [pageRes, homeRes, robotsRes] = await Promise.allSettled([
-    fetchWithTimeout(pageUrl, { headers: fetchHeaders, timeoutMs: 10_000 }).then((r) =>
+    safeFetch(pageUrl, { headers: fetchHeaders, timeoutMs: 10_000 }).then((r) =>
       r.ok ? r.text() : Promise.reject(new Error(`page ${r.status}`)),
     ),
     origin
-      ? fetchWithTimeout(origin, { headers: fetchHeaders, timeoutMs: 8_000 }).then((r) =>
+      ? safeFetch(origin, { headers: fetchHeaders, timeoutMs: 8_000 }).then((r) =>
           r.ok ? r.text() : null,
         )
       : Promise.resolve(null),
     origin
-      ? fetchWithTimeout(`${origin}/robots.txt`, { timeoutMs: 5_000 }).then((r) =>
+      ? safeFetch(`${origin}/robots.txt`, { timeoutMs: 5_000, maxBytes: 512 * 1024 }).then((r) =>
           r.ok ? r.text() : null,
         )
       : Promise.resolve(null),
   ]);
 
   if (pageRes.status !== "fulfilled") {
+    const reason = pageRes.reason;
+    const blocked = reason instanceof SafeFetchError && reason.isBadInput;
     return NextResponse.json(
-      { error: "page_fetch_failed", detail: pageRes.status === "rejected" ? String(pageRes.reason) : "" },
-      { status: 502, headers: CORS_HEADERS },
+      { error: blocked ? "blocked_url" : "page_fetch_failed", detail: String(reason) },
+      { status: blocked ? 400 : 502, headers: CORS_HEADERS },
     );
   }
 

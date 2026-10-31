@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
 
   const pageTitle = body.pageTitle ?? "";
   const bodyText = (body.bodyText ?? "").slice(0, 3000);
+  console.info(
+    `[ai-check] "${pageTitle.slice(0, 80)}": received ${body.bodyText?.length ?? 0} chars of body text, sending ${bodyText.length}`,
+  );
 
   const uniquenessPrompt = `Does this web page provide unique value — first-hand experience, original research, or expert insight beyond common knowledge? Or does it primarily restate widely available information?
 

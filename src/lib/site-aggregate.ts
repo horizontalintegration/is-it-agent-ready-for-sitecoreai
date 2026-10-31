@@ -8,8 +8,9 @@
 
 import type { PageMatrixRow } from "@/types/dashboard";
 import type { SiteScoreResult } from "@/lib/rule-engine/site-score";
+import { labelForPct, type ScoreLabel } from "@/lib/score-thresholds";
 
-export type ScoreLabel = SiteScoreResult["label"];
+export { labelForPct, type ScoreLabel };
 export type PillarKey = keyof SiteScoreResult["pillars"];
 
 // Display order + the per-category max contribution (mirrors site-score MAX_PILLARS).
@@ -23,13 +24,6 @@ export const PILLAR_ORDER: PillarKey[] = [
 
 // A page "fails" a category when it scores below this fraction of the category max.
 const FAIL_THRESHOLD = 0.4;
-
-// Mirror site-score's labelFor thresholds so the hero label matches per-row labels.
-export function labelForPct(pct: number): ScoreLabel {
-  if (pct < 40) return "critical";
-  if (pct <= 70) return "warning";
-  return "good";
-}
 
 export interface CategoryAggregate {
   key: PillarKey;

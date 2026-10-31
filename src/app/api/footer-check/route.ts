@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractFooterTrust, fetchWithTimeout } from "@/lib/server/extract-html";
+import { extractFooterTrust } from "@/lib/server/extract-html";
+import { safeFetch, SafeFetchError } from "@/lib/server/safe-fetch";
 import type { FooterTrust } from "@/lib/rule-engine/types";
 
 const CORS_HEADERS = {
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     // The footer is a shared layout element, so the site root is representative.
     const base = domain.startsWith("http") ? domain : `https://${domain}`;
     const url = `${base.replace(/\/+$/, "")}/`;
-    const res = await fetchWithTimeout(url, { timeoutMs: 8_000 });
+    const res = await safeFetch(url, { timeoutMs: 8_000 });
 
     if (!res.ok) {
       return NextResponse.json(ALL_ABSENT, { headers: CORS_HEADERS });
@@ -39,7 +40,10 @@ export async function GET(req: NextRequest) {
 
     const body = await res.text();
     return NextResponse.json(extractFooterTrust(body), { headers: CORS_HEADERS });
-  } catch {
+  } catch (err) {
+    if (err instanceof SafeFetchError && err.isBadInput) {
+      return NextResponse.json({ error: "blocked_url", detail: err.message }, { status: 400, headers: CORS_HEADERS });
+    }
     return NextResponse.json(ALL_ABSENT, { headers: CORS_HEADERS });
   }
 }

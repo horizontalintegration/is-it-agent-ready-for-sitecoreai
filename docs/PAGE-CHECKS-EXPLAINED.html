@@ -33,7 +33,7 @@
 </head>
 <body>
 <h1>Page Checks Explained — A Guide for Marketers</h1>
-<p>This guide explains, in plain language, every page-level check our tool runs and <strong>why each one matters</strong>. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"</p>
+<p>This guide explains, in plain language, every page-level check that <strong>Is It Agent-Ready? for SitecoreAI</strong> runs in the Page Builder panel ("Is this page agent-ready?") and <strong>why each one matters</strong>. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"</p>
 <hr/>
 <h2>First, what do SEO, AEO, and GEO mean?</h2>
 <p>Think of these as three different "audiences" reading your page:</p>
@@ -115,7 +115,7 @@
 <p><strong>Why it matters:</strong> Answer engines prefer answers they can lift and read aloud word-for-word. A one-word answer is useless; a giant paragraph won't fit in an answer box. The "just right" length is what gets featured.</p>
 <hr/>
 <h3>10. Organization Schema — *5 points*</h3>
-<p><strong>What it checks:</strong> Whether your site identifies your company in machine-readable code (name, logo, etc.). The tool <strong>generates this snippet for you</strong>.</p>
+<p><strong>What it checks:</strong> Whether your site identifies your company in machine-readable code (name, logo, etc.). The tool <strong>generates this snippet for you</strong>, filled in with your organization's details. If those haven't been set up yet, it uses your site's name and address, and marks the rest as placeholders to replace.</p>
 <p><strong>Why it matters:</strong> This helps your brand appear in Google's "knowledge panel" (the info box on the right of search results) and helps AI confidently state who you are. It's foundational trust-building for your brand identity online.</p>
 <hr/>
 <h3>11. Rich Results Eligibility (Breadcrumbs) — *5 points*</h3>
@@ -124,7 +124,7 @@
 <hr/>
 <h2>🟣 Content Quality Checks — Earning AI's Trust / GEO (23 points)</h2>
 <h3>12. Unique Content Signal — *10 points (the biggest single check)*</h3>
-<p><strong>What it checks:</strong> Our AI reads the page and judges whether the content is genuinely <strong>unique and valuable</strong> versus generic, "could've-been-copied-from-anywhere" filler.</p>
+<p><strong>What it checks:</strong> Our AI reads the page's main text (headings, paragraphs and lists, without the menu and footer) and judges whether the content is genuinely <strong>unique and valuable</strong> versus generic, "could've-been-copied-from-anywhere" filler.</p>
 <p><strong>Why it matters:</strong> This is the heart of GEO. AI assistants and modern search reward original insight, expertise, and real value. Thin, commodity content gets ignored or buried. Unique content is what gets cited and ranked. This carries the most weight because it matters the most.</p>
 <hr/>
 <h3>13. Page Experience (Speed) — *5 points*</h3>
@@ -243,6 +243,15 @@
 <td style="text-align:left"></td>
 </tr>
 </tbody></table>
+<p>The score in the panel header turns <strong>green at 80% or more</strong>, <strong>amber from 60% to 79%</strong>, and <strong>red below 60%</strong>. The dashboard uses the same thresholds.</p>
+<hr/>
+<h2>Meta &amp; social generator</h2>
+<p>Below the checks, the panel can write the <strong>meta title, meta description, Open Graph title and Open Graph description</strong> for you. Click <strong>Generate</strong> on a field, review the suggestion, then click <strong>Populate field</strong> to write it into the page in Sitecore.</p>
+<ul>
+<li>Suggestions are written <strong>from the page's main text</strong>, so they describe what the page actually says. The button waits until the page scan has read the text.</li>
+<li>They follow your <strong>brand voice document</strong>: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.</li>
+<li>Nothing is saved until you click <strong>Populate field</strong>.</li>
+</ul>
 <hr/>
 <h2>Demo talking points (the big picture)</h2>
 <ul>

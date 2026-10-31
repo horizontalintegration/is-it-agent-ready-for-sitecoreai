@@ -12,7 +12,6 @@ interface UseScanInput {
   pageUrl: string;
   siteDomain: string;
   editingToken: string;
-  bodyText: string;
   pageTitle: string;
 }
 
@@ -45,7 +44,7 @@ async function tryJson<T>(p: Promise<Response>): Promise<T | null> {
 }
 
 export function useScan(input: UseScanInput): UseScanResult {
-  const { pageUrl, siteDomain, editingToken, bodyText, pageTitle } = input;
+  const { pageUrl, siteDomain, editingToken, pageTitle } = input;
 
   const [parsedHtml, setParsedHtml] = useState<ParsedHtml | null>(null);
   const [robotsTxt, setRobotsTxt] = useState<RobotsTxt | null>(null);
@@ -59,12 +58,41 @@ export function useScan(input: UseScanInput): UseScanResult {
 
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-  // Refs so the auto-scan effect always reads the latest values without
+  // Ref so the auto-scan effect always reads the latest title without
   // re-triggering on every authoring field keystroke.
-  const bodyTextRef = useRef(bodyText);
   const pageTitleRef = useRef(pageTitle);
-  useEffect(() => { bodyTextRef.current = bodyText; }, [bodyText]);
   useEffect(() => { pageTitleRef.current = pageTitle; }, [pageTitle]);
+
+  const fetchHtml = useCallback(() => {
+    const tokenParam = editingToken ? `&token=${encodeURIComponent(editingToken)}` : "";
+    return tryJson<ParsedHtml>(
+      fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(pageUrl)}${tokenParam}`)
+    );
+  }, [base, pageUrl, editingToken]);
+
+  // The AI checks read the page's main text from preview-fetch, so they run
+  // after it. With no main text there's nothing to judge, so the call is skipped.
+  const fetchAi = useCallback(
+    (title: string, html: ParsedHtml | null): Promise<AiResults | null> => {
+      const bodyText = html?.mainText ?? "";
+      if (!bodyText) {
+        console.info("[scan] ai-check skipped: preview-fetch returned no main text");
+        return Promise.resolve(null);
+      }
+      console.info(
+        `[scan] ai-check body: ${bodyText.length} chars of main text —`,
+        bodyText.slice(0, 200),
+      );
+      return tryJson<AiResults>(
+        fetch(`${base}/api/ai-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageTitle: title, bodyText }),
+        })
+      );
+    },
+    [base],
+  );
 
   // Robots.txt is site-wide — fetch once per domain.
   const robotsFetchedRef = useRef<string | null>(null);
@@ -88,27 +116,20 @@ export function useScan(input: UseScanInput): UseScanResult {
     setIsScanning(true);
 
     let cancelled = false;
-    const tokenParam = editingToken ? `&token=${encodeURIComponent(editingToken)}` : "";
 
-    Promise.allSettled([
-      tryJson<ParsedHtml>(fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(pageUrl)}${tokenParam}`)),
-      tryJson<AiResults>(
-        fetch(`${base}/api/ai-check`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageTitle: pageTitleRef.current, bodyText: bodyTextRef.current }),
-        })
-      ),
-    ]).then(([htmlRes, aiRes]) => {
+    (async () => {
+      const html = await fetchHtml();
       if (cancelled) return;
-      if (htmlRes.status === "fulfilled" && htmlRes.value) setParsedHtml(htmlRes.value);
-      if (aiRes.status === "fulfilled" && aiRes.value) setAi(aiRes.value);
+      if (html) setParsedHtml(html);
+      const aiResult = await fetchAi(pageTitleRef.current, html);
+      if (cancelled) return;
+      if (aiResult) setAi(aiResult);
       setLastScannedAt(new Date());
       setIsScanning(false);
-    });
+    })();
 
     return () => { cancelled = true; };
-  }, [pageUrl, editingToken, base]);
+  }, [pageUrl, fetchHtml, fetchAi]);
 
   // Manual Re-scan page — reruns all page-level checks without clearing
   // current results, so scores remain visible while refreshing.
@@ -120,41 +141,26 @@ export function useScan(input: UseScanInput): UseScanResult {
     setError(null);
     setIsScanning(true);
 
-    const tokenParam = editingToken ? `&token=${encodeURIComponent(editingToken)}` : "";
-
-    Promise.allSettled([
-      tryJson<ParsedHtml>(fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(pageUrl)}${tokenParam}`)),
-      tryJson<AiResults>(
-        fetch(`${base}/api/ai-check`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageTitle, bodyText }),
-        })
-      ),
-    ]).then(([htmlRes, aiRes]) => {
-      if (htmlRes.status === "fulfilled" && htmlRes.value) setParsedHtml(htmlRes.value);
-      if (aiRes.status === "fulfilled" && aiRes.value) setAi(aiRes.value);
+    (async () => {
+      const html = await fetchHtml();
+      if (html) setParsedHtml(html);
+      const aiResult = await fetchAi(pageTitle, html);
+      if (aiResult) setAi(aiResult);
       setLastScannedAt(new Date());
       setIsScanning(false);
-    });
-  }, [pageUrl, editingToken, bodyText, pageTitle, base]);
+    })();
+  }, [pageUrl, pageTitle, fetchHtml, fetchAi]);
 
   // Individual scans — only run their specific check.
   const runAiScan = useCallback(() => {
     if (!pageUrl) return;
     setIsAiScanning(true);
-    tryJson<AiResults>(
-      fetch(`${base}/api/ai-check`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageTitle, bodyText }),
-      })
-    ).then((result) => {
+    fetchAi(pageTitle, parsedHtml).then((result) => {
       if (result) setAi(result);
       setLastScannedAt(new Date());
       setIsAiScanning(false);
     });
-  }, [pageUrl, pageTitle, bodyText, base]);
+  }, [pageUrl, pageTitle, parsedHtml, fetchAi]);
 
   const runPsiScan = useCallback(() => {
     if (!pageUrl) return;

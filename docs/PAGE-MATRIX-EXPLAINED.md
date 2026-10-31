@@ -1,6 +1,6 @@
 # Page Matrix Explained — A Guide for Marketers
 
-The **Page Matrix** is the dashboard view that grades every page on your site across **5 big-picture categories**. Where the per-page checker is a detailed checklist, the Page Matrix is the **scorecard at a glance** — one row per page, one score per category, so you can spot weak pages instantly.
+The **Page Matrix** is the view in the **Is It Agent-Ready? for SitecoreAI** dashboard ("Is this site agent-ready?") that grades every page on your site across **5 big-picture categories**. Where the per-page checker is a detailed checklist, the Page Matrix is the **scorecard at a glance** — one row per page, one score per category, so you can spot weak pages instantly.
 
 This guide explains each of the 5 categories in plain language, what feeds into them, and why each matters. Use it as a demo cheat sheet.
 
@@ -29,9 +29,11 @@ Modern search isn't just Google anymore — AI assistants (ChatGPT, Gemini, Clau
 
 | Label | Score | Meaning |
 |-------|-------|---------|
-| 🟢 **Good** | 71–100% | Search-ready — AI can find, trust, and use it |
-| 🟡 **Warning** | 40–70% | Needs work — some gaps holding it back |
-| 🔴 **Critical** | Below 40% | Major issues — likely invisible to AI search |
+| 🟢 **Good** | 80–100% | Search-ready — AI can find, trust, and use it |
+| 🟡 **Warning** | 60–79% | Needs work — some gaps holding it back |
+| 🔴 **Critical** | Below 60% | Major issues — likely invisible to AI search |
+
+The page panel in Page Builder uses the same thresholds, so a page shows the same color in both places.
 
 > **Smart scoring:** A page is only graded on what actually applies to it. For example, your homepage isn't penalized for missing "Article" labels, and a page with no FAQs isn't marked down for missing FAQ labels. The denominator adjusts per page, so scores are always fair.
 
@@ -50,7 +52,7 @@ Modern search isn't just Google anymore — AI assistants (ChatGPT, Gemini, Clau
 
 ---
 
-## 🟢 Category 2: Structured Data — *Do they understand it?* (up to 20 points)
+## 🟢 Category 2: Structured Data — *Do they understand it?* (up to 17 points)
 
 **The plain version:** Structured data (called "schema") is invisible labeling in the code that spells out *what your content is* — "this is an FAQ," "this is an article," "this is the company info." It turns a wall of text into clearly labeled parts a machine can understand instantly.
 
@@ -85,7 +87,7 @@ Modern search isn't just Google anymore — AI assistants (ChatGPT, Gemini, Clau
 **The plain version:** AI won't cite content it doesn't trust. Authority measures whether your content is **original, substantial, current, and well-connected** — the marks of a credible source.
 
 **What feeds into it:**
-- **Content uniqueness** *(AI-judged)* — our AI reads the page and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. **This is the single biggest factor in the whole Matrix.**
+- **Content uniqueness** *(AI-judged)* — our AI reads the page's main text and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. **This is the single biggest factor in the whole Matrix.**
 - **Content depth** — whether there's enough substance (word count) to be useful, vs. thin content.
 - **Freshness** — how recently the page was published or updated. Stale pages lose trust.
 - **Descriptive links** — whether internal links use meaningful text (not vague "click here").
@@ -114,7 +116,7 @@ Modern search isn't just Google anymore — AI assistants (ChatGPT, Gemini, Clau
 | Category | Points | The question | What to fix if it's low |
 |----------|-------:|--------------|-------------------------|
 | 🔵 **Crawlability** | 15 | Can AI bots get in? | Unblock AI crawlers, add canonical, remove accidental noindex |
-| 🟢 **Structured Data** | up to 20 | Can AI understand it? | Add the right schema (FAQ / Article / Breadcrumb / Organization) |
+| 🟢 **Structured Data** | up to 17 | Can AI understand it? | Add the right schema (FAQ / Article / Breadcrumb / Organization) |
 | 🟠 **Answerability** | 20 | Can AI quote it? | Fix headings, add question sections, simplify writing, size paragraphs |
 | 🟣 **Authority** | 28 | Does AI trust it? | Make content original & deeper, refresh dates, improve link text |
 | 🔴 **Retrievability** | 20 | Will AI pick it? | Tune title & description length, complete OG tags, add landmarks & alt text |

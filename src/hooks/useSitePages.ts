@@ -16,7 +16,8 @@ import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 // Bump the version suffix whenever the scoring logic changes shape (pillar maxes,
 // new checks, etc.) so cached SiteScoreResults from an older engine don't render
 // stale values like "3/20" after the structured max became per-page (commit 98c12cb).
-const CACHE_KEY_PREFIX = "aiDiscovery:scores:v2:";
+// v3: shared 80/60 label thresholds, and the AI check reads the page's main text.
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v3:";
 
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
@@ -463,9 +464,9 @@ export function useSitePages(
       let ai: AiResults | null =
         aiRes.status === "fulfilled" ? aiRes.value : null;
 
-      // Fire AI with real body text once HTML is in hand
-      if (parsedHtml && parsedHtml.paragraphs.length > 0) {
-        const bodyText = parsedHtml.paragraphs.join("\n\n").slice(0, 4000);
+      // Fire AI with the page's main text once HTML is in hand (same body as the panel)
+      if (parsedHtml?.mainText) {
+        const bodyText = parsedHtml.mainText;
         ai = await tryJson<AiResults>(
           fetch(`${base}/api/ai-check`, {
             method: "POST",

@@ -1,5 +1,56 @@
-import { parse } from "node-html-parser";
+import { parse, NodeType, type HTMLElement, type Node, type TextNode } from "node-html-parser";
 import type { FooterTrust, ParsedHtml } from "@/lib/rule-engine/types";
+
+/** Upper bound on `mainText`, so a very long page doesn't bloat the JSON response. */
+export const MAIN_TEXT_MAX_CHARS = 20_000;
+
+// Never content, wherever they appear.
+const NON_CONTENT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "iframe", "nav"]);
+// Site chrome. Skipped only when there is no <main>: inside <main>, a <header>
+// or <footer> usually belongs to an article (title, byline, date).
+const CHROME_TAGS = new Set(["header", "footer"]);
+// Elements that start a new line, so adjacent blocks don't run together.
+const BLOCK_TAGS = new Set([
+  "address", "article", "aside", "blockquote", "br", "dd", "details", "div", "dl", "dt",
+  "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "li", "main", "ol",
+  "p", "pre", "section", "summary", "table", "td", "th", "tr", "ul",
+]);
+
+function collectText(node: Node, skip: Set<string>, out: string[]): void {
+  if (node.nodeType === NodeType.TEXT_NODE) {
+    out.push((node as TextNode).text); // .text decodes entities (&nbsp;, &amp;, …)
+    return;
+  }
+  if (node.nodeType !== NodeType.ELEMENT_NODE) return;
+  const el = node as HTMLElement;
+  const tag = el.rawTagName?.toLowerCase() ?? "";
+  if (skip.has(tag)) return;
+  if (el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true") return;
+  const block = BLOCK_TAGS.has(tag);
+  if (block) out.push("\n");
+  for (const child of el.childNodes) collectText(child, skip, out);
+  if (block) out.push("\n");
+}
+
+/**
+ * The page's main readable text: `<main>` when present, otherwise `<body>`
+ * without header, nav and footer. Entities are decoded, whitespace is
+ * collapsed, and each block element sits on its own line.
+ */
+export function extractMainText(root: HTMLElement): string {
+  const main = root.querySelector("main");
+  const scope = main ?? root.querySelector("body") ?? root;
+  const skip = main ? NON_CONTENT_TAGS : new Set([...NON_CONTENT_TAGS, ...CHROME_TAGS]);
+  const out: string[] = [];
+  collectText(scope, skip, out);
+  return out
+    .join("")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n")
+    .slice(0, MAIN_TEXT_MAX_CHARS);
+}
 
 /**
  * Unwrap the Next.js image optimizer URL (`/_next/image?url=<encoded>`) to the
@@ -43,6 +94,8 @@ export function extractParsedHtml(html: string): ParsedHtml {
     .querySelectorAll("p")
     .map((p) => p.innerText.replace(/\s+/g, " ").trim())
     .filter((t) => t.length > 0);
+
+  const mainText = extractMainText(root);
 
   const title = root.querySelector("title")?.innerText.trim() || null;
   const metaDescription = root.querySelector('meta[name="description"]')?.getAttribute("content") ?? null;
@@ -99,6 +152,7 @@ export function extractParsedHtml(html: string): ParsedHtml {
     images,
     links,
     paragraphs,
+    mainText,
     canonicalHref,
     robotsMeta,
     googlebotMeta,
@@ -143,15 +197,4 @@ export function extractFooterTrust(html: string): FooterTrust {
     hasSecurity: hasLink(/\/(security|trust)\b/),
     hasAbout: hasLink(/\/about/),
   };
-}
-
-export async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
-  const { timeoutMs = 10_000, ...rest } = init;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...rest, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
 }

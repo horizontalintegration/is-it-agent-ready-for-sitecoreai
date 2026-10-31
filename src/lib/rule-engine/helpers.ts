@@ -205,25 +205,21 @@ export function buildFaqPageJsonLd(faqItems: import("./types").FaqItem[]): strin
   return `<script type="application/ld+json">\n${JSON.stringify(jsonLd, null, 2)}\n</script>`;
 }
 
-/** Static Organization JSON-LD <script> snippet for the site (preview only). */
-export function buildOrganizationJsonLd(): string {
+/**
+ * Organization JSON-LD <script> snippet for the site (preview only). Missing
+ * name, URL or logo become obvious placeholders for the author to replace;
+ * missing description and sameAs are left out.
+ */
+export function buildOrganizationJsonLd(org: import("./types").OrganizationInfo): string {
+  const url = org.url ?? "https://www.example.com/";
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "BrandX",
-    url: "https://blueprint-brandx.horizontaldigital.com/",
-    logo: "https://blueprint-brandx.horizontaldigital.com/logo.png",
-    description:
-      "At BrandX, our advisors craft custom financial strategies to match your goals, risk tolerance, and timeline. With over two decades of expertise and a client-first approach, we help you invest smarter, retire better, and grow confidently.",
-    sameAs: [
-      "https://www.linkedin.com/company/brandx",
-      "https://twitter.com/brandx",
-      "https://www.instagram.com/brandx",
-      "https://www.facebook.com/brandx",
-      "https://www.pinterest.com/brandx",
-      "https://www.youtube.com/brandx",
-      "https://www.tiktok.com/brandx",
-    ],
+    name: org.name ?? "YOUR ORGANIZATION NAME",
+    url,
+    logo: org.logo ?? `${url.replace(/\/+$/, "")}/YOUR-LOGO.png`,
+    ...(org.description ? { description: org.description } : {}),
+    ...(org.sameAs.length > 0 ? { sameAs: org.sameAs } : {}),
   };
   return `<script type="application/ld+json">\n${JSON.stringify(jsonLd, null, 2)}\n</script>`;
 }

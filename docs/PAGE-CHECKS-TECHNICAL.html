@@ -33,7 +33,7 @@
 </head>
 <body>
 <h1>Page Checks — Technical Reference</h1>
-<p>A detailed, engineering-oriented breakdown of every page-level check in the Sitecore AI Page Search Readiness Checker: what it inspects, the exact thresholds and scoring math, and where it lives in the codebase.</p>
+<p>A detailed, engineering-oriented breakdown of every page-level check in <strong>Is It Agent-Ready? for SitecoreAI</strong> (the Page Builder context panel): what it inspects, the exact thresholds and scoring math, and where it lives in the codebase.</p>
 <p><strong>Source of truth:</strong> <code>src/lib/rule-engine/engine.ts</code> (check definitions), <code>helpers.ts</code> (shared utilities), <code>types.ts</code> (interfaces), <code>site-score.ts</code> (site-level aggregation).</p>
 <hr/>
 <h2>Scoring model</h2>
@@ -47,6 +47,7 @@
 <ul>
 <li>Info-only checks contribute <code>0</code> to the total but emit findings/guidance.</li>
 <li>A <strong>gate check</strong> runs before scoring and short-circuits the whole panel if the page is intentionally excluded from indexing.</li>
+<li>The header <code>ScoreRing</code> (and every <code>ScorePill</code>) is green at ≥ 80%, amber at 60–79% and red below 60%. These thresholds live in <code>src/lib/score-thresholds.ts</code> (<code>READY_PCT</code>, <code>ALMOST_PCT</code>, <code>labelForPct</code>) and are shared with the dashboard.</li>
 </ul>
 <h3>SEO / AEO / GEO definitions (technical framing)</h3>
 <table><thead><tr>
@@ -76,7 +77,7 @@
 </tbody></table>
 <hr/>
 <h2>Gate check — noindex / nosnippet</h2>
-<p><strong>Location:</strong> <code>engine.ts:32–71</code></p>
+<p><strong>Location:</strong> <code>engine.ts:33–72</code></p>
 <p><strong>Logic:</strong> Before any scoring, evaluate exclusion signals:</p>
 <p>1. Sitecore <code>noindex</code> field set on the item, <strong>OR</strong></p>
 <p>2. <code>&lt;meta name="robots"&gt;</code> / <code>&lt;meta name="googlebot"&gt;</code> containing <code>noindex</code>, <code>nosnippet</code>, or <code>max-snippet:0</code>.</p>
@@ -85,7 +86,7 @@
 <h2>SEO checks (35 pts)</h2>
 <h3>1. <code>seo-meta-title</code> — Meta Title Length</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:78</code></li>
+<li><strong>Location:</strong> <code>engine.ts:79</code></li>
 <li><strong>Inspects:</strong> Character length of the page title field.</li>
 <li><strong>Scoring (max 8):</strong></li>
 </ul>
@@ -97,7 +98,7 @@
 </ul>
 <h3>2. <code>seo-meta-description</code> — Meta Description Present + Length</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:154</code></li>
+<li><strong>Location:</strong> <code>engine.ts:155</code></li>
 <li><strong>Inspects:</strong> Presence and length of the meta description.</li>
 <li><strong>Scoring (max 8):</strong></li>
 </ul>
@@ -109,7 +110,7 @@
 </ul>
 <h3>3. <code>seo-headings</code> — H1 Count + Heading Hierarchy</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:212</code></li>
+<li><strong>Location:</strong> <code>engine.ts:213</code></li>
 <li><strong>Inspects:</strong> Count of <code>&lt;h1&gt;</code> and whether heading levels descend without skips.</li>
 <li><strong>Scoring (max 6 = 3 + 3):</strong></li>
 </ul>
@@ -120,7 +121,7 @@
 </ul>
 <h3>4. <code>seo-image-alt</code> — Image Alt Text Coverage</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:288</code></li>
+<li><strong>Location:</strong> <code>engine.ts:289</code></li>
 <li><strong>Inspects:</strong> Ratio of <code>&lt;img&gt;</code> elements with non-empty <code>alt</code>.</li>
 <li><strong>Scoring (max 5):</strong> <code>round((imagesWithAlt / totalImages) * 5)</code></li>
 </ul>
@@ -132,7 +133,7 @@
 </ul>
 <h3>5. <code>seo-canonical</code> — Canonical Tag</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:365</code></li>
+<li><strong>Location:</strong> <code>engine.ts:366</code></li>
 <li><strong>Inspects:</strong> Presence and target of <code>&lt;link rel="canonical"&gt;</code>.</li>
 <li><strong>Scoring (max 5):</strong></li>
 </ul>
@@ -144,7 +145,7 @@
 </ul>
 <h3>6. <code>seo-og-tags</code> — Open Graph Tags</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:426</code></li>
+<li><strong>Location:</strong> <code>engine.ts:427</code></li>
 <li><strong>Inspects:</strong> Presence of <code>og:title</code>, <code>og:description</code>, <code>og:image</code>.</li>
 <li><strong>Scoring (max 3):</strong> score = count of present tags</li>
 </ul>
@@ -154,7 +155,7 @@
 </ul>
 <h3>7. <code>seo-anchor-text</code> — Internal Link Anchor Text Quality *(info-only, 0 pts)*</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:472</code></li>
+<li><strong>Location:</strong> <code>engine.ts:473</code></li>
 <li><strong>Inspects:</strong> Internal anchors against a generic-phrase blocklist ("click here", "read more", "learn more", etc.; see <code>helpers.ts</code>).</li>
 <li><strong>Output:</strong> Count and list of generic anchors; no score.</li>
 <li><strong>Rationale:</strong> Anchor text is a relevance signal; generic anchors waste it.</li>
@@ -163,28 +164,28 @@
 <h2>AEO checks (23 pts)</h2>
 <h3>8. <code>aeo-faq-schema</code> — FAQPage JSON-LD</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:511</code></li>
+<li><strong>Location:</strong> <code>engine.ts:512</code></li>
 <li><strong>Inspects:</strong> FAQ accordion items in content; <strong>generates</strong> a <code>FAQPage</code> JSON-LD block ready to paste.</li>
 <li><strong>Scoring (max 8):</strong> full score when no FAQ items present, otherwise emits generated schema.</li>
 <li><strong>Rationale:</strong> Eligibility for FAQ rich results and direct answer extraction.</li>
 </ul>
 <h3>9. <code>aeo-faq-answer-quality</code> — FAQ Answer Length &amp; Quality</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:553</code></li>
+<li><strong>Location:</strong> <code>engine.ts:554</code></li>
 <li><strong>Inspects:</strong> Each FAQ answer for: plain text (no HTML), length ∈ [40, 300] chars, self-contained.</li>
 <li><strong>Scoring (max 5):</strong> <code>(qualifyingAnswers / totalAnswers) * 5</code></li>
 <li><strong>Rationale:</strong> Snippet/voice extraction favors concise, standalone answers.</li>
 </ul>
 <h3>10. <code>aeo-organization-schema</code> — Organization JSON-LD</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:702</code></li>
-<li><strong>Inspects:</strong> Generates a ready-to-paste <code>Organization</code> JSON-LD snippet (name, logo, etc.).</li>
+<li><strong>Location:</strong> <code>engine.ts:704</code></li>
+<li><strong>Inspects:</strong> Generates a ready-to-paste <code>Organization</code> JSON-LD snippet (<code>buildOrganizationJsonLd</code> in <code>helpers.ts</code>) from <code>PageData.organization</code>. That comes from <code>getOrganizationInfo</code> (<code>src/lib/brand/organization.ts</code>): the <code>NEXT_PUBLIC_ORG_NAME</code> / <code>_URL</code> / <code>_LOGO</code> / <code>_DESCRIPTION</code> / <code>_SAME_AS</code> env vars, falling back to the site's display name and domain from <code>pages.context</code>. A missing name, URL or logo becomes a placeholder; when there's no name the value reads "Not configured". BrandX appears only in the demo fixture.</li>
 <li><strong>Scoring (max 5):</strong> always full — provides the snippet for the global template.</li>
 <li><strong>Rationale:</strong> Knowledge-panel eligibility and entity disambiguation.</li>
 </ul>
 <h3>11. <code>aeo-structured-data</code> — Rich Results Eligibility (Breadcrumbs)</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:728</code></li>
+<li><strong>Location:</strong> <code>engine.ts:732</code></li>
 <li><strong>Inspects:</strong> Derives <code>BreadcrumbList</code> JSON-LD from the URL path.</li>
 <li><strong>Scoring (max 5):</strong> always full — provides generated snippet.</li>
 <li><strong>Rationale:</strong> Breadcrumb SERP rendering + site-hierarchy signal.</li>
@@ -193,14 +194,14 @@
 <h2>Content Quality / GEO checks (23 pts)</h2>
 <h3>12. <code>cq-uniqueness</code> — Unique Content Signal</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:787</code></li>
-<li><strong>Inspects:</strong> LLM (Claude) classification of body content as <code>unique</code> / <code>borderline</code> / <code>commodity</code>.</li>
+<li><strong>Location:</strong> <code>engine.ts:791</code></li>
+<li><strong>Inspects:</strong> LLM (Claude) classification of body content as <code>unique</code> / <code>borderline</code> / <code>commodity</code>. The body is <code>ParsedHtml.mainText</code> from <code>/api/preview-fetch</code>: the text of <code>&lt;main&gt;</code> (or <code>&lt;body&gt;</code> without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; <code>/api/ai-check</code> sends the first 3,000 to Claude. <code>useScan</code> calls <code>ai-check</code> only after <code>preview-fetch</code> returns, and skips it when there's no main text. The browser console (<code>[scan] ai-check body: …</code>) and the server log (<code>[ai-check] … received N chars</code>) show what was sent. Phase 4 switches the source to the sanitised <code>getPageHTML</code> draft.</li>
 <li><strong>Scoring (max 10):</strong> <code>unique</code> → 10 (<code>pass</code>), <code>borderline</code> → 5 (<code>warning</code>), <code>commodity</code> → 0 (<code>fail</code>).</li>
 <li><strong>Rationale:</strong> Originality is the dominant GEO/E-E-A-T signal; highest single weight by design.</li>
 </ul>
 <h3>13. <code>cq-page-experience</code> — Performance Score</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:966</code></li>
+<li><strong>Location:</strong> <code>engine.ts:970</code></li>
 <li><strong>Inspects:</strong> PageSpeed Insights score + Core Web Vitals (external API).</li>
 <li><strong>Scoring (max 5):</strong></li>
 </ul>
@@ -212,7 +213,7 @@
 </ul>
 <h3>14. <code>cq-agentic-readiness</code> — Semantic Landmarks</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:1048</code></li>
+<li><strong>Location:</strong> <code>engine.ts:1052</code></li>
 <li><strong>Inspects:</strong> Presence of HTML5 landmarks <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>; also flags interactive elements missing <code>aria-label</code>.</li>
 <li><strong>Scoring (max 4):</strong> score = count of landmarks present (0–4)</li>
 </ul>
@@ -222,7 +223,7 @@
 </ul>
 <h3>15. <code>cq-reading-grade</code> — Passage-level Reading Grade</h3>
 <ul>
-<li><strong>Location:</strong> <code>engine.ts:1118</code></li>
+<li><strong>Location:</strong> <code>engine.ts:1122</code></li>
 <li><strong>Inspects:</strong> Automated Readability Index (ARI) per paragraph (paragraphs ≥ 20 words).</li>
 </ul>
 <p>  - <code>ARI = 4.71*(chars/words) + 0.5*(words/sentences) − 21.43</code></p>
@@ -247,35 +248,35 @@
 <td style="text-align:left"><code>aeo-howto-schema</code></td>
 <td style="text-align:left">HowTo Schema</td>
 <td style="text-align:right">7</td>
-<td style="text-align:left"><code>engine.ts:626–698</code></td>
+<td style="text-align:left"><code>engine.ts:627–699</code></td>
 <td style="text-align:left">Validates HowTo JSON-LD step <code>name</code>/<code>text</code></td>
 </tr>
 <tr>
 <td style="text-align:left"><code>aeo-question-headings</code></td>
 <td style="text-align:left">Question-format H2s</td>
 <td style="text-align:right">0 (info)</td>
-<td style="text-align:left"><code>engine.ts:752</code></td>
+<td style="text-align:left"><code>engine.ts:756</code></td>
 <td style="text-align:left">Regex count of interrogative H2s</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>cq-author</code></td>
 <td style="text-align:left">Author Present + Linked</td>
 <td style="text-align:right">6</td>
-<td style="text-align:left"><code>engine.ts:845</code></td>
+<td style="text-align:left"><code>engine.ts:849</code></td>
 <td style="text-align:left">linked → 6 / name only → 3 / missing → 0</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>cq-freshness</code></td>
 <td style="text-align:left">Published Date + Freshness</td>
 <td style="text-align:right">5</td>
-<td style="text-align:left"><code>engine.ts:897</code></td>
+<td style="text-align:left"><code>engine.ts:901</code></td>
 <td style="text-align:left">≤365d → 5 / ≤730d → 2 / &gt;730d → 0</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>cq-followup-gaps</code></td>
 <td style="text-align:left">Content follow-up gaps</td>
 <td style="text-align:right">0 (info)</td>
-<td style="text-align:left"><code>engine.ts:1193–1228</code></td>
+<td style="text-align:left"><code>engine.ts:1197–1232</code></td>
 <td style="text-align:left">LLM-generated follow-up questions vs. coverage</td>
 </tr>
 </tbody></table>
@@ -294,8 +295,8 @@
 </tr>
 <tr>
 <td style="text-align:left">Structured</td>
-<td style="text-align:right">0–20</td>
-<td style="text-align:left">Conditional schema presence (FAQPage, Article, BreadcrumbList, Organization)</td>
+<td style="text-align:right">0–17</td>
+<td style="text-align:left">Conditional schema presence (FAQPage, Article, BreadcrumbList, Organization); the max varies per page</td>
 </tr>
 <tr>
 <td style="text-align:left">Answerability</td>
@@ -304,7 +305,7 @@
 </tr>
 <tr>
 <td style="text-align:left">Authority</td>
-<td style="text-align:right">25</td>
+<td style="text-align:right">28</td>
 <td style="text-align:left">AI uniqueness, content depth, freshness, anchor-text quality</td>
 </tr>
 <tr>
@@ -314,6 +315,26 @@
 </tr>
 </tbody></table>
 <hr/>
+<h2>Meta &amp; social generator</h2>
+<p><code>src/components/MetaGenerator.tsx</code> → <code>POST /api/generate-meta</code> (<code>{ field, pageTitle, bodyText, currentValue }</code> → <code>{ value }</code>), then <code>xmc.pages.updateFields</code> on <strong>Populate field</strong>.</p>
+<ul>
+<li><strong>Body:</strong> <code>bodyText</code> is the same <code>ParsedHtml.mainText</code> the uniqueness check uses. <strong>Generate</strong> is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.</li>
+<li><strong>Brand voice:</strong> <code>getBrandVoice()</code> (<code>src/lib/brand/brand-voice.ts</code>, server only) reads the Markdown file named by <code>BRAND_VOICE_FILE</code> (relative to the project root, read once per server instance) and the name in <code>BRAND_NAME</code>. With neither set, or if the file can't be read, it uses a neutral default voice. <code>brand/brandx.md</code> is the BrandX demo voice, and <code>next.config.ts</code> (<code>outputFileTracingIncludes</code>) bundles <code>brand/</code> into the Vercel function.</li>
+<li><strong>Log:</strong> <code>[generate-meta] &lt;field&gt;: N chars of body text, brand voice: &lt;source&gt;</code>.</li>
+</ul>
+<hr/>
+<h2>Server-side fetching (SSRF protection)</h2>
+<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>robots-check</code>, <code>footer-check</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>:</p>
+<ul>
+<li><code>http</code>/<code>https</code> only; no credentials in the URL.</li>
+<li>Blocks private, loopback, link-local (incl. <code>169.254.169.254</code>), CGNAT, multicast, reserved and documentation ranges, IPv4 and IPv6, including IPv4-mapped and NAT64/6to4/Teredo forms. The check runs in the undici Agent's DNS lookup at connect time, so DNS rebinding can't bypass it. IP-literal hosts (including <code>http://2130706433/</code>-style encodings) are checked before the request.</li>
+<li>Follows at most 3 redirects (re-checked each hop) and drops the caller's headers, such as the editing token, on a cross-origin hop.</li>
+<li>One timeout across redirects and body; bodies capped at 5 MB by default.</li>
+<li>Blocked input → <code>SafeFetchError</code> with <code>isBadInput</code>, and the route answers <strong>400</strong> <code>{ error: "blocked_url" }</code>. Fetch failures stay <strong>502</strong>, or the route's own fallback.</li>
+<li><code>SAFE_FETCH_ALLOW_HOSTS</code> (comma-separated) skips the address check for named hosts. Use it only for local development.</li>
+<li>Tests: <code>src/lib/server/safe-fetch.test.ts</code>.</li>
+</ul>
+<hr/>
 <h2>Key files</h2>
 <table><thead><tr>
 <th style="text-align:left">File</th>
@@ -321,7 +342,7 @@
 </tr></thead><tbody>
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/engine.ts</code></td>
-<td style="text-align:left">All check definitions, scoring logic, gate (lines 32–1324)</td>
+<td style="text-align:left">All check definitions, scoring logic, gate (lines 33–1328)</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/helpers.ts</code></td>
@@ -334,6 +355,22 @@
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/site-score.ts</code></td>
 <td style="text-align:left">Site-level aggregation pillars</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/score-thresholds.ts</code></td>
+<td style="text-align:left">Shared 80 / 60 score thresholds</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/extract-html.ts</code></td>
+<td style="text-align:left">Parses fetched HTML into <code>ParsedHtml</code>, incl. <code>mainText</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/safe-fetch.ts</code></td>
+<td style="text-align:left">SSRF-safe fetch for server routes</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/brand/organization.ts</code>, <code>brand-voice.ts</code></td>
+<td style="text-align:left">Organization identity and brand voice config</td>
 </tr>
 </tbody></table>
 </body>

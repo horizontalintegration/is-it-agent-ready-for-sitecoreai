@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sitecore Marketplace Extensions',
-  description: 'Sitecore Marketplace extension starter application',
+  title: 'Is It Agent-Ready? for SitecoreAI',
+  description:
+    'Make every page reachable, readable and citable by AI agents, then fix it right in Sitecore.',
 }
 
 export default function RootLayout({

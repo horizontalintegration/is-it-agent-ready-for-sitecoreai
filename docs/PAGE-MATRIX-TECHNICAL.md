@@ -22,27 +22,29 @@ Each page produces a `SiteScoreResult`:
 
 **Percentage** = `(total / maxTotal) × 100`.
 
-### Rating bands — `labelFor`, `site-score.ts:66–71`
+### Rating bands — `labelForPct`, `src/lib/score-thresholds.ts`
 
 | Label | Range | Text class | Badge class |
 |-------|-------|-----------|-------------|
-| `good` | > 70% | `text-green-600` | `bg-green-50 text-green-700` |
-| `warning` | 40–70% | `text-amber-600` | `bg-amber-50 text-amber-700` |
-| `critical` | < 40% | `text-red-600` | `bg-red-50 text-red-700` |
+| `good` | ≥ 80% | `text-green-600` | `bg-green-50 text-green-700` |
+| `warning` | 60–79% | `text-amber-600` | `bg-amber-50 text-amber-700` |
+| `critical` | < 60% | `text-red-600` | `bg-red-50 text-red-700` |
 
-### Fixed pillar maxima (`MAX_PILLARS`, `site-score.ts:58–72`)
+The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, every `ScorePill`, the per-row label (`labelFor` in `site-score.ts`) and the site roll-up (`site-aggregate.ts`). Cached dashboard scores use the key prefix `aiDiscovery:scores:v3:`. It was bumped from v2 when the thresholds and the AI body text changed.
+
+### Fixed pillar maxima (`MAX_PILLARS`, `site-score.ts:61–72`)
 
 | Pillar | Max | Notes |
 |--------|----:|-------|
 | Crawlability | 15 | fixed |
-| Structured | **0–20** | dynamic per page type (see pillar 2) |
+| Structured | **0–17** | dynamic per page type (see pillar 2); `MAX_PILLARS.structured` is the 17 ceiling, so the maxima sum to 100 |
 | Answerability | 20 | fixed |
 | Authority | 28 | fixed |
 | Retrievability | 20 | fixed |
 
 **Example `maxTotal` values:**
 - Home page → 15 + 3 + 20 + 28 + 20 = **86** (Organization only)
-- Regular inner page → 15 + 6 + 20 + 28 + 20 = **89** (BreadcrumbList only)
+- Regular inner page → 15 + 3 + 20 + 28 + 20 = **86** (BreadcrumbList only)
 - Article page w/ FAQs → 15 + 17 + 20 + 28 + 20 = **100** (FAQPage + Article + BreadcrumbList)
 
 ---
@@ -60,7 +62,7 @@ Each page produces a `SiteScoreResult`:
 
 ---
 
-## Pillar 2 — Structured Data (0–20 pts, dynamic)
+## Pillar 2 — Structured Data (0–17 pts, dynamic)
 **`scoreStructured`, `site-score.ts:113–166`** · UI: column **STRUCT** — *"can AI parse the schema?"*
 
 Conditionally evaluated per page type — pages are **not** penalized for inapplicable schemas; both earned and max accumulate only for applicable checks. JSON-LD parsed from `<script type="application/ld+json">`.
@@ -95,7 +97,7 @@ Conditionally evaluated per page type — pages are **not** penalized for inappl
 
 | Signal | Pts | Logic | Thresholds | Type |
 |--------|----:|-------|-----------|------|
-| AI uniqueness rating | 0–15 | Ingests LLM content classification | `unique` → 15 · `borderline` → 8 · `commodity` or not-yet-run → 0 | **AI/LLM** |
+| AI uniqueness rating | 0–15 | Ingests LLM content classification of `ParsedHtml.mainText` (skipped when the page has none) | `unique` → 15 · `borderline` → 8 · `commodity` or not-yet-run → 0 | **AI/LLM** |
 | Content depth | 0–3 | Total words across body paragraphs | ≥800 → 3 · 400–799 → 2 · 150–399 → 1 · <150 → 0 | HTML |
 | Freshness | 0–8 | Date resolution priority: (1) `<meta property="article:modified_time">` → (2) `<meta name="last-modified">` → (3) Sitecore `updatedAt`/`__Updated` | ≤180d → 8 · 181–365d → 5 · 366–730d → 2 · >730d or none → 0 | HTML + Sitecore |
 | Internal link descriptiveness | 0–2 | Ratio of generic anchors (`ANCHOR_BLOCKLIST`) to total links, with arrow/punctuation normalization | ≤20% generic → 2 · 21–40% → 1 · no links → 1 (fallback) · >40% → 0 | HTML |

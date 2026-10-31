@@ -33,7 +33,7 @@
 </head>
 <body>
 <h1>Page Matrix Explained — A Guide for Marketers</h1>
-<p>The <strong>Page Matrix</strong> is the dashboard view that grades every page on your site across <strong>5 big-picture categories</strong>. Where the per-page checker is a detailed checklist, the Page Matrix is the <strong>scorecard at a glance</strong> — one row per page, one score per category, so you can spot weak pages instantly.</p>
+<p>The <strong>Page Matrix</strong> is the view in the <strong>Is It Agent-Ready? for SitecoreAI</strong> dashboard ("Is this site agent-ready?") that grades every page on your site across <strong>5 big-picture categories</strong>. Where the per-page checker is a detailed checklist, the Page Matrix is the <strong>scorecard at a glance</strong> — one row per page, one score per category, so you can spot weak pages instantly.</p>
 <p>This guide explains each of the 5 categories in plain language, what feeds into them, and why each matters. Use it as a demo cheat sheet.</p>
 <hr/>
 <h2>The big idea: 5 questions every page must answer</h2>
@@ -83,20 +83,21 @@
 </tr></thead><tbody>
 <tr>
 <td style="text-align:left">🟢 <strong>Good</strong></td>
-<td style="text-align:left">71–100%</td>
+<td style="text-align:left">80–100%</td>
 <td style="text-align:left">Search-ready — AI can find, trust, and use it</td>
 </tr>
 <tr>
 <td style="text-align:left">🟡 <strong>Warning</strong></td>
-<td style="text-align:left">40–70%</td>
+<td style="text-align:left">60–79%</td>
 <td style="text-align:left">Needs work — some gaps holding it back</td>
 </tr>
 <tr>
 <td style="text-align:left">🔴 <strong>Critical</strong></td>
-<td style="text-align:left">Below 40%</td>
+<td style="text-align:left">Below 60%</td>
 <td style="text-align:left">Major issues — likely invisible to AI search</td>
 </tr>
 </tbody></table>
+<p>The page panel in Page Builder uses the same thresholds, so a page shows the same color in both places.</p>
 <p>&gt; <strong>Smart scoring:</strong> A page is only graded on what actually applies to it. For example, your homepage isn't penalized for missing "Article" labels, and a page with no FAQs isn't marked down for missing FAQ labels. The denominator adjusts per page, so scores are always fair.</p>
 <hr/>
 <h2>🔵 Category 1: Crawlability — *Can the bots get in?* (15 points)</h2>
@@ -109,7 +110,7 @@
 </ul>
 <p><strong>Why it matters:</strong> This is the foundation. If bots are blocked or the page says "don't index me," nothing else you do counts — the page is invisible to AI and search no matter how good it is.</p>
 <hr/>
-<h2>🟢 Category 2: Structured Data — *Do they understand it?* (up to 20 points)</h2>
+<h2>🟢 Category 2: Structured Data — *Do they understand it?* (up to 17 points)</h2>
 <p><strong>The plain version:</strong> Structured data (called "schema") is invisible labeling in the code that spells out *what your content is* — "this is an FAQ," "this is an article," "this is the company info." It turns a wall of text into clearly labeled parts a machine can understand instantly.</p>
 <p><strong>What feeds into it (only the labels that fit each page):</strong></p>
 <ul>
@@ -136,7 +137,7 @@
 <p><strong>The plain version:</strong> AI won't cite content it doesn't trust. Authority measures whether your content is <strong>original, substantial, current, and well-connected</strong> — the marks of a credible source.</p>
 <p><strong>What feeds into it:</strong></p>
 <ul>
-<li><strong>Content uniqueness</strong> *(AI-judged)* — our AI reads the page and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. <strong>This is the single biggest factor in the whole Matrix.</strong></li>
+<li><strong>Content uniqueness</strong> *(AI-judged)* — our AI reads the page's main text and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. <strong>This is the single biggest factor in the whole Matrix.</strong></li>
 <li><strong>Content depth</strong> — whether there's enough substance (word count) to be useful, vs. thin content.</li>
 <li><strong>Freshness</strong> — how recently the page was published or updated. Stale pages lose trust.</li>
 <li><strong>Descriptive links</strong> — whether internal links use meaningful text (not vague "click here").</li>
@@ -170,7 +171,7 @@
 </tr>
 <tr>
 <td style="text-align:left">🟢 <strong>Structured Data</strong></td>
-<td style="text-align:right">up to 20</td>
+<td style="text-align:right">up to 17</td>
 <td style="text-align:left">Can AI understand it?</td>
 <td style="text-align:left">Add the right schema (FAQ / Article / Breadcrumb / Organization)</td>
 </tr>

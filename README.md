@@ -1,88 +1,104 @@
-# 🏪 Sitecore Marketplace Starter
+# Is It Agent-Ready? for SitecoreAI
 
-This project is the starter template for building Sitecore Marketplace extensions. It demonstrates five extension points: **Custom Field**, **Dashboard Widget**, **Fullscreen**, **Pages Context Panel**, and **Standalone**. Each extension point has its own UI and integration with the Sitecore Marketplace SDK.
+Make every page reachable, readable and citable by AI agents, then fix it right in Sitecore.
 
-## 🧩 Extension Points
+**Is It Agent-Ready?** is a Sitecore Marketplace app for SitecoreAI. It checks whether AI agents and answer engines (ChatGPT, Perplexity, Copilot, Gemini, Claude) can reach, parse and cite your pages, and it writes fixes back into Sitecore fields from inside the editor.
 
-### 1. Custom Field Extension
+> The Marketplace listing name is "Is It Agent-Ready? for SitecoreAI". Keep the hyphen and the "for SitecoreAI" suffix: it tells us apart from Cloudflare's "Is It Agent Ready?" scanner.
 
-- **Location:** `app/custom-field-extension/page.tsx`
-- **Description:**  
-  Provides a button-based UI for selecting preset options to showcase how to update field values.
-  - Initializes the Marketplace SDK client.
-  - On button click,, updates the field value using client.setValue(selected) and closes the app after a short delay.
+The v2 roadmap is in [docs/IS-IT-AGENT-READY-PLAN.md](docs/IS-IT-AGENT-READY-PLAN.md), and the spike results it depends on are in [docs/SPIKE-FINDINGS.md](docs/SPIKE-FINDINGS.md).
 
----
+## Extension points
 
-### 2. Dashboard Widget Extension
+| Extension point | Route | What it does |
+|---|---|---|
+| **Pages context panel** | `src/app/pages-contextpanel-extension/page.tsx` | "Is this page agent-ready?" Scores the page open in Page Builder (Technical SEO, Structured Data, Content Quality), runs the AI uniqueness check on the page's main text, and generates meta and Open Graph values in your brand voice. **Populate field** writes them to the page through `xmc.pages.updateFields`. |
+| **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site: page matrix, worst pages, AI citation forecast, llms.txt generator, robots.txt AI-crawler check and footer trust signals. |
 
-- **Location:** `app/dashboard-widget-extension/page.tsx`
-- **Description:**  
-  Displays a widget in the XM Cloud dashboard.
-  - Initializes the Marketplace SDK client.
-  - Displays sample dashboard information.
+Both run inside the Sitecore iframe. Opening their routes directly in a browser only works in demo mode (below).
 
----
+Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `robots-check`, `footer-check`, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-forecast`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
 
-### 3. Fullscreen Extension
+Scores use the same thresholds everywhere: 80% and above is good (Agent-ready), 60–79% is a warning (Almost there), and below 60% is critical (Not ready).
 
-- **Location:** `app/fullscreen-extension/page.tsx`
-- **Description:**  
-  Provides a fullscreen experience to be rendered in the Pages application.
-  - Initializes the Marketplace SDK client.
-  - Displays sample dashboard information.
+## Setup
 
----
+Requirements: Node.js 24 (Vitest needs `^22.12 || ^24 || >=26`) and a SitecoreAI environment where you can register Marketplace apps.
 
-### 4. Pages Context Panel Extension
+```sh
+npm install
+cp .env.example .env.local   # or create .env.local by hand, see below
+npm run dev                  # http://localhost:3000
+```
 
-- **Location:** `app/pages-contextpanel-extension/page.tsx`
-- **Description:**  
-  Displays context information about the current page in the XM Cloud Pages editor.
-  - Initializes the Marketplace SDK client.
-  - Subscribes to `pages.context` using the SDK to handle events.
-  - Shows page ID, title, language, and path.
-  - Updates data automatically as the user changes selected page.
+Then register the app in the Sitecore Cloud Portal:
 
----
+1. Create a custom app, and point its extension points at your deployment:
+   - Pages context panel → `<APP_URL>/pages-contextpanel-extension`
+   - Dashboard widget → `<APP_URL>/dashboard-widget-extension`
+2. Grant API access to **SitecoreAI APIs** (the app uses `xmc.pages`, `xmc.sites` and `xmc.authoring.graphql`).
+3. Install the app in your environment and open it from Page Builder or the dashboard.
 
-### 5. Standalone Extension
+See the [Sitecore Marketplace documentation](https://doc.sitecore.com/mp/en/developers/marketplace/introduction-to-sitecore-marketplace.html) for the portal steps.
 
-- **Location:** `app/standalone-extension/page.tsx`
-- **Description:**  
-  Runs as a standalone app outside of other extension points.
-  - Initializes the Marketplace SDK client.
-  - Displays sample dashboard information.
+### Deploying to Vercel
 
-# 📦 Getting Started
+Set the environment variables below in the Vercel project. `next.config.ts` bundles the `brand/` folder into the `generate-meta` function, so a `BRAND_VOICE_FILE` under `brand/` is available at runtime.
 
-Note: You cannot access extension point routes directly in the browser (e.g., localhost:3000/...). These routes must be invoked within the Sitecore XM Cloud environment through the configured extension points.To learn how to properly configure and hook up your app to extension points, refer to the official [Sitecore Marketplace documentation](https://doc.sitecore.com/mp/en/developers/marketplace/extension-points.html)
+## Environment variables
 
+Put these in `.env.local` for development and in your host's settings for deployments. `.env*` files are git-ignored.
 
-1. Create Your Own Repository:
-   - You can either fork this repository or create a new template based on it.
-   - This gives you a clean starting point with all the necessary scaffolding for Marketplace extension development.
+**Server only**
 
-2. Remove the endpoints you dont require
-   - Remove any extension points you don't plan to support by deleting their respective folders inside the app directory.
-   - Each folder in app corresponds to a specific extension point (e.g., custom-field-extension, dashboard-widget-extension, etc.).
+| Variable | Required | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes, for AI features | Claude API key for `ai-check`, `generate-meta` and `citation-forecast`. |
+| `PSI_API_KEY` | No | Google PageSpeed Insights key. Works without one at low rate limits. |
+| `BRAND_VOICE_FILE` | No | Markdown brand-voice document, relative to the project root, used to ground meta generation (e.g. `brand/brandx.md`). Without it, a neutral default voice is used. |
+| `BRAND_NAME` | No | Brand name used in the generation prompts (e.g. `BrandX`). |
+| `SAFE_FETCH_ALLOW_HOSTS` | No | Comma-separated hostnames that skip the private-address check, e.g. `localhost` to scan a local rendering host. **Leave unset in production.** |
 
-3. Install dependencies:
-   ```sh
-   npm install
-   ```
+**Browser (`NEXT_PUBLIC_*`)**
 
-4. Run the development server:
-   ```sh
-   npm run dev
-   ```
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | Yes | Base URL of this app, prefixed to `/api/*` calls from inside the Sitecore iframe. `http://localhost:3000` in development. |
+| `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN` | Recommended | Published site URL (e.g. `https://www.example.com`), used when the SDK doesn't give a site hostname. |
+| `NEXT_PUBLIC_SITE_ROOT_PATH` | No | Content path of the site's Home item, if the dashboard can't find it through `xmc.sites`. |
+| `NEXT_PUBLIC_FIELD_TITLE`, `NEXT_PUBLIC_FIELD_META_DESCRIPTION`, `NEXT_PUBLIC_FIELD_OG_TITLE`, `NEXT_PUBLIC_FIELD_OG_DESCRIPTION` | No | Sitecore field names for the meta fields, if your templates don't use `pageTitle`, `MetaDescription`, `OpenGraphTitle`, `OpenGraphDescription`. |
+| `NEXT_PUBLIC_ORG_NAME`, `NEXT_PUBLIC_ORG_URL`, `NEXT_PUBLIC_ORG_LOGO`, `NEXT_PUBLIC_ORG_DESCRIPTION`, `NEXT_PUBLIC_ORG_SAME_AS` | No | Organization details for the Organization JSON-LD snippet. `SAME_AS` is a comma-separated list of profile URLs. Without them, the name and URL come from the site in Sitecore, and the rest are placeholders. |
+| `NEXT_PUBLIC_SPIKE_DEBUG` | No | `1` shows the temporary `getPageHTML` spike box in the panel (same as `?spike=1`). |
 
-5. Install the application and test in the different extension points by following the [Sitecore documentation](https://doc.sitecore.com/mp/en/developers/marketplace/introduction-to-sitecore-marketplace.html)
+### Brand voice
 
-## 📝 License
+`brand/brandx.md` is the brand document for the BrandX demo site. To use your own brand, add a Markdown file under `brand/` (tone of voice, do's and don'ts, approved boilerplate, compliance rules) and set `BRAND_VOICE_FILE` and `BRAND_NAME`. Reading the brand kit directly from SitecoreAI is a planned enhancement.
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+## Demo mode
 
-## 🐛 Issues
+Add `?demo=1` to either extension URL to use fixture data from `src/lib/rule-engine/test-fixture.ts` instead of the SDK:
 
-If you encounter any issues or have suggestions for improvements, please open an issue on the repository.
+- http://localhost:3000/pages-contextpanel-extension?demo=1
+- http://localhost:3000/dashboard-widget-extension?demo=1
+
+Demo mode never turns on by itself. Every new check or screen needs fixture data so the demo keeps working.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest unit tests (no network, no paid APIs) |
+| `node docs/build-docs.js` | Rebuild the HTML versions of the `docs/*-EXPLAINED.md` and `docs/*-TECHNICAL.md` guides |
+
+## Docs
+
+- [Page checks, explained](docs/PAGE-CHECKS-EXPLAINED.md) and [technical](docs/PAGE-CHECKS-TECHNICAL.md): the context panel.
+- [Page matrix, explained](docs/PAGE-MATRIX-EXPLAINED.md) and [technical](docs/PAGE-MATRIX-TECHNICAL.md): the dashboard.
+- [docs/history/claude-code-guide.md](docs/history/claude-code-guide.md): the original v1 build guide, kept for reference. The project started from [Sitecore/marketplace-starter](https://github.com/Sitecore/marketplace-starter).
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE).

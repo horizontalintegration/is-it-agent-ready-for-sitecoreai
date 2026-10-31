@@ -1,16 +1,4 @@
-// ────────────────────────────────────────────────────────────────────────────
-// Brand knowledge — DEMO source
-//
-// This is the brand document used to ground AI meta/social generation during
-// the demo. It stands in for the Sitecore AI brand kit: when the Stream AI
-// Skills API is wired up, the skill will draw on the uploaded brand kit instead
-// and this constant can be removed (only the inner call in
-// /api/generate-meta changes — the route signature and UI stay the same).
-//
-// Server-side only: imported by the API route, never shipped to the browser.
-// ────────────────────────────────────────────────────────────────────────────
-
-export const BRAND_DOCUMENT = `# BrandX — Global Brand Kit
+# BrandX — Global Brand Kit
 
 **Brand Knowledge Document**
 *Your Trusted Partner in Financial Growth*
@@ -116,4 +104,3 @@ approach, we help you invest smarter, retire better, and grow confidently.
 - Never make guarantees or promise specific investment returns.
 - Do not state proof-point figures or statistics that are not provided in the page content.
 - Keep claims accurate and aligned with a fiduciary, client-first commitment.
-`;

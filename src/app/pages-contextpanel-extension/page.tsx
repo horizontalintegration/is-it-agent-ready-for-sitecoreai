@@ -8,6 +8,7 @@ import { useDemoMode } from "@/hooks/useDemoMode";
 import { runRuleEngine } from "@/lib/rule-engine";
 import type { PageData, RuleResult } from "@/lib/rule-engine/types";
 import { makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import { getOrganizationInfo } from "@/lib/brand/organization";
 import { ScoreRing } from "@/components/ScoreRing";
 import { GateBanner } from "@/components/GateBanner";
 import { PillarSection } from "@/components/PillarSection";
@@ -27,7 +28,7 @@ function SkeletonRows() {
 
 export default function PagesContextPanel() {
   const { client, isInitialized } = useMarketplaceClient();
-  const { fields, pageUrl, siteDomain, editingToken, isLoading, writeContext } =
+  const { fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext } =
     usePageFields(client, isInitialized);
 
   // Fixture data is opt-in via `?demo=1` in the URL — never auto-activated
@@ -43,21 +44,34 @@ export default function PagesContextPanel() {
   const effectiveAuthoring = fixture ? fixture.authoring : fields;
   const effectivePageUrl = fixture ? fixture.pageUrl : pageUrl;
   const effectiveSiteDomain = fixture ? "https://example.com" : siteDomain;
+  const organization = useMemo(
+    () => (fixture ? fixture.organization : getOrganizationInfo({ name: siteName, url: siteDomain })),
+    [fixture, siteName, siteDomain],
+  );
 
-  const bodyText = effectiveAuthoring?.richTextFull ?? "";
   const pageTitle = effectiveAuthoring?.pageTitle ?? "";
 
   const scan = useScan({
     pageUrl: effectivePageUrl,
     siteDomain: effectiveSiteDomain,
     editingToken,
-    bodyText,
     pageTitle,
   });
+
+  // The page body for the AI features is the main text parsed out of
+  // preview-fetch. (Phase 4 switches this to the sanitised getPageHTML draft.)
+  const effectiveParsedHtml = fixture ? fixture.parsedHtml : scan.parsedHtml;
+  const bodyText = effectiveParsedHtml?.mainText ?? "";
+  const bodyPending =
+    !fixture &&
+    !bodyText &&
+    Boolean(effectivePageUrl) &&
+    (scan.isScanning || scan.lastScannedAt === null);
 
   const pageData: PageData = useMemo(
     () => ({
       pageUrl: effectivePageUrl,
+      organization,
       authoring: {
         pageTitle: effectiveAuthoring?.pageTitle ?? null,
         metaDescription: effectiveAuthoring?.metaDescription ?? null,
@@ -78,16 +92,17 @@ export default function PagesContextPanel() {
         hasFaqComponent: effectiveAuthoring?.hasFaqComponent ?? false,
         hasHowToComponent: effectiveAuthoring?.hasHowToComponent ?? false,
       },
-      parsedHtml: fixture ? fixture.parsedHtml : scan.parsedHtml,
+      parsedHtml: effectiveParsedHtml,
       robotsTxt: fixture ? fixture.robotsTxt : scan.robotsTxt,
       psi: fixture ? fixture.psi : scan.psi,
       ai: fixture ? fixture.ai : scan.ai,
     }),
     [
       effectivePageUrl,
+      organization,
       effectiveAuthoring,
       fixture,
-      scan.parsedHtml,
+      effectiveParsedHtml,
       scan.robotsTxt,
       scan.psi,
       scan.ai,
@@ -115,7 +130,7 @@ export default function PagesContextPanel() {
           className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"
           aria-hidden
         />
-        <h1 className="text-sm font-semibold flex-1">Page health</h1>
+        <h1 className="text-sm font-semibold flex-1">Is this page agent-ready?</h1>
         {!showSkeleton && !engineOutput.gate.blocked && (
           <div className="flex items-center gap-2">
             <ScoreRing
@@ -187,6 +202,7 @@ export default function PagesContextPanel() {
               }}
               pageTitle={pageTitle}
               bodyText={bodyText}
+              bodyPending={bodyPending}
             />
           </>
         )}

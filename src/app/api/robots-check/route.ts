@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchWithTimeout } from "@/lib/server/extract-html";
+import { safeFetch, SafeFetchError } from "@/lib/server/safe-fetch";
 import type { CrawlerPermission, RobotsTxt } from "@/lib/rule-engine/types";
 
 const CORS_HEADERS = {
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
   try {
     const base = domain.startsWith("http") ? domain : `https://${domain}`;
     const url = `${base.replace(/\/+$/, "")}/robots.txt`;
-    const res = await fetchWithTimeout(url, { timeoutMs: 5_000 });
+    const res = await safeFetch(url, { timeoutMs: 5_000, maxBytes: 512 * 1024 });
 
     if (res.status === 404) {
       return NextResponse.json(allUnknown, { headers: CORS_HEADERS });
@@ -123,7 +123,10 @@ export async function GET(req: NextRequest) {
 
     const body = await res.text();
     return NextResponse.json(parseRobotsTxt(body), { headers: CORS_HEADERS });
-  } catch {
+  } catch (err) {
+    if (err instanceof SafeFetchError && err.isBadInput) {
+      return NextResponse.json({ error: "blocked_url", detail: err.message }, { status: 400, headers: CORS_HEADERS });
+    }
     return NextResponse.json(allUnknown, { headers: CORS_HEADERS });
   }
 }
