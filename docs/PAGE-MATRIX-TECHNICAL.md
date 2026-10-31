@@ -97,7 +97,7 @@ Conditionally evaluated per page type — pages are **not** penalized for inappl
 
 | Signal | Pts | Logic | Thresholds | Type |
 |--------|----:|-------|-----------|------|
-| AI uniqueness rating | 0–15 | Ingests LLM content classification of `ParsedHtml.mainText` (skipped when the page has none) | `unique` → 15 · `borderline` → 8 · `commodity` or not-yet-run → 0 | **AI/LLM** |
+| AI uniqueness rating | 0–15 | Ingests LLM content classification of `ParsedHtml.mainText` (skipped when the page has none). `/api/ai-check` on `ANTHROPIC_MODEL_BULK`; cached by content hash in localStorage (shared with the panel) and on the server, so re-scans of unchanged pages don't call Claude | `unique` → 15 · `borderline` → 8 · `commodity` or not-yet-run → 0 | **AI/LLM** |
 | Content depth | 0–3 | Total words across body paragraphs | ≥800 → 3 · 400–799 → 2 · 150–399 → 1 · <150 → 0 | HTML |
 | Freshness | 0–8 | Date resolution priority: (1) `<meta property="article:modified_time">` → (2) `<meta name="last-modified">` → (3) Sitecore `updatedAt`/`__Updated` | ≤180d → 8 · 181–365d → 5 · 366–730d → 2 · >730d or none → 0 | HTML + Sitecore |
 | Internal link descriptiveness | 0–2 | Ratio of generic anchors (`ANCHOR_BLOCKLIST`) to total links, with arrow/punctuation normalization | ≤20% generic → 2 · 21–40% → 1 · no links → 1 (fallback) · >40% → 0 | HTML |

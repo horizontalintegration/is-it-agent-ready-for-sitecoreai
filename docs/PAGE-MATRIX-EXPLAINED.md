@@ -87,7 +87,7 @@ The page panel in Page Builder uses the same thresholds, so a page shows the sam
 **The plain version:** AI won't cite content it doesn't trust. Authority measures whether your content is **original, substantial, current, and well-connected** — the marks of a credible source.
 
 **What feeds into it:**
-- **Content uniqueness** *(AI-judged)* — our AI reads the page's main text and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. **This is the single biggest factor in the whole Matrix.**
+- **Content uniqueness** *(AI-judged)* — our AI reads the page's main text and decides whether it's genuinely original and valuable, or generic "could-be-anywhere" filler. **This is the single biggest factor in the whole Matrix.** The rating is remembered until the page's text changes, so re-scanning unchanged pages is instant and costs nothing.
 - **Content depth** — whether there's enough substance (word count) to be useful, vs. thin content.
 - **Freshness** — how recently the page was published or updated. Stale pages lose trust.
 - **Descriptive links** — whether internal links use meaningful text (not vague "click here").

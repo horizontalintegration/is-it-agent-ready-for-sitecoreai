@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchAiResults } from "@/lib/ai/ai-results-cache";
 import type {
   AiResults,
   ParsedHtml,
@@ -72,8 +73,9 @@ export function useScan(input: UseScanInput): UseScanResult {
 
   // The AI checks read the page's main text from preview-fetch, so they run
   // after it. With no main text there's nothing to judge, so the call is skipped.
+  // Results are cached by content hash, so unchanged pages don't call Claude again.
   const fetchAi = useCallback(
-    (title: string, html: ParsedHtml | null): Promise<AiResults | null> => {
+    (title: string, html: ParsedHtml | null, force = false): Promise<AiResults | null> => {
       const bodyText = html?.mainText ?? "";
       if (!bodyText) {
         console.info("[scan] ai-check skipped: preview-fetch returned no main text");
@@ -83,13 +85,7 @@ export function useScan(input: UseScanInput): UseScanResult {
         `[scan] ai-check body: ${bodyText.length} chars of main text —`,
         bodyText.slice(0, 200),
       );
-      return tryJson<AiResults>(
-        fetch(`${base}/api/ai-check`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageTitle: title, bodyText }),
-        })
-      );
+      return fetchAiResults(base, title, bodyText, { force });
     },
     [base],
   );
@@ -151,11 +147,12 @@ export function useScan(input: UseScanInput): UseScanResult {
     })();
   }, [pageUrl, pageTitle, fetchHtml, fetchAi]);
 
-  // Individual scans — only run their specific check.
+  // Individual scans — only run their specific check. The AI re-run skips the
+  // cache, since the author asked for a fresh answer.
   const runAiScan = useCallback(() => {
     if (!pageUrl) return;
     setIsAiScanning(true);
-    fetchAi(pageTitle, parsedHtml).then((result) => {
+    fetchAi(pageTitle, parsedHtml, true).then((result) => {
       if (result) setAi(result);
       setLastScannedAt(new Date());
       setIsAiScanning(false);

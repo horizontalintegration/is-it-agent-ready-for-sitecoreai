@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
+import { fetchAiResults } from "@/lib/ai/ai-results-cache";
 import type { AiResults, ParsedHtml, RobotsTxt } from "@/lib/rule-engine/types";
 import {
   runSiteScore,
@@ -464,19 +465,10 @@ export function useSitePages(
       let ai: AiResults | null =
         aiRes.status === "fulfilled" ? aiRes.value : null;
 
-      // Fire AI with the page's main text once HTML is in hand (same body as the panel)
+      // Fire AI with the page's main text once HTML is in hand (same body as the panel).
+      // Cached by content hash, so re-scans of unchanged pages don't call Claude.
       if (parsedHtml?.mainText) {
-        const bodyText = parsedHtml.mainText;
-        ai = await tryJson<AiResults>(
-          fetch(`${base}/api/ai-check`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pageTitle: parsedHtml.title ?? row.name,
-              bodyText,
-            }),
-          }),
-        );
+        ai = await fetchAiResults(base, parsedHtml.title ?? row.name, parsedHtml.mainText);
       }
 
       if (!parsedHtml) {

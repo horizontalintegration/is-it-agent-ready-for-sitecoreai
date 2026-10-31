@@ -191,6 +191,8 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
 3. **Search errors return HTTP 200.** `content` is then an object with `error_code` instead of a list (as the plan says). An empty list means no results, not an error.
 4. **`pause_turn` can happen** on long search turns. The probe resends the paused assistant turn, up to 3 times.
 5. **`@anthropic-ai/sdk` 1.0.0 was released on 2026-10-21** (a new major; 1.2.0 is from 2026-10-23). The spike pins **1.2.0 as a devDependency** only. Phase 2 must choose 1.x or the last 0.x (0.137.0) and read the TypeScript SDK changelog for 1.0 breaking changes.
+   - **Resolved in Phase 2 (2026-10-31): 1.3.0, pinned, as a runtime dependency.** 1.0's only breaking change is API version `2026-10-21` (sampling parameters, document blocks in assistant turns and user-turn citations are rejected; some Admin API fields are removed). The app uses none of them. 1.3.0 adds Claude Tag endpoints only.
+   - **Structured outputs can't enforce string length.** The API rejects `maxLength`, so the SDK moves it into the schema description and validates after the response. `generate-meta` checks length itself and retries once (plan section 9).
 6. **Claude doesn't always search** (Confirmed; follow-up runs below). With `tool_choice: auto` it can answer from its own knowledge, which yields `found: false, cited: false` with zero searches.
    - That must be reported as **Not searched**, not Not found, and left out of the "Cited in X of N" totals.
    - Forced `tool_choice` returns a 400 on Opus 5.5 (plan section 9), so use a system prompt that requires a search, and retry once when `usage.server_tool_use.web_search_requests` is 0.
@@ -235,3 +237,18 @@ The licence check and Next 15 compatibility below need a quick confirmation befo
   - **BrandX is in the search index** even though its `robots.txt` has `Disallow: /`. It's found and cited when named, but not for the generic question above.
   - **The T. Rowe Price run never searched.** The response was a single `text` block. troweprice.com was cited for the same question on 2026-10-23, so this `false` says nothing about the site (see item 6 above).
   - **BrandX's dev site is publicly indexed** and was cited next to the live site (see item 7 above). That's worth raising with the site owner on its own merits.
+
+## 6. Phase 2 acceptance: Claude API on the SDK (2026-10-31)
+
+Confirmed with a local `next dev` run against the BrandX article *Banking Sector Earnings Point to Resilience* (2,621 chars of main text), `ANTHROPIC_MODEL_BULK=claude-sonnet-5-5`, `ANTHROPIC_MODEL` unset (Opus 5.5). About $0.06 in total.
+
+| Route | Model | Result | Repeat call | Cost |
+|---|---|---|---|---|
+| `ai-check` | Sonnet 5.5 | `commodity`, 5 gaps; 2,657 in / 329 out | server cache hit, 19 ms, no API call | ~$0.009 |
+| `generate-meta` × 4 fields + 1 Regenerate | Opus 5.5 | all within limits (title 53/60) | `cache_write=2966` on the first field, then `cache_read=2966` on every later call | ~$0.03 |
+| `citation-forecast` | Opus 5.5 | 1 star for all four engines (BrandX blocks AI crawlers); 2,123 in / 421 out | server cache hit, 0.7 s | ~$0.017 |
+
+- **Length retry fired for real:** the meta description came back at 158/155; the retry returned 145.
+- **Low effort barely thinks:** output was 35–185 tokens per meta call, so costs came in well under the planned estimate.
+- **One `ogDescription` call took 61 s** for 57 output tokens. That looks like one attempt hitting the SDK's 60 s timeout and the internal retry then finishing in about 1 s. The timeout is now 30 s with one retry, so a stalled call is capped at about a minute.
+- **Not yet checked:** the browser cache (`[ai-cache] hit …` in the panel console) inside Sitecore, after deploy.

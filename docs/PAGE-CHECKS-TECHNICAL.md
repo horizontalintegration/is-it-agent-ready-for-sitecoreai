@@ -133,6 +133,8 @@ A detailed, engineering-oriented breakdown of every page-level check in **Is It 
 ### 12. `cq-uniqueness` — Unique Content Signal
 - **Location:** `engine.ts:791`
 - **Inspects:** LLM (Claude) classification of body content as `unique` / `borderline` / `commodity`. The body is `ParsedHtml.mainText` from `/api/preview-fetch`: the text of `<main>` (or `<body>` without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; `/api/ai-check` sends the first 3,000 to Claude. `useScan` calls `ai-check` only after `preview-fetch` returns, and skips it when there's no main text. The browser console (`[scan] ai-check body: …`) and the server log (`[ai-check] … received N chars`) show what was sent. Phase 4 switches the source to the sanitised `getPageHTML` draft.
+- **Claude call:** `ANTHROPIC_MODEL_BULK` (default `ANTHROPIC_MODEL`, then `claude-opus-5-5`), effort `low`, structured output `{ rating, explanation }`. It runs in parallel with the follow-up-gaps call (effort `medium`). A refusal returns `422 { error: "refused", category }` and the check stays unscored.
+- **Caching:** results are keyed by SHA-256 of the normalised title and text (`src/lib/ai/content-key.ts`). The browser cache (`aiDiscovery:ai-results:<AI_CHECK_VERSION>` in localStorage, 500 pages) is shared by the panel and the dashboard, and the route keeps a per-instance in-memory cache keyed by check, model and content. An unchanged page doesn't call Claude again (console: `[ai-cache] hit …`). The row's AI re-run button skips both caches.
 - **Scoring (max 10):** `unique` → 10 (`pass`), `borderline` → 5 (`warning`), `commodity` → 0 (`fail`).
 - **Rationale:** Originality is the dominant GEO/E-E-A-T signal; highest single weight by design.
 
@@ -192,7 +194,11 @@ These exist in code but are not currently part of the 81-pt total. Useful to kno
 
 ## Meta & social generator
 
-`src/components/MetaGenerator.tsx` → `POST /api/generate-meta` (`{ field, pageTitle, bodyText, currentValue }` → `{ value }`), then `xmc.pages.updateFields` on **Populate field**.
+`src/components/MetaGenerator.tsx` → `POST /api/generate-meta` (`{ field, pageTitle, bodyText, currentValue }` → `{ value, maxChars, overLimit }`), then `xmc.pages.updateFields` on **Populate field**. The logic is in `src/lib/server/generate-meta.ts`.
+
+- **Model:** `ANTHROPIC_MODEL` (default `claude-opus-5-5`), effort `low`, structured output `{ value }`.
+- **Length limits** (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with `overLimit: true`, and the UI shows the count in amber. Values are never cut off.
+- **Prompt caching:** the brand voice (system prompt) and the page title and text (first user block) carry `cache_control`, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
 
 - **Body:** `bodyText` is the same `ParsedHtml.mainText` the uniqueness check uses. **Generate** is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.
 - **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`, server only) reads the Markdown file named by `BRAND_VOICE_FILE` (relative to the project root, read once per server instance) and the name in `BRAND_NAME`. With neither set, or if the file can't be read, it uses a neutral default voice. `brand/brandx.md` is the BrandX demo voice, and `next.config.ts` (`outputFileTracingIncludes`) bundles `brand/` into the Vercel function.
