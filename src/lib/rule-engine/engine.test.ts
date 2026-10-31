@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runGateCheck, runRuleEngine } from "./engine";
 import { makeTestPageData } from "./test-fixture";
+import { runSiteScore } from "./site-score";
 import { labelForPct } from "@/lib/site-aggregate";
 
 describe("runGateCheck", () => {
@@ -55,14 +56,30 @@ describe("runRuleEngine (demo fixture)", () => {
   });
 });
 
-describe("labelForPct (dashboard thresholds, pre-v2)", () => {
+describe("labelForPct (shared thresholds: 80 / 60)", () => {
   it.each([
     [0, "critical"],
-    [39.9, "critical"],
-    [40, "warning"],
-    [70, "warning"],
-    [70.1, "good"],
+    [59.9, "critical"],
+    [60, "warning"],
+    [79.9, "warning"],
+    [80, "good"],
+    [100, "good"],
   ] as const)("%d%% → %s", (pct, label) => {
     expect(labelForPct(pct)).toBe(label);
+  });
+});
+
+describe("runSiteScore", () => {
+  it("has pillar maxima that sum to 100", () => {
+    const s = runSiteScore({
+      parsedHtml: null,
+      robotsTxt: null,
+      ai: null,
+      updatedAt: null,
+      pageUrl: "https://example.com/",
+      isHomePage: true,
+      templateName: null,
+    });
+    expect(Object.values(s.maxPillars).reduce((a, b) => a + b, 0)).toBe(s.maxTotal);
   });
 });

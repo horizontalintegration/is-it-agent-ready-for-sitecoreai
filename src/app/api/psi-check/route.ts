@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchWithTimeout } from "@/lib/server/extract-html";
+import { safeFetch, validateUrl } from "@/lib/server/safe-fetch";
 import type { PsiResult } from "@/lib/rule-engine/types";
 
 export const maxDuration = 100; // seconds — PSI Lighthouse audits can take 20–40s
@@ -70,6 +70,13 @@ export async function GET(req: NextRequest) {
   if (!url) {
     return NextResponse.json({ error: "missing_url" }, { status: 400, headers: CORS_HEADERS });
   }
+  // Google fetches the page, not us, but only send it public http(s) URLs.
+  try {
+    validateUrl(url);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    return NextResponse.json({ error: "blocked_url", detail }, { status: 400, headers: CORS_HEADERS });
+  }
 
   const params = new URLSearchParams({ url, strategy: "mobile" });
   if (process.env.PSI_API_KEY) {
@@ -77,7 +84,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const res = await fetchWithTimeout(`${PSI_ENDPOINT}?${params.toString()}`, { timeoutMs: 100_000 });
+    // Full Lighthouse reports run to several MB.
+    const res = await safeFetch(`${PSI_ENDPOINT}?${params.toString()}`, {
+      timeoutMs: 100_000,
+      maxBytes: 30 * 1024 * 1024,
+    });
     const data = (await res.json()) as PsiApiResponse;
 
     if (!res.ok) {

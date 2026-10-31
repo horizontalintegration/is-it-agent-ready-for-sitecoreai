@@ -29,6 +29,8 @@ interface MetaGeneratorProps {
   /** Page title + body text used to ground generation. */
   pageTitle: string;
   bodyText: string;
+  /** True while the page scan that supplies bodyText is still running. */
+  bodyPending: boolean;
 }
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -52,6 +54,7 @@ interface FieldRowProps {
   currentValue: string;
   pageTitle: string;
   bodyText: string;
+  bodyPending: boolean;
 }
 
 function FieldRow({
@@ -64,6 +67,7 @@ function FieldRow({
   currentValue,
   pageTitle,
   bodyText,
+  bodyPending,
 }: FieldRowProps) {
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -133,9 +137,10 @@ function FieldRow({
         <span className="text-xs font-semibold text-gray-700 flex-1">{label}</span>
         <button
           onClick={generate}
-          disabled={isGenerating}
+          disabled={isGenerating || bodyPending}
+          title={bodyPending ? "Waiting for the page scan to read the page text." : undefined}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
-            isGenerating
+            isGenerating || bodyPending
               ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
               : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50"
           }`}
@@ -215,6 +220,7 @@ export function MetaGenerator({
   current,
   pageTitle,
   bodyText,
+  bodyPending,
 }: MetaGeneratorProps) {
   return (
     <section className="mt-3">
@@ -224,6 +230,11 @@ export function MetaGenerator({
         </h2>
         <span className="text-[10px] text-gray-400">brand-aligned</span>
       </div>
+      {!bodyPending && !bodyText && (
+        <p className="px-3 pb-2 text-[11px] text-amber-700">
+          The page text couldn&apos;t be read, so suggestions use only the title and current values.
+        </p>
+      )}
       <div className="bg-white border-y border-gray-200">
         {FIELDS.map((f) => (
           <FieldRow
@@ -237,6 +248,7 @@ export function MetaGenerator({
             currentValue={current[f.key] ?? ""}
             pageTitle={pageTitle}
             bodyText={bodyText}
+            bodyPending={bodyPending}
           />
         ))}
       </div>

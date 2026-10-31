@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BRAND_DOCUMENT } from "@/lib/brand/brand-document";
+import { getBrandVoice } from "@/lib/brand/brand-voice";
 
 // ────────────────────────────────────────────────────────────────────────────
-// Generate a single meta / social field, grounded in the brand document.
+// Generate a single meta / social field, grounded in the page content and the
+// configured brand voice (src/lib/brand/brand-voice.ts).
 //
-// DEMO backend: calls the Anthropic Messages API directly (same pattern as
-// /api/ai-check). When the Sitecore Stream AI Skills API is ready, swap ONLY
-// the callAnthropic(...) call below for the skill invocation — the request
-// shape ({ field, pageTitle, bodyText, currentValue }) and the { value }
-// response stay the same, so the UI and field write-back are unaffected.
+// Calls the Anthropic Messages API directly (same pattern as /api/ai-check).
+// The request shape ({ field, pageTitle, bodyText, currentValue }) and the
+// { value } response are what the UI and field write-back depend on.
 // ────────────────────────────────────────────────────────────────────────────
 
 const CORS_HEADERS = {
@@ -34,13 +33,13 @@ const FIELD_SPECS: Record<MetaField, FieldSpec> = {
     label: "meta title",
     maxChars: 60,
     instruction:
-      "Write an SEO meta title (the browser/SERP title). Lead with the page's primary topic, be specific, and include the brand name 'BrandX' only if it fits naturally. No quotation marks, no trailing punctuation.",
+      "Write an SEO meta title (the browser/SERP title). Lead with the page's primary topic and be specific. No quotation marks, no trailing punctuation.",
   },
   metaDescription: {
     label: "meta description",
     maxChars: 155,
     instruction:
-      "Write an SEO meta description that summarizes the page and invites the click. Plain, jargon-free, reassuring. Lead with client value, not products. One or two sentences.",
+      "Write an SEO meta description that summarizes the page and invites the click. Lead with the value to the reader. One or two sentences.",
   },
   ogTitle: {
     label: "Open Graph title",
@@ -52,7 +51,7 @@ const FIELD_SPECS: Record<MetaField, FieldSpec> = {
     label: "Open Graph description",
     maxChars: 200,
     instruction:
-      "Write an Open Graph description for social sharing. Engaging and reassuring, emphasizing trust and client goals. One or two sentences.",
+      "Write an Open Graph description for social sharing that makes people want to read the page. One or two sentences.",
   },
 };
 
@@ -140,15 +139,27 @@ export async function POST(req: NextRequest) {
   const bodyText = (body.bodyText ?? "").slice(0, 3000);
   const currentValue = (body.currentValue ?? "").slice(0, 500);
 
-  const system = `You are BrandX's content strategist. You write metadata and social copy that strictly follows the brand voice and compliance guardrails below. Respond ONLY with valid JSON, no markdown, no explanation, no code fences.
+  const brand = await getBrandVoice();
+  const brandRef = brand.name ?? "the brand";
+  console.info(
+    `[generate-meta] ${body.field}: ${bodyText.length} chars of body text, brand voice: ${brand.source}`,
+  );
+
+  const system = `You are ${brand.name ? `${brand.name}'s` : "the site's"} content strategist. You write metadata and social copy that strictly follows the brand voice and compliance guardrails below. Respond ONLY with valid JSON, no markdown, no explanation, no code fences.
 
 BRAND KNOWLEDGE:
-${BRAND_DOCUMENT}`;
+${brand.document}`;
+
+  const brandNameLine =
+    body.field === "metaTitle" && brand.name
+      ? `\nInclude the brand name "${brand.name}" only if it fits naturally.`
+      : "";
 
   const prompt = `Generate the ${spec.label} for the following web page.
 
-${spec.instruction}
-Keep it at or under ${spec.maxChars} characters. Match the BrandX tone of voice. Do not invent statistics, proof points, or guarantees that are not supported by the page content.
+${spec.instruction}${brandNameLine}
+Keep it at or under ${spec.maxChars} characters. Match ${brandRef}'s tone of voice. Do not invent statistics, proof points, or guarantees that are not supported by the page content.
+Write it from the page content below. The current ${spec.label} is for reference only: don't copy it.
 
 Page title: ${pageTitle || "(none)"}
 Current ${spec.label}: ${currentValue || "(empty)"}

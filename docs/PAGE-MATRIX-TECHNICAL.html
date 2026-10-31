@@ -53,7 +53,7 @@
 <li><code>label</code> — <code>critical</code> / <code>warning</code> / <code>good</code></li>
 </ul>
 <p><strong>Percentage</strong> = <code>(total / maxTotal) × 100</code>.</p>
-<h3>Rating bands — <code>labelFor</code>, <code>site-score.ts:66–71</code></h3>
+<h3>Rating bands — <code>labelForPct</code>, <code>src/lib/score-thresholds.ts</code></h3>
 <table><thead><tr>
 <th style="text-align:left">Label</th>
 <th style="text-align:left">Range</th>
@@ -62,24 +62,25 @@
 </tr></thead><tbody>
 <tr>
 <td style="text-align:left"><code>good</code></td>
-<td style="text-align:left">&gt; 70%</td>
+<td style="text-align:left">≥ 80%</td>
 <td style="text-align:left"><code>text-green-600</code></td>
 <td style="text-align:left"><code>bg-green-50 text-green-700</code></td>
 </tr>
 <tr>
 <td style="text-align:left"><code>warning</code></td>
-<td style="text-align:left">40–70%</td>
+<td style="text-align:left">60–79%</td>
 <td style="text-align:left"><code>text-amber-600</code></td>
 <td style="text-align:left"><code>bg-amber-50 text-amber-700</code></td>
 </tr>
 <tr>
 <td style="text-align:left"><code>critical</code></td>
-<td style="text-align:left">&lt; 40%</td>
+<td style="text-align:left">&lt; 60%</td>
 <td style="text-align:left"><code>text-red-600</code></td>
 <td style="text-align:left"><code>bg-red-50 text-red-700</code></td>
 </tr>
 </tbody></table>
-<h3>Fixed pillar maxima (<code>MAX_PILLARS</code>, <code>site-score.ts:58–72</code>)</h3>
+<p>The same <code>READY_PCT</code> (80) and <code>ALMOST_PCT</code> (60) drive the panel's <code>ScoreRing</code>, every <code>ScorePill</code>, the per-row label (<code>labelFor</code> in <code>site-score.ts</code>) and the site roll-up (<code>site-aggregate.ts</code>). Cached dashboard scores use the key prefix <code>aiDiscovery:scores:v3:</code>. It was bumped from v2 when the thresholds and the AI body text changed.</p>
+<h3>Fixed pillar maxima (<code>MAX_PILLARS</code>, <code>site-score.ts:61–72</code>)</h3>
 <table><thead><tr>
 <th style="text-align:left">Pillar</th>
 <th style="text-align:right">Max</th>
@@ -92,8 +93,8 @@
 </tr>
 <tr>
 <td style="text-align:left">Structured</td>
-<td style="text-align:right"><strong>0–20</strong></td>
-<td style="text-align:left">dynamic per page type (see pillar 2)</td>
+<td style="text-align:right"><strong>0–17</strong></td>
+<td style="text-align:left">dynamic per page type (see pillar 2); <code>MAX_PILLARS.structured</code> is the 17 ceiling, so the maxima sum to 100</td>
 </tr>
 <tr>
 <td style="text-align:left">Answerability</td>
@@ -114,7 +115,7 @@
 <p><strong>Example <code>maxTotal</code> values:</strong></p>
 <ul>
 <li>Home page → 15 + 3 + 20 + 28 + 20 = <strong>86</strong> (Organization only)</li>
-<li>Regular inner page → 15 + 6 + 20 + 28 + 20 = <strong>89</strong> (BreadcrumbList only)</li>
+<li>Regular inner page → 15 + 3 + 20 + 28 + 20 = <strong>86</strong> (BreadcrumbList only)</li>
 <li>Article page w/ FAQs → 15 + 17 + 20 + 28 + 20 = <strong>100</strong> (FAQPage + Article + BreadcrumbList)</li>
 </ul>
 <hr/>
@@ -147,7 +148,7 @@
 </tbody></table>
 <p><strong>Signal types:</strong> robots.txt fetch + HTML head parsing.</p>
 <hr/>
-<h2>Pillar 2 — Structured Data (0–20 pts, dynamic)</h2>
+<h2>Pillar 2 — Structured Data (0–17 pts, dynamic)</h2>
 <p><strong><code>scoreStructured</code>, <code>site-score.ts:113–166</code></strong> · UI: column <strong>STRUCT</strong> — *"can AI parse the schema?"*</p>
 <p>Conditionally evaluated per page type — pages are <strong>not</strong> penalized for inapplicable schemas; both earned and max accumulate only for applicable checks. JSON-LD parsed from <code>&lt;script type="application/ld+json"&gt;</code>.</p>
 <table><thead><tr>
@@ -230,7 +231,7 @@
 <tr>
 <td style="text-align:left">AI uniqueness rating</td>
 <td style="text-align:right">0–15</td>
-<td style="text-align:left">Ingests LLM content classification</td>
+<td style="text-align:left">Ingests LLM content classification of <code>ParsedHtml.mainText</code> (skipped when the page has none)</td>
 <td style="text-align:left"><code>unique</code> → 15 · <code>borderline</code> → 8 · <code>commodity</code> or not-yet-run → 0</td>
 <td style="text-align:left"><strong>AI/LLM</strong></td>
 </tr>

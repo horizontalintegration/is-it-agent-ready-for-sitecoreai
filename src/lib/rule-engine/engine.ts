@@ -8,6 +8,7 @@ import {
   PsiResult,
   AiResults,
   CheckStatus,
+  OrganizationInfo,
 } from "./types";
 
 import {
@@ -698,8 +699,10 @@ function checkHowToSchema(a: AuthoringFields, html: ParsedHtml | null): RuleResu
 */
 
 /** Organization schema (preview only) — surfaces a ready-to-paste site-level
- * Organization JSON-LD snippet. Always scores full marks. */
-function checkOrganizationSchema(): RuleResult {
+ * Organization JSON-LD snippet built from the configured organization.
+ * Always scores full marks (real JSON-LD detection is Phase 3, D2). */
+function checkOrganizationSchema(org: OrganizationInfo): RuleResult {
+  const configured = Boolean(org.name);
   return {
     id: "aeo-organization-schema",
     pillar: "aeo",
@@ -708,9 +711,10 @@ function checkOrganizationSchema(): RuleResult {
     maxScore: 5,
     status: "pass",
     score: 5,
-    value: "BrandX",
-    message:
-      "Organization structured data identifies your brand to search engines and AI assistants. Add the snippet below to your global template (e.g. site head) so it renders on every page.",
+    value: org.name ?? "Not configured",
+    message: configured
+      ? "Organization structured data identifies your brand to search engines and AI assistants. Add the snippet below to your global template (e.g. site head) so it renders on every page."
+      : "Organization structured data identifies your brand to search engines and AI assistants. The organization isn't configured yet, so the snippet below has placeholders: replace them, or set the NEXT_PUBLIC_ORG_* variables so the app fills them in.",
     fixSuggestion: "",
     details: [
       "Why it matters: identifies your brand as a verified entity (name, logo, official URL) to search engines and AI assistants.",
@@ -718,7 +722,7 @@ function checkOrganizationSchema(): RuleResult {
       "The sameAs links connect your site to official social profiles, reinforcing trust and authority (E-E-A-T).",
       "AI search engines (ChatGPT, Perplexity, Gemini) use it to recognise and cite your organisation correctly.",
     ],
-    codePreview: buildOrganizationJsonLd(),
+    codePreview: buildOrganizationJsonLd(org),
   };
 }
 
@@ -1246,7 +1250,7 @@ export function runRuleEngine(data: PageData): EngineOutput {
     checkAnchorText(data.parsedHtml), // info-only
 
     // AEO
-    checkOrganizationSchema(),
+    checkOrganizationSchema(data.organization),
     checkStructuredDataCoverage(data.pageUrl),
     checkFaqSchema(data.authoring),
     checkFaqAnswerQuality(data.authoring),

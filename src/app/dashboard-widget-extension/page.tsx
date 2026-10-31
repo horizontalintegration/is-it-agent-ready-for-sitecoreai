@@ -129,7 +129,7 @@ export default function DashboardWidgetPage() {
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white shrink-0">
         <div className="px-4 py-2 flex items-center gap-3">
-          <h1 className="text-sm font-semibold">Site content health</h1>
+          <h1 className="text-sm font-semibold">Is this site agent-ready?</h1>
           {siteContext.name && (
             <span className="text-xs text-gray-500 truncate">{siteContext.name}</span>
           )}

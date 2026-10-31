@@ -1,3 +1,5 @@
+import { ALMOST_PCT, READY_PCT } from "@/lib/score-thresholds";
+
 interface ScorePillProps {
   score: number;
   max: number;
@@ -17,10 +19,10 @@ export function ScorePill({ score, max, size = "sm" }: ScorePillProps) {
     );
   }
 
-  const pct = score / max;
+  const pct = (score * 100) / max;
   let style: string;
-  if (pct >= 0.8) style = "bg-green-50 text-green-700";
-  else if (pct >= 0.4) style = "bg-amber-50 text-amber-700";
+  if (pct >= READY_PCT) style = "bg-green-50 text-green-700";
+  else if (pct >= ALMOST_PCT) style = "bg-amber-50 text-amber-700";
   else style = "bg-red-50 text-red-700";
 
   return (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractParsedHtml, fetchWithTimeout } from "@/lib/server/extract-html";
+import { extractParsedHtml } from "@/lib/server/extract-html";
+import { safeFetch, SafeFetchError } from "@/lib/server/safe-fetch";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
   if (token) fetchHeaders["x-prerender-revalidate"] = token;
 
   try {
-    const res = await fetchWithTimeout(url, {
+    const res = await safeFetch(url, {
       headers: fetchHeaders,
       timeoutMs: 10_000,
     });
@@ -44,6 +45,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(parsed, { headers: CORS_HEADERS });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
+    if (err instanceof SafeFetchError && err.isBadInput) {
+      console.warn(`[preview-fetch] blocked ${url}: ${message}`);
+      return NextResponse.json(
+        { error: "blocked_url", detail: message, url },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
     console.error(`[preview-fetch] threw fetching ${url}: ${message}`);
     return NextResponse.json(
       { error: "preview_fetch_failed", detail: message, url },

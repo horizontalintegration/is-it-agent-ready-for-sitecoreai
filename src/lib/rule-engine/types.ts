@@ -52,7 +52,7 @@ export interface AuthoringFields {
 
   // Content
   richTextParagraphs: string[]; // plain text, one entry per paragraph (HTML stripped)
-  richTextFull: string;         // full concatenated body text, HTML stripped
+  richTextFull: string;         // full concatenated body text, HTML stripped. Not populated from Sitecore (always ""): the AI features use ParsedHtml.mainText
   images: ImageField[];
   links: LinkField[];
   headings: HeadingField[];     // from Heading component fields, in layout order
@@ -92,6 +92,10 @@ export interface ParsedHtml {
 
   // Rendered <p> text inside <main> (content paragraphs), in DOM order
   paragraphs: string[];
+
+  // All readable text of <main> (or <body> without header/nav/footer), one
+  // block per line, entities decoded. Sent to the AI checks as the page body.
+  mainText: string;
 
   // Meta / link tags
   canonicalHref: string | null;
@@ -166,11 +170,25 @@ export interface AiResults {
   }>;
 }
 
+// ── Organization identity (for the Organization JSON-LD snippet) ─────────────
+
+export interface OrganizationInfo {
+  name: string | null;
+  url: string | null;
+  logo: string | null;
+  description: string | null;
+  /** Official profile URLs (LinkedIn, X, …) for `sameAs`. */
+  sameAs: string[];
+}
+
 // ── Aggregated input to the rule engine ──────────────────────────────────────
 
 export interface PageData {
   // The page's canonical URL — used for canonical self-reference check
   pageUrl: string;
+
+  // Site-level organization identity, from config with site fallbacks
+  organization: OrganizationInfo;
 
   authoring: AuthoringFields;
   parsedHtml: ParsedHtml | null;   // null if preview fetch hasn't run yet

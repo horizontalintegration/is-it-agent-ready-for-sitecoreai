@@ -1,5 +1,7 @@
 "use client";
 
+import { ALMOST_PCT, READY_PCT } from "@/lib/score-thresholds";
+
 interface ScoreRingProps {
   score: number;
   maxScore: number;
@@ -14,9 +16,10 @@ export function ScoreRing({ score, maxScore, size = 56 }: ScoreRingProps) {
   const circumference = 2 * Math.PI * r;
   const dashoffset = circumference * (1 - pct);
 
+  const pct100 = maxScore === 0 ? 0 : (score * 100) / maxScore;
   let stroke = "var(--color-text-danger)";
-  if (pct >= 0.8) stroke = "var(--color-text-success)";
-  else if (pct >= 0.4) stroke = "#d97706";
+  if (pct100 >= READY_PCT) stroke = "var(--color-text-success)";
+  else if (pct100 >= ALMOST_PCT) stroke = "#d97706";
 
   return (
     <svg width={size} height={size} className="block" aria-label={`Score ${score} of ${maxScore}`}>

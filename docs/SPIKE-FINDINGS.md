@@ -28,7 +28,8 @@ Date: 2026-10-23 · Branch: `feature/v2-phase-0-setup` · Base: `28963dc`
 - **Runtime smoke test** (2026-10-29, after merging to `main`):
   - **Confirmed:** the context panel and the dashboard both load in Sitecore on the new SDK, and `getPageHTML` works in the panel (section 3).
   - The dashboard shows errors, but the same errors appear in the v1 app, so they aren't caused by the upgrade. Re-check them after the planned changes.
-  - **Not yet run:** meta **Generate → Populate**, the only path that writes to Sitecore (`updateFields`). Its request types are unchanged, so the risk is low.
+  - **Confirmed (2026-10-30):** meta **Generate → Populate**, the only path that writes to Sitecore (`updateFields`), runs without errors for every field.
+  - It generated the same text as the existing values. That's expected while D1 is open: the panel sends an empty `bodyText`, so the model sees only the page title and the current value. Re-check that the output follows the page content once Phase 1 fixes D1.
 
 Other setup notes:
 

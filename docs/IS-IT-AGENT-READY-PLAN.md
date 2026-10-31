@@ -533,6 +533,12 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 ## 11. Out of scope / future
 
 - **Scrunch connector:** if a customer has Scrunch, read its citation and Signal data and show it in place of the probe estimate. The interface should stay pluggable (`CitationProvider`).
+- **Brand voice from the SitecoreAI brand kit** (agreed 2026-10-31: build it only after all other phases are done, deployed and working). Phase 1 reads the brand voice from `BRAND_VOICE_FILE` (`src/lib/brand/brand-voice.ts`). What we found (2026-10-30):
+  - **Brand kit ID via the SDK:** `pages.context` → `siteInfo.brandKitId` is typed in `@sitecore-marketplace-sdk/client` 0.4.1, and `Site.brandKitId` is in the xmc Sites API. Not yet seen at runtime.
+  - **Brand kit text, not via the SDK:** `@sitecore-marketplace-sdk/ai` (0.1.3) only offers `ai.skills.generateBrandReview`. The text comes from the Brand Management REST API: `GET /api/brands/v1/organizations/{organizationId}/brandkits/{brandkitId}/sections`, then `GET /api/brands/v2/…/sections/{sectionId}/fields` (subsection text in `value`). That API needs a Stream client-credentials token (Admin > AI APIs keys) whose scopes include `ai.org:admin` and brand/document **write**, plus the `organizationId` from the Cloud Portal URL. The Marketplace host doesn't proxy it. That only suits single-organisation deployments.
+  - **A possible SDK route:** `xmc.agent.sitesGetSiteDetails(siteId)` returns an undocumented `brand_information: string`. **[SPIKE]** Check what it contains first; if it holds the brand kit text, use it as the voice source.
+  - **Brand Review:** after generating, run `ai.skills.generateBrandReview({ brandkitId, input, sections })` on the suggestion and show the 1–5 score and suggestion next to Populate. Needs the `AI` module in the client's `modules` and "AI skills APIs" access; it may use the customer's Sitecore AI allowance.
+  - **Fallback order:** brand kit (`brand_information`, or the REST API) → `BRAND_VOICE_FILE` → the neutral default.
 - **DNS-AID, Web Bot Auth:** informational only. Revisit if adoption grows.
 - **Personalisation variants and non-web channels.**
 

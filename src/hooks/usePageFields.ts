@@ -27,6 +27,8 @@ interface UsePageFieldsResult {
   fields: Partial<AuthoringFields> | null;
   pageUrl: string;
   siteDomain: string;
+  /** The site's display name (or its name), for the Organization fallback. */
+  siteName: string;
   editingToken: string;
   isLoading: boolean;
   writeContext: PageWriteContext;
@@ -46,6 +48,7 @@ type SdkPageInfo = {
 type SdkSiteInfo = {
   id?: string;
   name?: string;
+  displayName?: string;
   targetHostname?: string;
   hosts?: unknown;
   url?: string;
@@ -331,6 +334,7 @@ export function usePageFields(
   const [fields, setFields] = useState<Partial<AuthoringFields> | null>(null);
   const [pageUrl, setPageUrl] = useState<string>("");
   const [siteDomain, setSiteDomain] = useState<string>("");
+  const [siteName, setSiteName] = useState<string>("");
   const [editingToken, setEditingToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [writeContext, setWriteContext] = useState<PageWriteContext>({
@@ -543,8 +547,14 @@ export function usePageFields(
         );
       }
 
+      const resolvedSiteName =
+        (typeof siteInfo?.displayName === "string" && siteInfo.displayName) ||
+        (typeof siteInfo?.name === "string" && siteInfo.name) ||
+        "";
+
       if (cancelled) return;
       if (resolvedDomain) setSiteDomain(resolvedDomain);
+      if (resolvedSiteName) setSiteName(resolvedSiteName);
       if (resolvedUrl) setPageUrl(resolvedUrl);
 
       if (pageChanged) {
@@ -628,7 +638,7 @@ export function usePageFields(
   }, [client, isInitialized, refetchFields, refetchFaqItems, rebuildFields]);
 
   return useMemo(
-    () => ({ fields, pageUrl, siteDomain, editingToken, isLoading, writeContext }),
-    [fields, pageUrl, siteDomain, editingToken, isLoading, writeContext],
+    () => ({ fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext }),
+    [fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext],
   );
 }

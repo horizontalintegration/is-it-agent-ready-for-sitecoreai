@@ -1,6 +1,6 @@
 # Page Checks Explained — A Guide for Marketers
 
-This guide explains, in plain language, every page-level check our tool runs and **why each one matters**. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"
+This guide explains, in plain language, every page-level check that **Is It Agent-Ready? for SitecoreAI** runs in the Page Builder panel ("Is this page agent-ready?") and **why each one matters**. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"
 
 ---
 
@@ -103,7 +103,7 @@ Think of these as three different "audiences" reading your page:
 ---
 
 ### 10. Organization Schema — *5 points*
-**What it checks:** Whether your site identifies your company in machine-readable code (name, logo, etc.). The tool **generates this snippet for you**.
+**What it checks:** Whether your site identifies your company in machine-readable code (name, logo, etc.). The tool **generates this snippet for you**, filled in with your organization's details. If those haven't been set up yet, it uses your site's name and address, and marks the rest as placeholders to replace.
 
 **Why it matters:** This helps your brand appear in Google's "knowledge panel" (the info box on the right of search results) and helps AI confidently state who you are. It's foundational trust-building for your brand identity online.
 
@@ -119,7 +119,7 @@ Think of these as three different "audiences" reading your page:
 ## 🟣 Content Quality Checks — Earning AI's Trust / GEO (23 points)
 
 ### 12. Unique Content Signal — *10 points (the biggest single check)*
-**What it checks:** Our AI reads the page and judges whether the content is genuinely **unique and valuable** versus generic, "could've-been-copied-from-anywhere" filler.
+**What it checks:** Our AI reads the page's main text (headings, paragraphs and lists, without the menu and footer) and judges whether the content is genuinely **unique and valuable** versus generic, "could've-been-copied-from-anywhere" filler.
 
 **Why it matters:** This is the heart of GEO. AI assistants and modern search reward original insight, expertise, and real value. Thin, commodity content gets ignored or buried. Unique content is what gets cited and ranked. This carries the most weight because it matters the most.
 
@@ -166,6 +166,18 @@ Think of these as three different "audiences" reading your page:
 | **GEO** | Agentic Readiness | 4 | Helping AI agents find your real content |
 | **GEO** | Reading Grade Level | 4 | Easy to read = easy to feature |
 | | **Total** | **81** | |
+
+The score in the panel header turns **green at 80% or more**, **amber from 60% to 79%**, and **red below 60%**. The dashboard uses the same thresholds.
+
+---
+
+## Meta & social generator
+
+Below the checks, the panel can write the **meta title, meta description, Open Graph title and Open Graph description** for you. Click **Generate** on a field, review the suggestion, then click **Populate field** to write it into the page in Sitecore.
+
+- Suggestions are written **from the page's main text**, so they describe what the page actually says. The button waits until the page scan has read the text.
+- They follow your **brand voice document**: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.
+- Nothing is saved until you click **Populate field**.
 
 ---
 

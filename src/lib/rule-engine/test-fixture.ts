@@ -1,22 +1,18 @@
 import type { PageData } from "./types";
 import type { PageMatrixRow } from "@/types/dashboard";
 import type { SiteScoreResult } from "./site-score";
+import { labelForPct } from "@/lib/score-thresholds";
 
 const SITE_DOMAIN = "https://example.com";
 
+// Sums to 100, so a fixture row's total is also its percentage.
 const MAX_PILLARS: SiteScoreResult["maxPillars"] = {
   crawlability: 15,
-  structured: 20,
+  structured: 17,
   answerability: 20,
   authority: 28,
   retrievability: 20,
 };
-
-function labelFor(total: number): SiteScoreResult["label"] {
-  if (total < 40) return "critical";
-  if (total <= 70) return "warning";
-  return "good";
-}
 
 function makeFixtureScore(
   pillars: SiteScoreResult["pillars"],
@@ -29,16 +25,33 @@ function makeFixtureScore(
     pillars.retrievability;
   return {
     total,
-    maxTotal: 103,
+    maxTotal: 100,
     pillars,
     maxPillars: MAX_PILLARS,
-    label: labelFor(total),
+    label: labelForPct(total),
   };
 }
 
 export function makeTestPageData(): PageData {
   return {
     pageUrl: `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`,
+    // BrandX is demo data only; real sites use NEXT_PUBLIC_ORG_* (src/lib/brand/organization.ts).
+    organization: {
+      name: "BrandX",
+      url: "https://blueprint-brandx.horizontaldigital.com/",
+      logo: "https://blueprint-brandx.horizontaldigital.com/logo.png",
+      description:
+        "At BrandX, our advisors craft custom financial strategies to match your goals, risk tolerance, and timeline. With over two decades of expertise and a client-first approach, we help you invest smarter, retire better, and grow confidently.",
+      sameAs: [
+        "https://www.linkedin.com/company/brandx",
+        "https://twitter.com/brandx",
+        "https://www.instagram.com/brandx",
+        "https://www.facebook.com/brandx",
+        "https://www.pinterest.com/brandx",
+        "https://www.youtube.com/brandx",
+        "https://www.tiktok.com/brandx",
+      ],
+    },
     authoring: {
       pageTitle: "How to build an effective content strategy in 2026",
       metaDescription:
@@ -120,6 +133,17 @@ export function makeTestPageData(): PageData {
         "Modern content strategies must account for traditional search, answer engines, and AI-driven retrieval systems. Each surface has different relevance signals and content formats.",
         "Start by auditing your existing content. Identify gaps, duplicates, and pages that under-perform. Use that audit to prioritise where to invest in new content vs refreshes.",
       ],
+      mainText: [
+        "How to build an effective content strategy in 2026",
+        "What is a content strategy?",
+        "Content strategy is the planning, development, and management of content for a business or brand. A solid strategy aligns content to business goals, audience needs, and channel requirements.",
+        "Why does it matter?",
+        "Modern content strategies must account for traditional search, answer engines, and AI-driven retrieval systems. Each surface has different relevance signals and content formats.",
+        "Building your audit framework",
+        "Step 1: Map your existing pages",
+        "Step 2: Score for relevance",
+        "Start by auditing your existing content. Identify gaps, duplicates, and pages that under-perform. Use that audit to prioritise where to invest in new content vs refreshes.",
+      ].join("\n"),
       canonicalHref: `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`,
       robotsMeta: "index, follow",
       googlebotMeta: null,
@@ -197,7 +221,7 @@ function buildRow(input: FixtureRowInput): PageMatrixRow {
 
 export function makeTestSitePages(): PageMatrixRow[] {
   return [
-    // Critical (total < 40)
+    // Critical (< 60): p1–p7 · Warning (60–79): p8, p11 · Good (≥ 80): p9, p10, p12
     buildRow({
       id: "p1", name: "About", route: "/about", daysOld: 1200,
       pillars: { crawlability: 3, structured: 0, answerability: 4, authority: 5, retrievability: 4 },
@@ -210,7 +234,6 @@ export function makeTestSitePages(): PageMatrixRow[] {
       id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800,
       pillars: { crawlability: 4, structured: 0, answerability: 2, authority: 4, retrievability: 5 },
     }),
-    // Warning (40–70)
     buildRow({
       id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
       pillars: { crawlability: 9, structured: 6, answerability: 10, authority: 12, retrievability: 12 },
@@ -231,7 +254,6 @@ export function makeTestSitePages(): PageMatrixRow[] {
       id: "p8", name: "Customer story", route: "/blog/case-study-acme", daysOld: 250,
       pillars: { crawlability: 11, structured: 14, answerability: 14, authority: 14, retrievability: 14 },
     }),
-    // Good (> 70)
     buildRow({
       id: "p9", name: "Homepage", route: "/", daysOld: 30,
       pillars: { crawlability: 14, structured: 17, answerability: 16, authority: 22, retrievability: 18 },
@@ -249,7 +271,7 @@ export function makeTestSitePages(): PageMatrixRow[] {
     }),
     buildRow({
       id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
-      pillars: { crawlability: 14, structured: 20, answerability: 18, authority: 22, retrievability: 18 },
+      pillars: { crawlability: 14, structured: 17, answerability: 18, authority: 22, retrievability: 18 },
       description: "What answer-engine optimisation is and how it differs from classic SEO.",
     }),
   ];
