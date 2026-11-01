@@ -33,289 +33,272 @@
 </head>
 <body>
 <h1>Page Checks — Technical Reference</h1>
-<p>A detailed, engineering-oriented breakdown of every page-level check in <strong>Is It Agent-Ready? for SitecoreAI</strong> (the Page Builder context panel): what it inspects, the exact thresholds and scoring math, and where it lives in the codebase.</p>
-<p><strong>Source of truth:</strong> <code>src/lib/rule-engine/engine.ts</code> (check definitions), <code>helpers.ts</code> (shared utilities), <code>types.ts</code> (interfaces), <code>site-score.ts</code> (site-level aggregation).</p>
+<p>An engineering-oriented reference for the checks in <strong>Is It Agent-Ready? for SitecoreAI</strong>: the scoring model, every check with its thresholds and credit, and where each one lives in the code. The Page Builder panel ("Is this page agent-ready?") and the dashboard ("Is this site agent-ready?") use <strong>the same engine</strong>, so a page scores the same in both. Dashboard specifics (roll-up, cache, site checks card) are in <code>PAGE-MATRIX-TECHNICAL.md</code>.</p>
+<p><strong>Source of truth:</strong> <code>src/lib/checks/</code> — <code>registry.ts</code> (the check list), <code>page/*.ts</code> and <code>site/*.ts</code> (the checks), <code>scoring.ts</code> (pool maths), <code>gate.ts</code>, <code>engine.ts</code> (entry points), <code>context.ts</code> (inputs), <code>json-ld.ts</code> (shared JSON-LD parser), <code>adapters.ts</code> (the pre-v2 UI). Plan reference: <code>docs/IS-IT-AGENT-READY-PLAN.md</code> section 5.</p>
 <hr/>
 <h2>Scoring model</h2>
 <ul>
-<li>Each check returns a status of <code>pass</code> / <code>warning</code> / <code>fail</code> and a numeric score <code>0..max</code>.</li>
-<li>Page total = sum of enabled check scores = <strong>81 points</strong> across three pillars:</li>
+<li>Every check belongs to one of <strong>four categories</strong>, phrased as questions: <strong>Reach</strong> (Can AI agents get to it?), <strong>Read</strong> (Can they read it?), <strong>Understand</strong> (Do they understand it?), <strong>Trust</strong> (Will they trust and cite it?).</li>
+<li>Every check has a <strong>tier</strong>. <strong>Essential</strong> checks share an <strong>80-point pool</strong>, <strong>Recommended</strong> checks a <strong>20-point pool</strong>, and <strong>Bonus</strong> checks add <strong>up to +5</strong>. The total is capped at 100.</li>
+<li>A check returns a <strong>credit from 0 to 1</strong> (partial credit is normal) and a status (<code>pass</code> / <code>warning</code> / <code>fail</code> / <code>info</code>). Its points are <code>credit × its share of the tier pool</code>. Shares are equal unless a check sets the optional <code>weight</code> multiplier (default 1; none are set today).</li>
+<li>A check can also return <strong>N/A</strong> (<code>not-applicable</code>) or <strong>not checked</strong> (<code>not-checked</code>: AI pending, PageSpeed not run, fetch failed). Both are <strong>left out of the pools, never failed</strong>. The pool is split across the checks that are scored, so a page is only graded on what applies to it.</li>
+<li>If Essential or Recommended has nothing scored, the other one is scaled up so the base still totals 100. With nothing scored at all, there is no score yet (<code>null</code>).</li>
+<li>The score is rounded to a whole number. Exact points are kept per check and per category (<code>ScoreBreakdown</code> in <code>types.ts</code>).</li>
+<li>Thresholds are shared by the panel and the dashboard (<code>src/lib/score-thresholds.ts</code>): <strong>Agent-ready ≥ 80</strong>, <strong>Almost there 60–79</strong>, <strong>Not ready &lt; 60</strong>.</li>
 </ul>
-<p>  - <strong>SEO</strong>: 35 pts (6 scored + 1 info-only)</p>
-<p>  - <strong>AEO</strong>: 23 pts (4 scored)</p>
-<p>  - <strong>Content Quality (GEO)</strong>: 23 pts (5 scored)</p>
+<p><strong>Points in Phase 3.</strong> Four Essential page checks exist (P2, P8, P9, P10), so when all apply each is worth 20 points; on the home page P10 is usually N/A and the other three are worth 26.7 each. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phases 4 and 7 add P3 and P5 to Essential, which brings each Essential check to about 13 points.</p>
+<p><strong>Scopes.</strong> Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get <strong>their own site score</strong>; they are never part of a page score. Phase 3 has two site checks: S2 and S7.</p>
+<p><strong>Same score in both views.</strong> Both views build the check context with <code>buildPageContext</code> (<code>context.ts</code>) from the same inputs: the page's live HTML (<code>/api/preview-fetch</code> → <code>ParsedHtml</code>), the AI results (<code>/api/ai-check</code>, cached by content hash), and the same Sitecore fields read by the same names (<code>SCORING_FIELD_NAMES</code>: title, meta description, <code>robotsMetaTag</code>, <code>__Updated</code>). The panel reads them with <code>pageFieldsFromFieldMap</code>, the dashboard with <code>pageFieldsFromValues</code>. The one difference is PageSpeed: only the panel can run it, so after you run it there, the panel includes P7 and the dashboard doesn't. <code>src/lib/checks/parity.test.ts</code> covers this.</p>
+<hr/>
+<h2>The gate — P1 <code>reach.indexable</code></h2>
+<p><strong>Location:</strong> <code>gate.ts</code></p>
+<p>Runs before any check. The page is <strong>blocked</strong> when:</p>
 <ul>
-<li>Info-only checks contribute <code>0</code> to the total but emit findings/guidance.</li>
-<li>A <strong>gate check</strong> runs before scoring and short-circuits the whole panel if the page is intentionally excluded from indexing.</li>
-<li>The header <code>ScoreRing</code> (and every <code>ScorePill</code>) is green at ≥ 80%, amber at 60–79% and red below 60%. These thresholds live in <code>src/lib/score-thresholds.ts</code> (<code>READY_PCT</code>, <code>ALMOST_PCT</code>, <code>labelForPct</code>) and are shared with the dashboard.</li>
+<li>the Sitecore <strong>Robots Meta Tag</strong> field (<code>robotsMetaTag</code>) contains <code>noindex</code>, <strong>or</strong></li>
+<li>the rendered <code>&lt;meta name="robots"&gt;</code> or <code>&lt;meta name="googlebot"&gt;</code> contains <code>noindex</code>, <code>nosnippet</code> or <code>max-snippet:0</code>.</li>
 </ul>
-<h3>SEO / AEO / GEO definitions (technical framing)</h3>
+<p>A blocked page shows the gate message instead of a score (<code>PageReport.score</code> is <code>null</code>, no outcomes). The dashboard reads the same field (it was added to its page query), shows the row as "Blocked (noindex)", and leaves it out of the averages.</p>
+<hr/>
+<h2>Page checks</h2>
+<p>All page checks except P7, P9, P16 and P21 read the page's <strong>live HTML</strong>. "Not yet scanned" (not checked) means the HTML hasn't arrived yet.</p>
+<h3>Reach</h3>
 <table><thead><tr>
-<th style="text-align:left">Pillar</th>
-<th style="text-align:left">Optimizes for</th>
-<th style="text-align:left">Primary consumers</th>
-<th style="text-align:left">Signal type</th>
+<th style="text-align:left">ID</th>
+<th style="text-align:left">Title</th>
+<th style="text-align:left">Tier</th>
+<th style="text-align:left">Credit</th>
+<th style="text-align:left">Was</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Crawl + index + SERP rendering</td>
-<td style="text-align:left">Googlebot, Bingbot</td>
-<td style="text-align:left">HTML <code>&lt;head&gt;</code> metadata, document structure, link graph</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">Featured snippets, voice, answer boxes</td>
-<td style="text-align:left">Google answer surfaces, voice assistants</td>
-<td style="text-align:left">Structured data (JSON-LD), Q&amp;A formatting</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">LLM retrieval &amp; citation</td>
-<td style="text-align:left">ChatGPT, Gemini, Claude, Perplexity, AI Overviews</td>
-<td style="text-align:left">Content originality, readability, semantic HTML, performance</td>
+<td style="text-align:left">P2 <code>reach.canonical</code></td>
+<td style="text-align:left">Canonical points to this page</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">self-referencing <code>&lt;link rel="canonical"&gt;</code> → 1 · points elsewhere → 0.4 · missing → 0</td>
+<td style="text-align:left"><code>seo-canonical</code></td>
 </tr>
 </tbody></table>
-<hr/>
-<h2>Gate check — noindex / nosnippet</h2>
-<p><strong>Location:</strong> <code>engine.ts:33–72</code></p>
-<p><strong>Logic:</strong> Before any scoring, evaluate exclusion signals:</p>
-<p>1. Sitecore <code>noindex</code> field set on the item, <strong>OR</strong></p>
-<p>2. <code>&lt;meta name="robots"&gt;</code> / <code>&lt;meta name="googlebot"&gt;</code> containing <code>noindex</code>, <code>nosnippet</code>, or <code>max-snippet:0</code>.</p>
-<p><strong>Behavior:</strong> If triggered, the panel is blocked and surfaces a single message; no checks are scored. Rationale: optimizing a non-indexable page produces misleading scores.</p>
-<hr/>
-<h2>SEO checks (35 pts)</h2>
-<h3>1. <code>seo-meta-title</code> — Meta Title Length</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:79</code></li>
-<li><strong>Inspects:</strong> Character length of the page title field.</li>
-<li><strong>Scoring (max 8):</strong></li>
-</ul>
-<p>  - <code>pass</code> 8 — length ∈ [50, 60]</p>
-<p>  - <code>warning</code> 5 — length ∈ [30, 49] ∪ [61, 70]</p>
-<p>  - <code>fail</code> 2 — length &lt; 30 or &gt; 70</p>
-<ul>
-<li><strong>Rationale:</strong> ~600px SERP truncation budget; titles outside the band are truncated or under-utilized.</li>
-</ul>
-<h3>2. <code>seo-meta-description</code> — Meta Description Present + Length</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:155</code></li>
-<li><strong>Inspects:</strong> Presence and length of the meta description.</li>
-<li><strong>Scoring (max 8):</strong></li>
-</ul>
-<p>  - <code>pass</code> 8 — length ∈ [120, 160]</p>
-<p>  - <code>warning</code> 4 — present but outside range</p>
-<p>  - <code>fail</code> 0 — missing</p>
-<ul>
-<li><strong>Rationale:</strong> Controls SERP snippet copy; absent → Google auto-generates from body.</li>
-</ul>
-<h3>3. <code>seo-headings</code> — H1 Count + Heading Hierarchy</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:213</code></li>
-<li><strong>Inspects:</strong> Count of <code>&lt;h1&gt;</code> and whether heading levels descend without skips.</li>
-<li><strong>Scoring (max 6 = 3 + 3):</strong></li>
-</ul>
-<p>  - H1 sub-score (3): exactly one H1 → 3; zero or 2+ → 0–1</p>
-<p>  - Hierarchy sub-score (3): no skipped levels (e.g., H2→H4) → 3; skips present → 0</p>
-<ul>
-<li><strong>Rationale:</strong> Single H1 = unambiguous topic; ordered hierarchy = parseable document outline for crawlers and assistive tech.</li>
-</ul>
-<h3>4. <code>seo-image-alt</code> — Image Alt Text Coverage</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:289</code></li>
-<li><strong>Inspects:</strong> Ratio of <code>&lt;img&gt;</code> elements with non-empty <code>alt</code>.</li>
-<li><strong>Scoring (max 5):</strong> <code>round((imagesWithAlt / totalImages) * 5)</code></li>
-</ul>
-<p>  - <code>pass</code> 5 — 100% coverage</p>
-<p>  - <code>warning</code> 1–4 — partial</p>
-<p>  - <code>fail</code> 0 — none (or no images → treated as full)</p>
-<ul>
-<li><strong>Rationale:</strong> Image search indexing + WCAG accessibility.</li>
-</ul>
-<h3>5. <code>seo-canonical</code> — Canonical Tag</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:366</code></li>
-<li><strong>Inspects:</strong> Presence and target of <code>&lt;link rel="canonical"&gt;</code>.</li>
-<li><strong>Scoring (max 5):</strong></li>
-</ul>
-<p>  - <code>pass</code> 5 — present and self-referencing</p>
-<p>  - <code>warning</code> 2 — present but points to a different URL</p>
-<p>  - <code>fail</code> 0 — missing</p>
-<ul>
-<li><strong>Rationale:</strong> Duplicate-content consolidation; prevents ranking-signal dilution across URL variants.</li>
-</ul>
-<h3>6. <code>seo-og-tags</code> — Open Graph Tags</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:427</code></li>
-<li><strong>Inspects:</strong> Presence of <code>og:title</code>, <code>og:description</code>, <code>og:image</code>.</li>
-<li><strong>Scoring (max 3):</strong> score = count of present tags</li>
-</ul>
-<p>  - <code>pass</code> 3 — all three; <code>warning</code> 2 — two of three; <code>fail</code> 0–1 — fewer</p>
-<ul>
-<li><strong>Rationale:</strong> Controls social/link-unfurl preview cards (LinkedIn, Slack, Facebook).</li>
-</ul>
-<h3>7. <code>seo-anchor-text</code> — Internal Link Anchor Text Quality *(info-only, 0 pts)*</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:473</code></li>
-<li><strong>Inspects:</strong> Internal anchors against a generic-phrase blocklist ("click here", "read more", "learn more", etc.; see <code>helpers.ts</code>).</li>
-<li><strong>Output:</strong> Count and list of generic anchors; no score.</li>
-<li><strong>Rationale:</strong> Anchor text is a relevance signal; generic anchors waste it.</li>
-</ul>
-<hr/>
-<h2>AEO checks (23 pts)</h2>
-<h3>8. <code>aeo-faq-schema</code> — FAQPage JSON-LD</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:512</code></li>
-<li><strong>Inspects:</strong> FAQ accordion items in content; <strong>generates</strong> a <code>FAQPage</code> JSON-LD block ready to paste.</li>
-<li><strong>Scoring (max 8):</strong> full score when no FAQ items present, otherwise emits generated schema.</li>
-<li><strong>Rationale:</strong> Eligibility for FAQ rich results and direct answer extraction.</li>
-</ul>
-<h3>9. <code>aeo-faq-answer-quality</code> — FAQ Answer Length &amp; Quality</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:554</code></li>
-<li><strong>Inspects:</strong> Each FAQ answer for: plain text (no HTML), length ∈ [40, 300] chars, self-contained.</li>
-<li><strong>Scoring (max 5):</strong> <code>(qualifyingAnswers / totalAnswers) * 5</code></li>
-<li><strong>Rationale:</strong> Snippet/voice extraction favors concise, standalone answers.</li>
-</ul>
-<h3>10. <code>aeo-organization-schema</code> — Organization JSON-LD</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:704</code></li>
-<li><strong>Inspects:</strong> Generates a ready-to-paste <code>Organization</code> JSON-LD snippet (<code>buildOrganizationJsonLd</code> in <code>helpers.ts</code>) from <code>PageData.organization</code>. That comes from <code>getOrganizationInfo</code> (<code>src/lib/brand/organization.ts</code>): the <code>NEXT_PUBLIC_ORG_NAME</code> / <code>_URL</code> / <code>_LOGO</code> / <code>_DESCRIPTION</code> / <code>_SAME_AS</code> env vars, falling back to the site's display name and domain from <code>pages.context</code>. A missing name, URL or logo becomes a placeholder; when there's no name the value reads "Not configured". BrandX appears only in the demo fixture.</li>
-<li><strong>Scoring (max 5):</strong> always full — provides the snippet for the global template.</li>
-<li><strong>Rationale:</strong> Knowledge-panel eligibility and entity disambiguation.</li>
-</ul>
-<h3>11. <code>aeo-structured-data</code> — Rich Results Eligibility (Breadcrumbs)</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:732</code></li>
-<li><strong>Inspects:</strong> Derives <code>BreadcrumbList</code> JSON-LD from the URL path.</li>
-<li><strong>Scoring (max 5):</strong> always full — provides generated snippet.</li>
-<li><strong>Rationale:</strong> Breadcrumb SERP rendering + site-hierarchy signal.</li>
-</ul>
-<hr/>
-<h2>Content Quality / GEO checks (23 pts)</h2>
-<h3>12. <code>cq-uniqueness</code> — Unique Content Signal</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:791</code></li>
-<li><strong>Inspects:</strong> LLM (Claude) classification of body content as <code>unique</code> / <code>borderline</code> / <code>commodity</code>. The body is <code>ParsedHtml.mainText</code> from <code>/api/preview-fetch</code>: the text of <code>&lt;main&gt;</code> (or <code>&lt;body&gt;</code> without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; <code>/api/ai-check</code> sends the first 3,000 to Claude. <code>useScan</code> calls <code>ai-check</code> only after <code>preview-fetch</code> returns, and skips it when there's no main text. The browser console (<code>[scan] ai-check body: …</code>) and the server log (<code>[ai-check] … received N chars</code>) show what was sent. Phase 4 switches the source to the sanitised <code>getPageHTML</code> draft.</li>
-<li><strong>Claude call:</strong> <code>ANTHROPIC_MODEL_BULK</code> (default <code>ANTHROPIC_MODEL</code>, then <code>claude-opus-5-5</code>), effort <code>low</code>, structured output <code>{ rating, explanation }</code>. It runs in parallel with the follow-up-gaps call (effort <code>medium</code>). A refusal returns <code>422 { error: "refused", category }</code> and the check stays unscored.</li>
-<li><strong>Caching:</strong> results are keyed by SHA-256 of the normalised title and text (<code>src/lib/ai/content-key.ts</code>). The browser cache (<code>aiDiscovery:ai-results:&lt;AI_CHECK_VERSION&gt;</code> in localStorage, 500 pages) is shared by the panel and the dashboard, and the route keeps a per-instance in-memory cache keyed by check, model and content. An unchanged page doesn't call Claude again (console: <code>[ai-cache] hit …</code>). The row's AI re-run button skips both caches.</li>
-<li><strong>Scoring (max 10):</strong> <code>unique</code> → 10 (<code>pass</code>), <code>borderline</code> → 5 (<code>warning</code>), <code>commodity</code> → 0 (<code>fail</code>).</li>
-<li><strong>Rationale:</strong> Originality is the dominant GEO/E-E-A-T signal; highest single weight by design.</li>
-</ul>
-<h3>13. <code>cq-page-experience</code> — Performance Score</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:970</code></li>
-<li><strong>Inspects:</strong> PageSpeed Insights score + Core Web Vitals (external API).</li>
-<li><strong>Scoring (max 5):</strong></li>
-</ul>
-<p>  - <code>pass</code> 5 — PSI ≥ 70</p>
-<p>  - <code>warning</code> 3 — PSI ∈ [50, 69]</p>
-<p>  - <code>fail</code> 0 — PSI &lt; 50 or page not crawlable</p>
-<ul>
-<li><strong>Rationale:</strong> Confirmed ranking factor; UX proxy.</li>
-</ul>
-<h3>14. <code>cq-agentic-readiness</code> — Semantic Landmarks</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:1052</code></li>
-<li><strong>Inspects:</strong> Presence of HTML5 landmarks <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>; also flags interactive elements missing <code>aria-label</code>.</li>
-<li><strong>Scoring (max 4):</strong> score = count of landmarks present (0–4)</li>
-</ul>
-<p>  - <code>pass</code> 4 — all four; <code>warning</code> 3; <code>fail</code> 0–2</p>
-<ul>
-<li><strong>Rationale:</strong> Agent/assistant DOM navigation; isolates primary content from chrome.</li>
-</ul>
-<h3>15. <code>cq-reading-grade</code> — Passage-level Reading Grade</h3>
-<ul>
-<li><strong>Location:</strong> <code>engine.ts:1122</code></li>
-<li><strong>Inspects:</strong> Automated Readability Index (ARI) per paragraph (paragraphs ≥ 20 words).</li>
-</ul>
-<p>  - <code>ARI = 4.71*(chars/words) + 0.5*(words/sentences) − 21.43</code></p>
-<ul>
-<li><strong>Scoring (max 4):</strong> <code>(paragraphsAtGrade≤13 / totalParagraphs) * 4</code></li>
-</ul>
-<p>  - <code>pass</code> 4 — all ≤ grade 13; <code>warning</code> 3 — ≥75%; <code>fail</code> 0–2 — &lt;75%</p>
-<ul>
-<li><strong>Rationale:</strong> Readability correlates with dwell time and clean LLM summarization/quotation.</li>
-</ul>
-<hr/>
-<h2>Disabled checks (defined, commented out in the orchestrator)</h2>
-<p>These exist in code but are not currently part of the 81-pt total. Useful to know for roadmap discussions.</p>
+<h3>Read</h3>
 <table><thead><tr>
-<th style="text-align:left">Check ID</th>
-<th style="text-align:left">Name</th>
-<th style="text-align:right">Max</th>
-<th style="text-align:left">Location</th>
-<th style="text-align:left">Notes</th>
+<th style="text-align:left">ID</th>
+<th style="text-align:left">Title</th>
+<th style="text-align:left">Tier</th>
+<th style="text-align:left">Credit</th>
+<th style="text-align:left">Was</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left"><code>aeo-howto-schema</code></td>
-<td style="text-align:left">HowTo Schema</td>
-<td style="text-align:right">7</td>
-<td style="text-align:left"><code>engine.ts:627–699</code></td>
-<td style="text-align:left">Validates HowTo JSON-LD step <code>name</code>/<code>text</code></td>
+<td style="text-align:left">P4 <code>read.landmarks</code></td>
+<td style="text-align:left">Page structure is machine-readable</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">landmarks present ÷ 4 (<code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>); unlabelled buttons/links are listed</td>
+<td style="text-align:left"><code>cq-agentic-readiness</code></td>
 </tr>
 <tr>
-<td style="text-align:left"><code>aeo-question-headings</code></td>
-<td style="text-align:left">Question-format H2s</td>
-<td style="text-align:right">0 (info)</td>
-<td style="text-align:left"><code>engine.ts:756</code></td>
-<td style="text-align:left">Regex count of interrogative H2s</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>cq-author</code></td>
-<td style="text-align:left">Author Present + Linked</td>
-<td style="text-align:right">6</td>
-<td style="text-align:left"><code>engine.ts:849</code></td>
-<td style="text-align:left">linked → 6 / name only → 3 / missing → 0</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>cq-freshness</code></td>
-<td style="text-align:left">Published Date + Freshness</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left"><code>engine.ts:901</code></td>
-<td style="text-align:left">≤365d → 5 / ≤730d → 2 / &gt;730d → 0</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>cq-followup-gaps</code></td>
-<td style="text-align:left">Content follow-up gaps</td>
-<td style="text-align:right">0 (info)</td>
-<td style="text-align:left"><code>engine.ts:1197–1232</code></td>
-<td style="text-align:left">LLM-generated follow-up questions vs. coverage</td>
+<td style="text-align:left">P7 <code>read.speed</code></td>
+<td style="text-align:left">Page loads fast</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">PageSpeed ≥ 70 → 1 · 50–69 → 0.6 · &lt; 50 or not crawlable → 0. <strong>Not checked</strong> until PageSpeed runs, or when PSI errors</td>
+<td style="text-align:left"><code>cq-page-experience</code></td>
 </tr>
 </tbody></table>
-<hr/>
-<h2>Site-level scoring (aggregate, not page-level)</h2>
-<p><strong>Location:</strong> <code>site-score.ts:307–366</code>. Rolls page-derived HTML signals into 5 site pillars. Listed for completeness — these are separate from the per-page panel.</p>
+<p>P3 (content without JavaScript), P5 and P6 (Markdown for agents) arrive in Phases 4 and 7.</p>
+<h3>Understand</h3>
 <table><thead><tr>
-<th style="text-align:left">Pillar</th>
-<th style="text-align:right">Max</th>
-<th style="text-align:left">Inputs</th>
+<th style="text-align:left">ID</th>
+<th style="text-align:left">Title</th>
+<th style="text-align:left">Tier</th>
+<th style="text-align:left">Credit</th>
+<th style="text-align:left">Was</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left">Crawlability</td>
-<td style="text-align:right">15</td>
-<td style="text-align:left">AI-crawler permissions, canonical, robots meta</td>
+<td style="text-align:left">P8 <code>understand.headings</code></td>
+<td style="text-align:left">One clear H1 and logical headings</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">half for exactly one H1 (1/6 for several), half for no skipped levels</td>
+<td style="text-align:left"><code>seo-headings</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Structured</td>
-<td style="text-align:right">0–17</td>
-<td style="text-align:left">Conditional schema presence (FAQPage, Article, BreadcrumbList, Organization); the max varies per page</td>
+<td style="text-align:left">P9 <code>understand.title-meta</code></td>
+<td style="text-align:left">Title and description are set</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">average of title (50–60 chars → 1 · 30–70 → 0.6 · other → 0.25 · missing → 0) and description (120–160 → 1 · other → 0.5 · missing → 0). Reads the Sitecore field first, the rendered tag as fallback</td>
+<td style="text-align:left"><code>seo-meta-title</code> + <code>seo-meta-description</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Answerability</td>
-<td style="text-align:right">20</td>
-<td style="text-align:left">H1 count, question H2s, reading grade, paragraph length</td>
+<td style="text-align:left">P10 <code>understand.json-ld</code></td>
+<td style="text-align:left">Structured data is present and valid</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">mean over the schemas this page needs: valid → 1 · present but missing required properties → 0.5 · missing → 0. A block that doesn't parse caps it at 0.5 (fail). N/A when nothing is expected</td>
+<td style="text-align:left"><code>aeo-structured-data</code> + <code>aeo-faq-schema</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Authority</td>
-<td style="text-align:right">28</td>
-<td style="text-align:left">AI uniqueness, content depth, freshness, anchor-text quality</td>
+<td style="text-align:left">P11 <code>understand.metadata</code></td>
+<td style="text-align:left">Page identity metadata is complete</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">present ÷ 5 of <code>html lang</code>, <code>og:type</code>, <code>og:title</code>, <code>og:description</code>, <code>og:image</code></td>
+<td style="text-align:left"><code>seo-og-tags</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Retrievability</td>
-<td style="text-align:right">20</td>
-<td style="text-align:left">Title length, meta description, OG tags, landmarks, image alt coverage</td>
+<td style="text-align:left">P12 <code>understand.faq-quality</code></td>
+<td style="text-align:left">FAQ answers are quotable</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">answers of 40–300 chars ÷ all answers. N/A without Q&amp;A pairs</td>
+<td style="text-align:left"><code>aeo-faq-answer-quality</code></td>
+</tr>
+<tr>
+<td style="text-align:left">P13 <code>understand.question-headings</code></td>
+<td style="text-align:left">Sections answer real questions</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">≥ 3 question H2s or ≥ 50% of H2s → 1 · at least one → 0.5 · none → 0. N/A without H2s</td>
+<td style="text-align:left"><code>aeo-question-headings</code> (was off)</td>
+</tr>
+<tr>
+<td style="text-align:left">P14 <code>understand.readability</code></td>
+<td style="text-align:left">Easy to read and quote</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">half: share of 20+-word paragraphs at ARI grade ≤ 13; half: average paragraph 40–120 words → 1 · 20–200 → 0.5. N/A without paragraphs</td>
+<td style="text-align:left"><code>cq-reading-grade</code> + the matrix's paragraph length</td>
+</tr>
+<tr>
+<td style="text-align:left">P15 <code>understand.image-alt</code></td>
+<td style="text-align:left">Images are described</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">images with alt ÷ all images. N/A without images</td>
+<td style="text-align:left"><code>seo-image-alt</code></td>
 </tr>
 </tbody></table>
+<p><strong>P10 in detail (fixes D2).</strong> The three old schema checks always passed and only printed a snippet. P10 reads the real <code>application/ld+json</code> blocks through the shared parser and expects:</p>
+<ul>
+<li><strong>BreadcrumbList</strong> on every page except the home page. Required: <code>itemListElement</code> with <code>position</code> and <code>name</code> on each item.</li>
+<li><strong>FAQPage</strong> when the page has two or more Q&amp;A pairs. Required: <code>mainEntity</code> with <code>name</code> and <code>acceptedAnswer.text</code> on each question.</li>
+<li><strong>Article</strong> (or any subtype, e.g. <code>BlogPosting</code>, <code>NewsArticle</code>) on article templates (template name "Article Detail Page"). Required: <code>headline</code> (or <code>name</code>).</li>
+</ul>
+<p>The fix snippet contains only the missing or incomplete schemas (<code>buildBreadcrumbJsonLd</code>, <code>buildFaqPageJsonLd</code>, <code>buildArticleJsonLd</code> in <code>helpers.ts</code>). The site's Organization schema is S7, not part of P10.</p>
+<p><strong>Q&amp;A pairs (P10, P12).</strong> <code>extractQaPairs</code> (<code>src/lib/server/extract-html.ts</code>) finds them in <strong>any component</strong>: an accordion toggle (<code>[aria-controls][aria-expanded]</code>) whose controlled panel holds the answer (collapsed, <code>aria-hidden</code> panels included), or a <code>&lt;details&gt;</code> whose <code>&lt;summary&gt;</code> is the question. Only toggles that read as a question (end in "?" or start with a question word) count, so menus and "Expand all" are skipped. On BrandX's FAQ page it finds all 8 questions. The AccordionItem datasource fetch in <code>usePageFields</code> is no longer used for scoring.</p>
+<h3>Trust</h3>
+<table><thead><tr>
+<th style="text-align:left">ID</th>
+<th style="text-align:left">Title</th>
+<th style="text-align:left">Tier</th>
+<th style="text-align:left">Credit</th>
+<th style="text-align:left">Was</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">P16 <code>trust.uniqueness</code></td>
+<td style="text-align:left">Content is original, not generic</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">AI rating <code>unique</code> → 1 · <code>borderline</code> → 0.5 · <code>commodity</code> → 0. Not checked until the AI has run</td>
+<td style="text-align:left"><code>cq-uniqueness</code></td>
+</tr>
+<tr>
+<td style="text-align:left">P17 <code>trust.author</code></td>
+<td style="text-align:left">Author is named and linked</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">named and linked → 1 · named only → 0.5 · none → 0. <strong>Article templates only</strong> (N/A elsewhere)</td>
+<td style="text-align:left"><code>cq-author</code> (was off)</td>
+</tr>
+<tr>
+<td style="text-align:left">P18 <code>trust.freshness</code></td>
+<td style="text-align:left">Content is recently updated</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">≤ 180 days → 1 · ≤ 365 → 0.6 · ≤ 730 → 0.25 · older or no date → 0</td>
+<td style="text-align:left"><code>cq-freshness</code> (was off) + the matrix's bands</td>
+</tr>
+<tr>
+<td style="text-align:left">P19 <code>trust.depth</code></td>
+<td style="text-align:left">Enough depth to be cited</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">words in body paragraphs: ≥ 800 → 1 · ≥ 400 → 2/3 · ≥ 150 → 1/3 · fewer → 0</td>
+<td style="text-align:left">the matrix's content depth</td>
+</tr>
+<tr>
+<td style="text-align:left">P20 <code>trust.anchor-text</code></td>
+<td style="text-align:left">Links say where they go</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">generic anchors ≤ 20% → 1 · ≤ 40% → 0.5 · more → 0. N/A without links</td>
+<td style="text-align:left"><code>seo-anchor-text</code> (was info only)</td>
+</tr>
+<tr>
+<td style="text-align:left">P21 <code>trust.follow-up-gaps</code></td>
+<td style="text-align:left">Answers the next question too</td>
+<td style="text-align:left"><strong>Bonus</strong></td>
+<td style="text-align:left">follow-up questions covered ÷ all. Not checked until the AI has run</td>
+<td style="text-align:left"><code>cq-followup-gaps</code> (was off)</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>P16 body and caching.</strong> The body is <code>ParsedHtml.mainText</code> from <code>/api/preview-fetch</code>: the text of <code>&lt;main&gt;</code> (or <code>&lt;body&gt;</code> without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; <code>/api/ai-check</code> sends the first 3,000 to Claude on <code>ANTHROPIC_MODEL_BULK</code> (effort <code>low</code>, structured output). The panel calls <code>ai-check</code> after <code>preview-fetch</code> returns and skips it when there's no main text (console: <code>[scan] ai-check body: …</code>). Results are keyed by SHA-256 of the normalised title and text (<code>src/lib/ai/content-key.ts</code>) and cached in localStorage (<code>aiDiscovery:ai-results:&lt;AI_CHECK_VERSION&gt;</code>, shared by the panel and the dashboard) and in memory on the server, so an unchanged page doesn't call Claude again (console: <code>[ai-cache] hit …</code>). The AI re-run button skips both caches. A refusal returns <code>422</code> and the check stays not checked. Phase 4 switches the body to the sanitised <code>getPageHTML</code> draft.</li>
+<li><strong>P17 author signals</strong>, in order: the <code>author</code> of an Article-type JSON-LD node (a string, an inline Person/Organization, or an <code>@id</code> reference; linked when it has <code>url</code> or <code>sameAs</code>), then <code>&lt;meta name="author"&gt;</code>, then a <code>rel="author"</code> link (which counts as the profile link).</li>
+<li><strong>P18 date sources</strong>, in order: <code>&lt;meta property="article:modified_time"&gt;</code>, a JSON-LD <code>dateModified</code>, <code>&lt;meta name="last-modified"&gt;</code>, then Sitecore <code>__Updated</code>. <code>parseDate</code> (<code>helpers.ts</code>) reads ISO dates and Sitecore's compact <code>yyyyMMddTHHmmssZ</code> format.</li>
+<li><strong>P20 generic anchors.</strong> <code>isGenericAnchor</code> (<code>helpers.ts</code>) matches the <code>ANCHOR_BLOCKLIST</code> exactly, plus a prefix rule limited to phrases that stay generic whatever follows ("click here …", "read more …", "see more …"). Descriptive anchors that start with a blocklisted word ("Download the 2026 report", "Register for the webinar") pass (SPIKE-FINDINGS §2).</li>
+</ul>
+<p><code>aeo-howto-schema</code> stays off (plan section 5.3); revisit only if HowTo content templates exist.</p>
+<hr/>
+<h2>Site checks</h2>
+<p>Run once per site by <code>runSiteChecks</code> (<code>engine.ts</code>), with their own site score from the same pool maths. The dashboard shows them in the <strong>Site checks</strong> card on the Overview (Phase 6 moves them to the Agent access tab).</p>
+<table><thead><tr>
+<th style="text-align:left">ID</th>
+<th style="text-align:left">Title</th>
+<th style="text-align:left">Tier</th>
+<th style="text-align:left">Credit</th>
+<th style="text-align:left">Was</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">S2 <code>reach.robots-ai-rules</code></td>
+<td style="text-align:left">robots.txt lets AI search in</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">0 of 6 named AI crawlers blocked → 1 · 1–2 → 0.5 · 3+ → 0</td>
+<td style="text-align:left">the matrix's crawler permissions, moved as is; Phase 6 replaces it with bot groups by purpose</td>
+</tr>
+<tr>
+<td style="text-align:left">S7 <code>understand.org-schema</code></td>
+<td style="text-align:left">Your organisation is described for AI</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">see below</td>
+<td style="text-align:left"><code>aeo-organization-schema</code></td>
+</tr>
+</tbody></table>
+<h3>S7 <code>understand.org-schema</code> (<code>site/org-schema.ts</code>)</h3>
+<p>Graded on the <strong>home page's live HTML</strong> (the <code>getPageHTML</code> draft has no <code>&lt;head&gt;</code> scripts). The four rules agreed on 2026-10-31:</p>
+<table><thead><tr>
+<th style="text-align:left">What the home page has</th>
+<th style="text-align:left">Result</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Complete Organization schema</td>
+<td style="text-align:left">credit 1, pass</td>
+</tr>
+<tr>
+<td style="text-align:left">Organization schema with missing fields</td>
+<td style="text-align:left">partial credit, warning listing the fields, corrected snippet</td>
+</tr>
+<tr>
+<td style="text-align:left">No Organization schema (page fetched)</td>
+<td style="text-align:left">credit 0, <strong>warning</strong> ("Not added yet"), ready-to-paste snippet</td>
+</tr>
+<tr>
+<td style="text-align:left">Home page couldn't be fetched</td>
+<td style="text-align:left"><strong>N/A</strong> ("Couldn't check"), snippet</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>Credit:</strong> 70% for the required fields (<code>name</code>; <code>url</code> on the site's own domain, <code>www.</code> and subdomains allowed; <code>logo</code> as a URL or ImageObject) and 30% for the recommended ones (<code>sameAs</code>, <code>description</code>, <code>contactPoint</code>). Bonus fields (<code>address</code> as a PostalAddress, <code>legalName</code>) are listed as tips and not scored.</li>
+<li><strong>Detection:</strong> every <code>application/ld+json</code> block, including <code>@graph</code> bundles, <code>@type</code> arrays (<code>["Organization", "LocalBusiness"]</code>), all 167 Organization subtypes from schema.org V30.1 (<code>schema-org-types.ts</code>, generated by <code>scripts/gen-schema-org-types.mjs</code>), and a <code>WebSite.publisher</code> that points to an Organization inline or by <code>@id</code>. The same entity declared twice under one <code>@id</code> counts once.</li>
+<li><strong>A block that doesn't parse</strong> is a fail (credit 0) with the parse error shown.</li>
+<li><strong>Config is the expected value:</strong> when <code>NEXT_PUBLIC_ORG_NAME</code> is set and the schema names a different organisation, or there are several Organization entries with conflicting names or URLs, the result is a warning and the credit is capped at 0.9.</li>
+<li><strong>Fix snippet:</strong> starts from the schema already on the site and fills only the gaps (name, url, logo, description, sameAs) from <code>NEXT_PUBLIC_ORG_*</code> (<code>getOrganizationInfo</code>, with the site's name and domain as fallbacks). A <code>url</code> off the site's domain is replaced; other values are kept. With no schema at all it's <code>buildOrganizationJsonLd</code>.</li>
+<li><strong>In the panel</strong> S7 shows only when the home page is open, in a "Site check — not in this page's score" section. The "site issues affecting this page" strip comes in Phase 6.</li>
+<li><strong>Evidence:</strong> the BrandX home page has no JSON-LD at all (checked 2026-10-31 and 2026-11-01). The old check gave it 5/5; S7 gives it 0 with a warning and a snippet.</li>
+</ul>
+<hr/>
+<h2>Shared JSON-LD parser (<code>json-ld.ts</code>)</h2>
+<p><code>extract-html.ts</code> keeps every block as <code>ParsedHtml.jsonLdScripts</code>, either <code>{ ok: true, value }</code> or <code>{ ok: false, error }</code>, so parse errors are reported instead of dropped. <code>collectNodes</code> turns the blocks into typed nodes: each top-level object, each array entry and each <code>@graph</code> member (nested objects stay inside their parent; read them with <code>resolve</code>, which also follows <code>{"@id": …}</code> references). <code>@type</code> is always a list with <code>schema:</code> / <code>https://schema.org/</code> prefixes removed. <code>isOrganization</code> and <code>isArticle</code> match subtypes. <code>typesOnPage</code> feeds the citation forecast prompt.</p>
+<hr/>
+<h2>The adapter to the pre-v2 UI</h2>
+<p><code>adapters.ts</code> maps reports onto the current components until the Phase 5 redesign:</p>
+<ul>
+<li><strong>Panel:</strong> <code>rowsByCategory</code> → one <code>CategorySection</code> per category (<code>src/components/CategorySection.tsx</code>) with a <code>RuleRow</code> per check showing <code>points / max</code> (one decimal), "n/a", "not checked" or a <strong>Run scan</strong> button for AI and PageSpeed checks, and "+N pts" next to the fix. N/A checks are listed under "Doesn't apply here". The header ring shows the 0–100 score.</li>
+<li><strong>Dashboard:</strong> <code>summarisePageReport</code> → <code>PageScoreSummary</code> (<code>score</code>, <code>label</code>, <code>blocked</code>, <code>gateReason</code>, per-category earned/max), which is what the dashboard caches.</li>
+</ul>
 <hr/>
 <h2>Meta &amp; social generator</h2>
 <p><code>src/components/MetaGenerator.tsx</code> → <code>POST /api/generate-meta</code> (<code>{ field, pageTitle, bodyText, currentValue }</code> → <code>{ value, maxChars, overLimit }</code>), then <code>xmc.pages.updateFields</code> on <strong>Populate field</strong>. The logic is in <code>src/lib/server/generate-meta.ts</code>.</p>
@@ -323,8 +306,6 @@
 <li><strong>Model:</strong> <code>ANTHROPIC_MODEL</code> (default <code>claude-opus-5-5</code>), effort <code>low</code>, structured output <code>{ value }</code>.</li>
 <li><strong>Length limits</strong> (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with <code>overLimit: true</code>, and the UI shows the count in amber. Values are never cut off.</li>
 <li><strong>Prompt caching:</strong> the brand voice (system prompt) and the page title and text (first user block) carry <code>cache_control</code>, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows <code>cache_read=N</code> on each <code>[anthropic] generate-meta:&lt;field&gt;</code> line.</li>
-</ul>
-<ul>
 <li><strong>Body:</strong> <code>bodyText</code> is the same <code>ParsedHtml.mainText</code> the uniqueness check uses. <strong>Generate</strong> is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.</li>
 <li><strong>Brand voice:</strong> <code>getBrandVoice()</code> (<code>src/lib/brand/brand-voice.ts</code>, server only) reads the Markdown file named by <code>BRAND_VOICE_FILE</code> (relative to the project root, read once per server instance) and the name in <code>BRAND_NAME</code>. With neither set, or if the file can't be read, it uses a neutral default voice. <code>brand/brandx.md</code> is the BrandX demo voice, and <code>next.config.ts</code> (<code>outputFileTracingIncludes</code>) bundles <code>brand/</code> into the Vercel function.</li>
 <li><strong>Log:</strong> <code>[generate-meta] &lt;field&gt;: N chars of body text, brand voice: &lt;source&gt;</code>.</li>
@@ -342,38 +323,89 @@
 <li>Tests: <code>src/lib/server/safe-fetch.test.ts</code>.</li>
 </ul>
 <hr/>
+<h2>Tests</h2>
+<table><thead><tr>
+<th style="text-align:left">File</th>
+<th style="text-align:left">Covers</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/scoring.test.ts</code></td>
+<td style="text-align:left">pools, partial credit, weights, N/A and not checked, rescaling, bonus cap, categories, the gate</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/page/page-checks.test.ts</code></td>
+<td style="text-align:left">P10 real detection (D2), P9, N/A and not-checked cases, P17, P18, the fixture page</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/site/org-schema.test.ts</code></td>
+<td style="text-align:left">S7: the four rules, <code>@graph</code>, <code>@type</code> arrays, subtypes, <code>WebSite.publisher</code>, parse errors, config mismatch, duplicates, BrandX</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/json-ld.test.ts</code></td>
+<td style="text-align:left">the shared parser</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/parity.test.ts</code></td>
+<td style="text-align:left">panel and dashboard read the same fields and give the same score; the 80 / 60 thresholds</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/extract-html.test.ts</code></td>
+<td style="text-align:left"><code>mainText</code>, Q&amp;A pairs (BrandX accordion markup), metadata, JSON-LD blocks</td>
+</tr>
+</tbody></table>
+<hr/>
 <h2>Key files</h2>
 <table><thead><tr>
 <th style="text-align:left">File</th>
 <th style="text-align:left">Responsibility</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left"><code>src/lib/rule-engine/engine.ts</code></td>
-<td style="text-align:left">All check definitions, scoring logic, gate (lines 33–1328)</td>
+<td style="text-align:left"><code>src/lib/checks/registry.ts</code></td>
+<td style="text-align:left">Every check, in display order</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/page/{reach,read,understand,trust}.ts</code></td>
+<td style="text-align:left">Page checks P2–P21</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/site/reach.ts</code>, <code>site/org-schema.ts</code></td>
+<td style="text-align:left">Site checks S2, S7</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/scoring.ts</code>, <code>gate.ts</code>, <code>engine.ts</code></td>
+<td style="text-align:left">Pool maths, the gate, <code>runPageChecks</code> / <code>runSiteChecks</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/context.ts</code></td>
+<td style="text-align:left"><code>buildPageContext</code>, the shared field names, article/home detection</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/json-ld.ts</code>, <code>schema-org-types.ts</code></td>
+<td style="text-align:left">JSON-LD parsing and the schema.org subtype lists</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/adapters.ts</code></td>
+<td style="text-align:left">Reports → pre-v2 UI rows and dashboard summaries</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/helpers.ts</code></td>
-<td style="text-align:left">ARI, word/char counts, anchor blocklist, shared parsing utils</td>
+<td style="text-align:left">ARI, word counts, anchor blocklist, dates, snippet builders</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/types.ts</code></td>
-<td style="text-align:left">Check/result interfaces and status enums</td>
+<td style="text-align:left">Input types (<code>ParsedHtml</code>, <code>AiResults</code>, <code>PageData</code>, …)</td>
 </tr>
 <tr>
-<td style="text-align:left"><code>src/lib/rule-engine/site-score.ts</code></td>
-<td style="text-align:left">Site-level aggregation pillars</td>
+<td style="text-align:left"><code>src/lib/rule-engine/test-fixture.ts</code></td>
+<td style="text-align:left">Demo data for <code>?demo=1</code></td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/score-thresholds.ts</code></td>
-<td style="text-align:left">Shared 80 / 60 score thresholds</td>
+<td style="text-align:left">Shared 80 / 60 thresholds</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/server/extract-html.ts</code></td>
-<td style="text-align:left">Parses fetched HTML into <code>ParsedHtml</code>, incl. <code>mainText</code></td>
-</tr>
-<tr>
-<td style="text-align:left"><code>src/lib/server/safe-fetch.ts</code></td>
-<td style="text-align:left">SSRF-safe fetch for server routes</td>
+<td style="text-align:left">Parses fetched HTML into <code>ParsedHtml</code></td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/brand/organization.ts</code>, <code>brand-voice.ts</code></td>

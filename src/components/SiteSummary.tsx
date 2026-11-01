@@ -39,11 +39,13 @@ export function SiteSummary({ aggregate, isLoading }: SiteSummaryProps) {
     totalCount,
     scanningCount,
     errorCount,
+    blockedCount,
     progress,
   } = aggregate;
 
   const scanning = scanningCount > 0 || (isLoading && scannedCount < totalCount);
   const done = scannedCount + errorCount;
+  const scoredCount = counts.critical + counts.warning + counts.good;
 
   return (
     <section className="bg-white border border-gray-200 rounded-xl px-5 py-4">
@@ -72,7 +74,7 @@ export function SiteSummary({ aggregate, isLoading }: SiteSummaryProps) {
               ? isLoading
                 ? "Loading pages…"
                 : "No pages scanned yet"
-              : `Average across ${scannedCount} scanned ${scannedCount === 1 ? "page" : "pages"}`}
+              : `Average across ${scoredCount} scored ${scoredCount === 1 ? "page" : "pages"}`}
           </p>
 
           {/* Status counts */}
@@ -87,6 +89,11 @@ export function SiteSummary({ aggregate, isLoading }: SiteSummaryProps) {
               <span className="flex items-center gap-1 text-green-600">
                 <span className="w-2 h-2 rounded-full bg-green-500" />{counts.good} Healthy
               </span>
+              {blockedCount > 0 && (
+                <span className="flex items-center gap-1 text-gray-500" title="noindex / nosnippet pages have no score">
+                  <span className="w-2 h-2 rounded-full bg-gray-400" />{blockedCount} Blocked
+                </span>
+              )}
             </div>
           )}
         </div>

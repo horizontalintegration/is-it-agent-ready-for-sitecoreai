@@ -251,4 +251,4 @@ Confirmed with a local `next dev` run against the BrandX article *Banking Sector
 - **Length retry fired for real:** the meta description came back at 158/155; the retry returned 145.
 - **Low effort barely thinks:** output was 35–185 tokens per meta call, so costs came in well under the planned estimate.
 - **One `ogDescription` call took 61 s** for 57 output tokens. That looks like one attempt hitting the SDK's 60 s timeout and the internal retry then finishing in about 1 s. The timeout is now 30 s with one retry, so a stalled call is capped at about a minute.
-- **Not yet checked:** the browser cache (`[ai-cache] hit …` in the panel console) inside Sitecore, after deploy.
+- **Confirmed:** after deploy (2026-10-31), the panel console showed `[ai-cache] hit` on the second visit to an unchanged page.

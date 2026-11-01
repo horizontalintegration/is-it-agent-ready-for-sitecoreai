@@ -1,5 +1,7 @@
 import { parse, NodeType, type HTMLElement, type Node, type TextNode } from "node-html-parser";
-import type { FooterTrust, ParsedHtml } from "@/lib/rule-engine/types";
+import { parseJsonLdScript } from "@/lib/checks/json-ld";
+import { QUESTION_REGEX } from "@/lib/rule-engine/helpers";
+import type { FooterTrust, ParsedHtml, QaPair } from "@/lib/rule-engine/types";
 
 /** Upper bound on `mainText`, so a very long page doesn't bloat the JSON response. */
 export const MAIN_TEXT_MAX_CHARS = 20_000;
@@ -50,6 +52,44 @@ export function extractMainText(root: HTMLElement): string {
     .filter((line) => line.length > 0)
     .join("\n")
     .slice(0, MAIN_TEXT_MAX_CHARS);
+}
+
+/** Decoded text of an element, whitespace collapsed. Includes collapsed (aria-hidden) panels. */
+function plainText(el: HTMLElement): string {
+  return el.text.replace(/\s+/g, " ").trim();
+}
+
+const looksLikeQuestion = (s: string) => s.endsWith("?") || QUESTION_REGEX.test(s);
+
+/**
+ * Question/answer pairs in any component: an accordion toggle
+ * (`[aria-controls]` + `aria-expanded`) whose controlled panel holds the
+ * answer, or a `<details>` whose `<summary>` is the question. Only toggles
+ * that read as a question count, so menus and "Expand all" are skipped.
+ */
+export function extractQaPairs(root: HTMLElement): QaPair[] {
+  const pairs: QaPair[] = [];
+  const seen = new Set<string>();
+  const add = (question: string, answer: string) => {
+    if (!question || !answer || !looksLikeQuestion(question) || seen.has(question)) return;
+    seen.add(question);
+    pairs.push({ question, answer });
+  };
+
+  for (const toggle of root.querySelectorAll("[aria-controls][aria-expanded]")) {
+    const ids = (toggle.getAttribute("aria-controls") ?? "").split(/\s+/).filter(Boolean);
+    const panels = ids.map((id) => root.getElementById(id)).filter((p): p is HTMLElement => p !== null);
+    add(plainText(toggle), panels.map(plainText).join(" ").trim());
+  }
+
+  for (const details of root.querySelectorAll("details")) {
+    const summary = details.querySelector("summary");
+    if (!summary) continue;
+    const question = plainText(summary);
+    add(question, plainText(details).slice(question.length).trim());
+  }
+
+  return pairs;
 }
 
 /**
@@ -110,24 +150,19 @@ export function extractParsedHtml(html: string): ParsedHtml {
   const ogTitle = root.querySelector('meta[property="og:title"]')?.getAttribute("content") ?? null;
   const ogDescription = root.querySelector('meta[property="og:description"]')?.getAttribute("content") ?? null;
   const ogImage = root.querySelector('meta[property="og:image"]')?.getAttribute("content") ?? null;
+  const ogType = root.querySelector('meta[property="og:type"]')?.getAttribute("content") ?? null;
 
-  const jsonLdBlocks: ParsedHtml["jsonLdBlocks"] = [];
-  for (const script of root.querySelectorAll('script[type="application/ld+json"]')) {
-    try {
-      const raw = JSON.parse(script.text);
-      if (Array.isArray(raw)) {
-        for (const entry of raw) {
-          const type = typeof entry?.["@type"] === "string" ? entry["@type"] : String(entry?.["@type"] ?? "");
-          if (type) jsonLdBlocks.push({ type, raw: entry });
-        }
-      } else if (raw && typeof raw === "object") {
-        const type = typeof raw["@type"] === "string" ? raw["@type"] : String(raw["@type"] ?? "");
-        if (type) jsonLdBlocks.push({ type, raw });
-      }
-    } catch {
-      // Skip malformed JSON-LD blocks
-    }
-  }
+  const htmlLang = root.querySelector("html")?.getAttribute("lang")?.trim() || null;
+  const metaAuthor = root.querySelector('meta[name="author"]')?.getAttribute("content")?.trim() || null;
+  const relAuthorHref = root.querySelector('[rel~="author"][href]')?.getAttribute("href") ?? null;
+
+  // Kept raw (parsed or with the parse error); src/lib/checks/json-ld.ts reads
+  // @graph bundles, @type arrays and subtypes from it.
+  const jsonLdScripts = root
+    .querySelectorAll('script[type="application/ld+json"]')
+    .map((script) => parseJsonLdScript(script.text));
+
+  const qaPairs = extractQaPairs(root);
 
   const hasMain = root.querySelector("main") !== null;
   const hasArticle = root.querySelector("article") !== null;
@@ -153,13 +188,18 @@ export function extractParsedHtml(html: string): ParsedHtml {
     links,
     paragraphs,
     mainText,
+    htmlLang,
     canonicalHref,
     robotsMeta,
     googlebotMeta,
     ogTitle,
     ogDescription,
     ogImage,
-    jsonLdBlocks,
+    ogType,
+    metaAuthor,
+    relAuthorHref,
+    jsonLdScripts,
+    qaPairs,
     hasMain,
     hasArticle,
     hasNav,

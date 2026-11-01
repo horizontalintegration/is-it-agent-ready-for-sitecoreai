@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Input types — pre-fetched data passed into the rule engine
+// Input types — pre-fetched data passed into the checks (src/lib/checks).
 // All Sitecore SDK and HTML parsing happens OUTSIDE this file.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type Pillar = "seo" | "aeo" | "content-quality";
-export type Trigger = "live" | "preview" | "on-load" | "ai" | "psi";
-export type CheckStatus = "pass" | "warning" | "fail" | "info";
+import type { JsonLdScript } from "@/lib/checks/json-ld";
+import type { PageFields } from "@/lib/checks/types";
 
 // ── Authoring fields (from XMC GraphQL / field subscription) ─────────────────
 
@@ -65,9 +64,10 @@ export interface AuthoringFields {
 
 // ── Parsed HTML (from preview fetch + node-html-parser) ──────────────────────
 
-export interface JsonLdBlock {
-  type: string;       // value of @type field
-  raw: unknown;       // full parsed object
+/** A question and its answer found in the rendered HTML (accordion or <details>). */
+export interface QaPair {
+  question: string;
+  answer: string; // plain text
 }
 
 export interface ParsedHtml {
@@ -97,6 +97,9 @@ export interface ParsedHtml {
   // block per line, entities decoded. Sent to the AI checks as the page body.
   mainText: string;
 
+  // <html lang>
+  htmlLang: string | null;
+
   // Meta / link tags
   canonicalHref: string | null;
   robotsMeta: string | null;    // content attr of <meta name="robots">
@@ -106,9 +109,18 @@ export interface ParsedHtml {
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
+  ogType: string | null;
 
-  // Structured data
-  jsonLdBlocks: JsonLdBlock[];
+  // Author signals: <meta name="author"> and <link|a rel="author" href>
+  metaAuthor: string | null;
+  relAuthorHref: string | null;
+
+  // Every <script type="application/ld+json">, parsed or with its parse error.
+  // Read it with src/lib/checks/json-ld.ts (@graph, @type arrays, subtypes).
+  jsonLdScripts: JsonLdScript[];
+
+  // Question/answer pairs from accordions (aria-controls) and <details>, in any component
+  qaPairs: QaPair[];
 
   // Agentic landmarks
   hasMain: boolean;
@@ -181,67 +193,23 @@ export interface OrganizationInfo {
   sameAs: string[];
 }
 
-// ── Aggregated input to the rule engine ──────────────────────────────────────
+// ── Everything the panel knows about the open page (also the demo fixture) ───
 
 export interface PageData {
-  // The page's canonical URL — used for canonical self-reference check
+  // The page URL — used for the canonical self-reference check
   pageUrl: string;
+  // Public route ("/" for the home page)
+  route: string;
+  // Sitecore template display name (e.g. "Article Detail Page")
+  templateName: string | null;
 
   // Site-level organization identity, from config with site fallbacks
   organization: OrganizationInfo;
 
-  authoring: AuthoringFields;
-  parsedHtml: ParsedHtml | null;   // null if preview fetch hasn't run yet
+  authoring: AuthoringFields;      // the panel field model (meta generator)
+  fields: PageFields;              // the fields the checks read, same as the dashboard
+  parsedHtml: ParsedHtml | null;   // null if preview fetch has not run yet
   robotsTxt: RobotsTxt | null;     // null if not yet fetched
-  psi: PsiResult | null;           // null if PSI hasn't run yet
-  ai: AiResults | null;            // null if AI checks haven't run yet
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Output types
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface RuleResult {
-  id: string;
-  pillar: Pillar;
-  trigger: Trigger;
-  name: string;
-
-  status: CheckStatus;
-  score: number;       // points earned for this check
-  maxScore: number;    // 0 for info-only checks
-
-  // Human-readable output
-  value: string;           // what was found, e.g. "58 chars"
-  message: string;         // short verdict, e.g. "Title is within the ideal range"
-  fixSuggestion: string;   // actionable next step, empty string if passing
-
-  // Optional detail items (e.g. list of images missing alt, list of blocked crawlers)
-  details: string[];
-
-  // Optional flagged items needing attention, shown in their own list (e.g. paragraphs above target grade)
-  flaggedItems?: string[];
-
-  // Optional ready-to-paste code snippet (e.g. generated JSON-LD), shown in a code block
-  codePreview?: string;
-}
-
-export interface GateResult {
-  blocked: boolean;
-  reason: string; // empty if not blocked
-}
-
-export interface EngineOutput {
-  gate: GateResult;
-
-  // Only populated when gate.blocked === false
-  results: RuleResult[];
-  seoScore: number;
-  aeoScore: number;
-  contentQualityScore: number;
-  totalScore: number;
-  maxSeoScore: number;
-  maxAeoScore: number;
-  maxContentQualityScore: number;
-  maxTotalScore: number;
+  psi: PsiResult | null;           // null if PSI has not run yet
+  ai: AiResults | null;            // null if AI checks have not run yet
 }

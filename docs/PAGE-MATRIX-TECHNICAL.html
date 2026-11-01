@@ -33,347 +33,205 @@
 </head>
 <body>
 <h1>Page Matrix — Technical Reference</h1>
-<p>Engineering-oriented breakdown of the <strong>Page Matrix</strong> scoring: the 5 pillars, every signal that feeds each pillar, exact thresholds and point math, dynamic max handling, and the rating bands. This is a <strong>separate scoring model</strong> from the per-page rule-engine panel (see <code>PAGE-CHECKS-TECHNICAL.md</code>) — different weights, different aggregation.</p>
+<p>Engineering-oriented reference for the <strong>dashboard</strong> ("Is this site agent-ready?"): how it scans pages, how it scores them, how it rolls them up, and the site checks. Since Phase 3 the dashboard uses <strong>the same check engine as the panel</strong> — the old 5-pillar model (<code>site-score.ts</code>: Crawlability, Structured, Answerability, Authority, Retrievability) is gone. The checks themselves (IDs, thresholds, credit) are documented once, in <code>PAGE-CHECKS-TECHNICAL.md</code>.</p>
 <p><strong>Source of truth:</strong></p>
 <ul>
-<li><code>src/lib/rule-engine/site-score.ts</code> — pillar scoring functions, <code>MAX_PILLARS</code>, labeling</li>
-<li><code>src/components/MatrixView.tsx</code> — Page Matrix table UI</li>
-<li><code>src/components/CategoryCards.tsx</code> — aggregated category cards + descriptions</li>
-<li><code>src/lib/rule-engine/helpers.ts</code> — ARI, word count, question regex, anchor blocklist</li>
+<li><code>src/hooks/useSitePages.ts</code> — page enumeration, scanning, the score cache, site-check inputs</li>
+<li><code>src/lib/checks/</code> — the engine (see <code>PAGE-CHECKS-TECHNICAL.md</code>)</li>
+<li><code>src/lib/checks/adapters.ts</code> — <code>PageScoreSummary</code>, <code>CATEGORY_META</code></li>
+<li><code>src/lib/site-aggregate.ts</code> — site roll-up and "Pages to fix first"</li>
+<li><code>src/components/{SiteSummary,CategoryCards,SiteChecks,WorstPages,AllPagesView,PageScoreRow}.tsx</code> — Overview UI</li>
+<li><code>src/hooks/useSiteType.ts</code> — the Site type setting</li>
 <li><code>src/types/dashboard.ts</code> — <code>PageMatrixRow</code>, <code>MatrixFilter</code></li>
 </ul>
 <hr/>
-<h2>Scoring model overview</h2>
-<p>Each page produces a <code>SiteScoreResult</code>:</p>
-<ul>
-<li><code>total</code> — sum of earned points across all 5 pillars</li>
-<li><code>maxTotal</code> — sum of max points per pillar (<strong>dynamic</strong>, because the Structured pillar's max varies by page type)</li>
-<li><code>pillars</code> — earned score per category</li>
-<li><code>maxPillars</code> — max available per category for this page</li>
-<li><code>label</code> — <code>critical</code> / <code>warning</code> / <code>good</code></li>
-</ul>
-<p><strong>Percentage</strong> = <code>(total / maxTotal) × 100</code>.</p>
+<h2>Scoring model</h2>
+<p>Each page is scored by <code>runPageChecks</code> with a context from <code>buildPageContext</code> — the same function the panel uses — and summarised by <code>summarisePageReport</code> into a <code>PageScoreSummary</code>:</p>
+<table><thead><tr>
+<th style="text-align:left">Field</th>
+<th style="text-align:left">Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><code>score</code></td>
+<td style="text-align:left">0–100, or <code>null</code> when the gate blocks the page or nothing could be scored</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>label</code></td>
+<td style="text-align:left"><code>critical</code> / <code>warning</code> / <code>good</code> from <code>labelForPct</code> (80 / 60), or <code>null</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>blocked</code>, <code>gateReason</code></td>
+<td style="text-align:left">the gate (P1): Sitecore Robots Meta Tag field, or a rendered noindex / nosnippet / max-snippet:0</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>categories</code></td>
+<td style="text-align:left">earned and max points for <code>reach</code>, <code>read</code>, <code>understand</code>, <code>trust</code> (max 0 when nothing in that category was scored)</td>
+</tr>
+</tbody></table>
+<p><strong>Pools:</strong> Essential checks share 80 points, Recommended 20, Bonus adds up to 5, capped at 100. N/A and not-checked results are left out of the pools. Full detail in <code>PAGE-CHECKS-TECHNICAL.md</code>.</p>
 <h3>Rating bands — <code>labelForPct</code>, <code>src/lib/score-thresholds.ts</code></h3>
 <table><thead><tr>
 <th style="text-align:left">Label</th>
 <th style="text-align:left">Range</th>
-<th style="text-align:left">Text class</th>
-<th style="text-align:left">Badge class</th>
+<th style="text-align:left">Shown as</th>
 </tr></thead><tbody>
 <tr>
 <td style="text-align:left"><code>good</code></td>
-<td style="text-align:left">≥ 80%</td>
-<td style="text-align:left"><code>text-green-600</code></td>
-<td style="text-align:left"><code>bg-green-50 text-green-700</code></td>
+<td style="text-align:left">≥ 80</td>
+<td style="text-align:left">Agent-ready (Healthy in the current UI)</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>warning</code></td>
-<td style="text-align:left">60–79%</td>
-<td style="text-align:left"><code>text-amber-600</code></td>
-<td style="text-align:left"><code>bg-amber-50 text-amber-700</code></td>
+<td style="text-align:left">60–79</td>
+<td style="text-align:left">Almost there (Needs work)</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>critical</code></td>
-<td style="text-align:left">&lt; 60%</td>
-<td style="text-align:left"><code>text-red-600</code></td>
-<td style="text-align:left"><code>bg-red-50 text-red-700</code></td>
+<td style="text-align:left">&lt; 60</td>
+<td style="text-align:left">Not ready (Critical)</td>
 </tr>
 </tbody></table>
-<p>The same <code>READY_PCT</code> (80) and <code>ALMOST_PCT</code> (60) drive the panel's <code>ScoreRing</code>, every <code>ScorePill</code>, the per-row label (<code>labelFor</code> in <code>site-score.ts</code>) and the site roll-up (<code>site-aggregate.ts</code>). Cached dashboard scores use the key prefix <code>aiDiscovery:scores:v3:</code>. It was bumped from v2 when the thresholds and the AI body text changed.</p>
-<h3>Fixed pillar maxima (<code>MAX_PILLARS</code>, <code>site-score.ts:61–72</code>)</h3>
-<table><thead><tr>
-<th style="text-align:left">Pillar</th>
-<th style="text-align:right">Max</th>
-<th style="text-align:left">Notes</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">Crawlability</td>
-<td style="text-align:right">15</td>
-<td style="text-align:left">fixed</td>
-</tr>
-<tr>
-<td style="text-align:left">Structured</td>
-<td style="text-align:right"><strong>0–17</strong></td>
-<td style="text-align:left">dynamic per page type (see pillar 2); <code>MAX_PILLARS.structured</code> is the 17 ceiling, so the maxima sum to 100</td>
-</tr>
-<tr>
-<td style="text-align:left">Answerability</td>
-<td style="text-align:right">20</td>
-<td style="text-align:left">fixed</td>
-</tr>
-<tr>
-<td style="text-align:left">Authority</td>
-<td style="text-align:right">28</td>
-<td style="text-align:left">fixed</td>
-</tr>
-<tr>
-<td style="text-align:left">Retrievability</td>
-<td style="text-align:right">20</td>
-<td style="text-align:left">fixed</td>
-</tr>
-</tbody></table>
-<p><strong>Example <code>maxTotal</code> values:</strong></p>
+<p>The same <code>READY_PCT</code> (80) and <code>ALMOST_PCT</code> (60) drive the panel's <code>ScoreRing</code>, every <code>ScorePill</code> and the site roll-up.</p>
+<hr/>
+<h2>Scanning a page (<code>scanOne</code>, <code>useSitePages.ts</code>)</h2>
 <ul>
-<li>Home page → 15 + 3 + 20 + 28 + 20 = <strong>86</strong> (Organization only)</li>
-<li>Regular inner page → 15 + 3 + 20 + 28 + 20 = <strong>86</strong> (BreadcrumbList only)</li>
-<li>Article page w/ FAQs → 15 + 17 + 20 + 28 + 20 = <strong>100</strong> (FAQPage + Article + BreadcrumbList)</li>
+<li><strong>Enumeration:</strong> authoring GraphQL walks the site's Home item 5 levels deep; items with <code>__Renderings</code> or <code>__Final Renderings</code> are pages. For each it reads <code>template { name }</code>, <code>__Updated</code>, and the fields the checks read, by the shared names in <code>SCORING_FIELD_NAMES</code> (<code>pageTitle</code>, <code>MetaDescription</code> — overridable with <code>NEXT_PUBLIC_FIELD_TITLE</code> / <code>NEXT_PUBLIC_FIELD_META_DESCRIPTION</code> — and <code>robotsMetaTag</code>). <code>pageFieldsFromValues</code> normalises them into <code>row.fields</code>, exactly as the panel does. The OG description is also read, only as the llms.txt summary fallback.</li>
+<li><strong>Scan:</strong> <code>/api/preview-fetch</code> for the live HTML, then <code>/api/ai-check</code> with <code>ParsedHtml.mainText</code> (on <code>ANTHROPIC_MODEL_BULK</code>, cached by content hash in localStorage, shared with the panel, and on the server). PageSpeed doesn't run in the dashboard, so P7 is "not checked" and left out of the score.</li>
+<li><strong>Concurrency:</strong> 5 pages at a time; all unscanned rows scan in the background after enumeration.</li>
+</ul>
+<h3>Score cache</h3>
+<p>Summaries are cached in localStorage under <strong><code>aiDiscovery:scores:v4:&lt;siteId&gt;</code></strong>, keyed by page URL and reused while the page's <code>__Updated</code> is unchanged. <strong>v4</strong> is the unified engine (the shape changed from <code>SiteScoreResult</code> to <code>PageScoreSummary</code>), so v3 scores from the pillar model are never shown. <strong>Refresh</strong> clears the cache and re-fetches the site-check inputs.</p>
+<hr/>
+<h2>Site roll-up (<code>site-aggregate.ts</code>)</h2>
+<ul>
+<li><strong>Overall score:</strong> mean of the page scores. Unscanned and <strong>blocked</strong> pages are left out; blocked pages are counted separately ("N Blocked" in the summary).</li>
+<li><strong>Category cards:</strong> for each category, the mean of <code>earned ÷ max</code> over pages where that category was scored. A page "fails" a category below 40%. The "What's included" list comes from the check registry, so it always matches what's scored.</li>
+<li><strong>Pages to fix first:</strong> scored pages sorted by score, lowest first. Blocked pages show "Blocked (noindex)" and sort with the unscanned ones.</li>
+<li><strong>Per-page breakdown:</strong> expanding a row shows the four categories as <code>earned/max</code> pills (rounded).</li>
 </ul>
 <hr/>
-<h2>Pillar 1 — Crawlability (15 pts)</h2>
-<p><strong><code>scoreCrawlability</code>, <code>site-score.ts:73–111</code></strong> · UI: <code>MatrixView.tsx</code> column <strong>CRAWL</strong> — *"can AI bots see this page?"*</p>
-<table><thead><tr>
-<th style="text-align:left">Signal</th>
-<th style="text-align:right">Pts</th>
-<th style="text-align:left">Logic</th>
-<th style="text-align:left">Thresholds</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">AI crawler permissions (robots.txt)</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left">Counts how many of 6 AI crawlers are explicitly blocked: <code>googleExtended</code>, <code>gptBot</code>, <code>claudeBot</code>, <code>perplexityBot</code>, <code>amazonBot</code>, <code>appleBotExtended</code></td>
-<td style="text-align:left">0 blocked → 6 · 1–2 blocked → 3 · 3+ blocked → 0 · no robots data → 3 (neutral fallback)</td>
-</tr>
-<tr>
-<td style="text-align:left">Canonical URL</td>
-<td style="text-align:right">0–5</td>
-<td style="text-align:left">Presence + normalized match of <code>&lt;link rel="canonical"&gt;</code> against page URL</td>
-<td style="text-align:left">present &amp; self-referencing → 5 · present but different → 2 · missing → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Robots meta</td>
-<td style="text-align:right">0–4</td>
-<td style="text-align:left">Scans <code>&lt;meta name="robots"&gt;</code> and <code>&lt;meta name="googlebot"&gt;</code> for blockers (<code>noindex</code>, <code>nosnippet</code>, <code>noimageindex</code>, <code>none</code>)</td>
-<td style="text-align:left">no blockers → 4 · any blocker → 0</td>
-</tr>
-</tbody></table>
-<p><strong>Signal types:</strong> robots.txt fetch + HTML head parsing.</p>
-<hr/>
-<h2>Pillar 2 — Structured Data (0–17 pts, dynamic)</h2>
-<p><strong><code>scoreStructured</code>, <code>site-score.ts:113–166</code></strong> · UI: column <strong>STRUCT</strong> — *"can AI parse the schema?"*</p>
-<p>Conditionally evaluated per page type — pages are <strong>not</strong> penalized for inapplicable schemas; both earned and max accumulate only for applicable checks. JSON-LD parsed from <code>&lt;script type="application/ld+json"&gt;</code>.</p>
-<table><thead><tr>
-<th style="text-align:left">Signal</th>
-<th style="text-align:right">Pts</th>
-<th style="text-align:left">Applicability</th>
-<th style="text-align:left">Logic</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">FAQPage</td>
-<td style="text-align:right">0–8</td>
-<td style="text-align:left">Only when ≥2 H2s match the question regex</td>
-<td style="text-align:left"><code>@type: "FAQPage"</code> present AND ≥2 question-style H2s → 8 · else 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Article</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left">Only when Sitecore template display name = "Article Detail Page" (case-insensitive)</td>
-<td style="text-align:left"><code>@type</code> ∈ {Article, NewsArticle, BlogPosting} → 6 · else 0</td>
-</tr>
-<tr>
-<td style="text-align:left">BreadcrumbList</td>
-<td style="text-align:right">0–3</td>
-<td style="text-align:left">All pages <strong>except</strong> home (<code>/</code>)</td>
-<td style="text-align:left"><code>@type: "BreadcrumbList"</code> present → 3 · else 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Organization</td>
-<td style="text-align:right">0–3</td>
-<td style="text-align:left">Home page only (route <code>/</code>)</td>
-<td style="text-align:left"><code>@type: "Organization"</code> present → 3 · else 0</td>
-</tr>
-</tbody></table>
-<p><strong>Question regex (shared):</strong> <code>/^(who|what|when|where|why|how|can|does|did|is|are|was|were|should|which|will|would|could)\b/i</code></p>
-<hr/>
-<h2>Pillar 3 — Answerability (20 pts)</h2>
-<p><strong><code>scoreAnswerability</code>, <code>site-score.ts:168–208</code></strong> · UI: column <strong>ANSWER</strong> — *"can AI extract a passage?"*</p>
-<table><thead><tr>
-<th style="text-align:left">Signal</th>
-<th style="text-align:right">Pts</th>
-<th style="text-align:left">Logic</th>
-<th style="text-align:left">Thresholds</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">Heading structure</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left">H1 count + hierarchy skip detection (e.g., H1→H3)</td>
-<td style="text-align:left">exactly 1 H1 AND no skips → 6 · one condition only → 3 · neither → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Question-style H2s</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left">Count of H2s passing the question regex</td>
-<td style="text-align:left">≥3 → 6 · 1–2 → 3 · 0 → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Reading grade (ARI)</td>
-<td style="text-align:right">0–4</td>
-<td style="text-align:left">ARI over concatenated body paragraphs: <code>4.71·(chars/words) + 0.5·(words/sentences) − 21.43</code></td>
-<td style="text-align:left">grade ≤13 → 4 · 14–16 → 2 · &gt;16 or insufficient text → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Paragraph length</td>
-<td style="text-align:right">0–4</td>
-<td style="text-align:left">Average word count across <code>&lt;p&gt;</code> elements</td>
-<td style="text-align:left">avg 40–120 → 4 · avg 20–200 → 2 · else/none → 0</td>
-</tr>
-</tbody></table>
-<p><strong>Signal types:</strong> HTML parsing of headings + paragraph text (rendered <code>&lt;main&gt;</code>/body).</p>
-<hr/>
-<h2>Pillar 4 — Authority (28 pts)</h2>
-<p><strong><code>scoreAuthority</code>, <code>site-score.ts:210–259</code></strong> · UI: column <strong>AUTH</strong> — *"does AI trust this content?"*</p>
-<table><thead><tr>
-<th style="text-align:left">Signal</th>
-<th style="text-align:right">Pts</th>
-<th style="text-align:left">Logic</th>
-<th style="text-align:left">Thresholds</th>
-<th style="text-align:left">Type</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">AI uniqueness rating</td>
-<td style="text-align:right">0–15</td>
-<td style="text-align:left">Ingests LLM content classification of <code>ParsedHtml.mainText</code> (skipped when the page has none). <code>/api/ai-check</code> on <code>ANTHROPIC_MODEL_BULK</code>; cached by content hash in localStorage (shared with the panel) and on the server, so re-scans of unchanged pages don't call Claude</td>
-<td style="text-align:left"><code>unique</code> → 15 · <code>borderline</code> → 8 · <code>commodity</code> or not-yet-run → 0</td>
-<td style="text-align:left"><strong>AI/LLM</strong></td>
-</tr>
-<tr>
-<td style="text-align:left">Content depth</td>
-<td style="text-align:right">0–3</td>
-<td style="text-align:left">Total words across body paragraphs</td>
-<td style="text-align:left">≥800 → 3 · 400–799 → 2 · 150–399 → 1 · &lt;150 → 0</td>
-<td style="text-align:left">HTML</td>
-</tr>
-<tr>
-<td style="text-align:left">Freshness</td>
-<td style="text-align:right">0–8</td>
-<td style="text-align:left">Date resolution priority: (1) <code>&lt;meta property="article:modified_time"&gt;</code> → (2) <code>&lt;meta name="last-modified"&gt;</code> → (3) Sitecore <code>updatedAt</code>/<code>__Updated</code></td>
-<td style="text-align:left">≤180d → 8 · 181–365d → 5 · 366–730d → 2 · &gt;730d or none → 0</td>
-<td style="text-align:left">HTML + Sitecore</td>
-</tr>
-<tr>
-<td style="text-align:left">Internal link descriptiveness</td>
-<td style="text-align:right">0–2</td>
-<td style="text-align:left">Ratio of generic anchors (<code>ANCHOR_BLOCKLIST</code>) to total links, with arrow/punctuation normalization</td>
-<td style="text-align:left">≤20% generic → 2 · 21–40% → 1 · no links → 1 (fallback) · &gt;40% → 0</td>
-<td style="text-align:left">HTML</td>
-</tr>
-</tbody></table>
-<p>Heaviest pillar; combines the single LLM signal in the Matrix (uniqueness) with HTML-derived depth/freshness/link quality.</p>
-<hr/>
-<h2>Pillar 5 — Retrievability (20 pts)</h2>
-<p><strong><code>scoreRetrievability</code>, <code>site-score.ts:261–303</code></strong> · UI: column <strong>RETRIEV</strong> — *"does AI prefer it?"*</p>
-<table><thead><tr>
-<th style="text-align:left">Signal</th>
-<th style="text-align:right">Pts</th>
-<th style="text-align:left">Logic</th>
-<th style="text-align:left">Thresholds</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left">Title length</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left"><code>&lt;title&gt;</code> char count</td>
-<td style="text-align:left">30–60 → 6 · 20–29 or 61–80 → 3 · &lt;20 or &gt;80 → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Meta description length</td>
-<td style="text-align:right">0–6</td>
-<td style="text-align:left"><code>&lt;meta name="description"&gt;</code> char count</td>
-<td style="text-align:left">120–160 → 6 · 70–119 or 161–200 → 3 · &lt;70 or &gt;200 → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Open Graph completeness</td>
-<td style="text-align:right">0–3</td>
-<td style="text-align:left">Presence of <code>og:title</code>, <code>og:description</code>, <code>og:image</code></td>
-<td style="text-align:left">3 → 3 · 2 → 2 · 1 → 1 · 0 → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Semantic landmarks</td>
-<td style="text-align:right">0–3</td>
-<td style="text-align:left">Count of <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code></td>
-<td style="text-align:left">≥3 → 3 · 2 → 2 · 1 → 1 · 0 → 0</td>
-</tr>
-<tr>
-<td style="text-align:left">Image alt coverage</td>
-<td style="text-align:right">0–2</td>
-<td style="text-align:left">Ratio of <code>&lt;img&gt;</code> with non-empty <code>alt</code></td>
-<td style="text-align:left">≥90% → 2 · 60–89% → 1 · no images → 1 (fallback) · &lt;60% → 0</td>
-</tr>
-</tbody></table>
-<p><strong>Signal types:</strong> HTML head + DOM structure parsing.</p>
-<hr/>
-<h2>UI mapping</h2>
-<h3>Matrix table — <code>MatrixView.tsx:36–46</code></h3>
-<table><thead><tr>
-<th style="text-align:left">Pillar key</th>
-<th style="text-align:left">Column label</th>
-<th style="text-align:left">Tooltip (title attr)</th>
-</tr></thead><tbody>
-<tr>
-<td style="text-align:left"><code>crawlability</code></td>
-<td style="text-align:left">CRAWL</td>
-<td style="text-align:left">Crawlability — can AI bots see this page?</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>structured</code></td>
-<td style="text-align:left">STRUCT</td>
-<td style="text-align:left">Structured data — can AI parse the schema?</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>answerability</code></td>
-<td style="text-align:left">ANSWER</td>
-<td style="text-align:left">Answerability — can AI extract a passage?</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>authority</code></td>
-<td style="text-align:left">AUTH</td>
-<td style="text-align:left">Authority — does AI trust this content?</td>
-</tr>
-<tr>
-<td style="text-align:left"><code>retrievability</code></td>
-<td style="text-align:left">RETRIEV</td>
-<td style="text-align:left">Retrievability — does AI prefer it?</td>
-</tr>
-</tbody></table>
-<p><strong>Layout:</strong> Page (30%) · 5 pillars (8% each) · Total (20%) · Action (10%). Pillar cells render <code>ScorePill</code> as <code>earned/max</code> (e.g. <code>8/15</code>); Total cell shows a percentage bar + rounded %.</p>
-<h3>Category cards — <code>CategoryCards.tsx:11–62</code></h3>
-<p>Aggregated dashboard cards reuse the same pillar keys with full labels, the user-facing question, and bullet lists of included items (FAQ/Article/Breadcrumb/Organization for Structured; H1/question-H2/readability/paragraph for Answerability; uniqueness/depth/freshness/anchors for Authority; title/description/OG/landmarks/alt for Retrievability).</p>
-<hr/>
-<h2>Signal-type summary</h2>
+<h2>Site checks card</h2>
+<p>Once per site, the hook fetches <code>/api/robots-check</code> and the home page (<code>/api/preview-fetch</code> on <code>&lt;domain&gt;/</code>), not awaited by enumeration. The page then runs <code>runSiteChecks</code> with:</p>
 <ul>
-<li><strong>AI/LLM-based:</strong> Authority → uniqueness rating (15 pts) — the only LLM signal in the Matrix.</li>
-<li><strong>HTML parsing (rendered fetch):</strong> robots/canonical/robots-meta (Crawlability); JSON-LD (Structured); headings/paragraphs/reading level (Answerability); word count/freshness/anchors (Authority); title/description/OG/landmarks/alt (Retrievability).</li>
-<li><strong>Sitecore backend:</strong> template-name match for Article applicability (Structured); <code>updatedAt</code> freshness fallback (Authority).</li>
+<li>the home page HTML (null when it couldn't be fetched → S7 is "Couldn't check", N/A),</li>
+<li>robots.txt,</li>
+<li>the organisation for the snippet (<code>getOrganizationInfo</code>, <code>NEXT_PUBLIC_ORG_*</code> with the site's name and domain as fallbacks) and the configured organisation as the expected value (<code>getConfiguredOrganization</code>),</li>
+<li>the site type.</li>
 </ul>
+<p>Site checks get <strong>their own site score</strong> (same pool maths) and never feed page scores. Phase 3 has <strong>S2</strong> <code>reach.robots-ai-rules</code> (the old 6-crawler robots.txt signal, moved as is) and <strong>S7</strong> <code>understand.org-schema</code> (home page Organization JSON-LD, graded with the four agreed rules). Phase 6 adds the rest and moves them to an Agent access tab.</p>
+<p><strong>Site type</strong> (Content site / Commerce / App or API) is a select in the card, stored per site in localStorage (<code>aiDiscovery:siteType:v1:&lt;siteId&gt;</code>). It decides which Bonus protocol checks apply (S11 App/API, S12 Commerce), which arrive in Phase 6, so it has no visible effect yet.</p>
+<hr/>
+<h2>What changed from the pillar model</h2>
+<table><thead><tr>
+<th style="text-align:left">Old pillar signal</th>
+<th style="text-align:left">Now</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Crawlability: AI crawler permissions</td>
+<td style="text-align:left">S2 <code>reach.robots-ai-rules</code> (site check)</td>
+</tr>
+<tr>
+<td style="text-align:left">Crawlability: canonical</td>
+<td style="text-align:left">P2 <code>reach.canonical</code> (Essential)</td>
+</tr>
+<tr>
+<td style="text-align:left">Crawlability: robots meta</td>
+<td style="text-align:left">P1 gate — blocks the score instead of costing 4 points</td>
+</tr>
+<tr>
+<td style="text-align:left">Structured: FAQPage / Article / BreadcrumbList</td>
+<td style="text-align:left">P10 <code>understand.json-ld</code> — now validates required properties, reads <code>@graph</code> and <code>@type</code> arrays, expects FAQPage from real Q&amp;A pairs instead of question H2s</td>
+</tr>
+<tr>
+<td style="text-align:left">Structured: Organization (home page)</td>
+<td style="text-align:left">S7 <code>understand.org-schema</code> (site check)</td>
+</tr>
+<tr>
+<td style="text-align:left">Answerability: headings</td>
+<td style="text-align:left">P8 <code>understand.headings</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Answerability: question H2s</td>
+<td style="text-align:left">P13 <code>understand.question-headings</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Answerability: reading grade + paragraph length</td>
+<td style="text-align:left">P14 <code>understand.readability</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Authority: AI uniqueness</td>
+<td style="text-align:left">P16 <code>trust.uniqueness</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Authority: content depth</td>
+<td style="text-align:left">P19 <code>trust.depth</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Authority: freshness</td>
+<td style="text-align:left">P18 <code>trust.freshness</code> (adds JSON-LD <code>dateModified</code>; reads Sitecore's compact date format)</td>
+</tr>
+<tr>
+<td style="text-align:left">Authority: descriptive anchors</td>
+<td style="text-align:left">P20 <code>trust.anchor-text</code> (prefix rule narrowed, SPIKE-FINDINGS §2)</td>
+</tr>
+<tr>
+<td style="text-align:left">Retrievability: title + description</td>
+<td style="text-align:left">P9 <code>understand.title-meta</code> (Sitecore field first; title band now 50–60)</td>
+</tr>
+<tr>
+<td style="text-align:left">Retrievability: OG tags</td>
+<td style="text-align:left">P11 <code>understand.metadata</code> (adds <code>html lang</code>, <code>og:type</code>)</td>
+</tr>
+<tr>
+<td style="text-align:left">Retrievability: landmarks</td>
+<td style="text-align:left">P4 <code>read.landmarks</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Retrievability: image alt</td>
+<td style="text-align:left">P15 <code>understand.image-alt</code> (N/A without images)</td>
+</tr>
+</tbody></table>
+<p>New in the dashboard because it now shares the panel's checks: P11's lang and og:type, P12 FAQ answer quality, P17 author (article templates), P21 follow-up gaps (Bonus). The unused <code>MatrixView.tsx</code> table (replaced earlier by <code>AllPagesView</code>) was removed with the pillar types.</p>
+<hr/>
+<h2>Demo mode (<code>?demo=1</code>)</h2>
+<p><code>makeTestSitePages()</code> (<code>src/lib/rule-engine/test-fixture.ts</code>) builds 12 rows by running the <strong>real engine</strong> on variants of the panel's demo page, so the numbers are consistent: 3 critical, 3 warning, 5 good and 1 blocked (noindex). The row "Blog: content strategy" is the panel's demo page unchanged, so it shows the same score as the panel demo (89). <code>makeTestSiteContext()</code> gives the Site checks card a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).</p>
 <hr/>
 <h2>Key files</h2>
 <table><thead><tr>
 <th style="text-align:left">Aspect</th>
 <th style="text-align:left">File</th>
-<th style="text-align:left">Lines</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left">Pillar scoring + MAX_PILLARS + labelFor</td>
-<td style="text-align:left"><code>src/lib/rule-engine/site-score.ts</code></td>
-<td style="text-align:left">42–366</td>
+<td style="text-align:left">Enumeration, scanning, score cache, site-check inputs</td>
+<td style="text-align:left"><code>src/hooks/useSitePages.ts</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Page Matrix table UI</td>
-<td style="text-align:left"><code>src/components/MatrixView.tsx</code></td>
-<td style="text-align:left">36–305</td>
+<td style="text-align:left">Check engine, registry, scoring</td>
+<td style="text-align:left"><code>src/lib/checks/</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Category aggregation + descriptions</td>
-<td style="text-align:left"><code>src/components/CategoryCards.tsx</code></td>
-<td style="text-align:left">11–144</td>
+<td style="text-align:left">Summary shape and category labels</td>
+<td style="text-align:left"><code>src/lib/checks/adapters.ts</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Helpers (ARI, word count, question regex, anchor blocklist)</td>
-<td style="text-align:left"><code>src/lib/rule-engine/helpers.ts</code></td>
-<td style="text-align:left">34–135</td>
+<td style="text-align:left">Site roll-up and worst pages</td>
+<td style="text-align:left"><code>src/lib/site-aggregate.ts</code></td>
 </tr>
 <tr>
-<td style="text-align:left">Dashboard types (<code>PageMatrixRow</code>, <code>MatrixFilter</code>)</td>
+<td style="text-align:left">Overview UI</td>
+<td style="text-align:left"><code>src/components/SiteSummary.tsx</code>, <code>CategoryCards.tsx</code>, <code>SiteChecks.tsx</code>, <code>WorstPages.tsx</code>, <code>AllPagesView.tsx</code>, <code>PageScoreRow.tsx</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Site type setting</td>
+<td style="text-align:left"><code>src/hooks/useSiteType.ts</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Dashboard types</td>
 <td style="text-align:left"><code>src/types/dashboard.ts</code></td>
-<td style="text-align:left">1–29</td>
+</tr>
+<tr>
+<td style="text-align:left">Demo data</td>
+<td style="text-align:left"><code>src/lib/rule-engine/test-fixture.ts</code></td>
 </tr>
 </tbody></table>
 </body>

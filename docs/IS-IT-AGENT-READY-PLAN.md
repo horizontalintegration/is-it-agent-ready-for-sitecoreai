@@ -131,6 +131,13 @@ interface CheckDef {
 }
 ```
 
+- **As built in Phase 3** (agreed with the user on 2026-11-01; code in `src/lib/checks/`):
+  - `run(ctx)` is **synchronous** and returns `CheckResult`: all data is fetched before the checks run, so the engine stays pure. Data that needs fetching (e.g. Phase 6's `api/agent-access`) goes in a loader, not in `run`.
+  - `source` is `sources: Source[]`, because several checks read two sources (e.g. P9 is fields + live). Each check also has `ref` (P2, S7, …) and the optional `weight` (default 1, none set).
+  - A result has a `state`: `scored`, `not-applicable`, or `not-checked` (AI pending, PageSpeed not run, fetch failed). Both non-scored states are left out of the pools.
+  - **Site checks get their own site score** and never feed page scores.
+  - **Same inputs in both views:** every page check reads the live HTML, plus the same Sitecore fields by the same names (title, meta description, Robots Meta Tag, `__Updated`). FAQ Q&A pairs come from the rendered HTML, not the AccordionItem datasources. The only difference is PageSpeed, which only the panel runs.
+
 - **Data sources:**
   - `draft` = `getPageHTML()` (Phase 4)
   - `live` = HTTP fetch of the published URL

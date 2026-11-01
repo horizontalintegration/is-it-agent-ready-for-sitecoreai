@@ -1,159 +1,118 @@
 # Page Matrix — Technical Reference
 
-Engineering-oriented breakdown of the **Page Matrix** scoring: the 5 pillars, every signal that feeds each pillar, exact thresholds and point math, dynamic max handling, and the rating bands. This is a **separate scoring model** from the per-page rule-engine panel (see `PAGE-CHECKS-TECHNICAL.md`) — different weights, different aggregation.
+Engineering-oriented reference for the **dashboard** ("Is this site agent-ready?"): how it scans pages, how it scores them, how it rolls them up, and the site checks. Since Phase 3 the dashboard uses **the same check engine as the panel** — the old 5-pillar model (`site-score.ts`: Crawlability, Structured, Answerability, Authority, Retrievability) is gone. The checks themselves (IDs, thresholds, credit) are documented once, in `PAGE-CHECKS-TECHNICAL.md`.
 
 **Source of truth:**
-- `src/lib/rule-engine/site-score.ts` — pillar scoring functions, `MAX_PILLARS`, labeling
-- `src/components/MatrixView.tsx` — Page Matrix table UI
-- `src/components/CategoryCards.tsx` — aggregated category cards + descriptions
-- `src/lib/rule-engine/helpers.ts` — ARI, word count, question regex, anchor blocklist
+- `src/hooks/useSitePages.ts` — page enumeration, scanning, the score cache, site-check inputs
+- `src/lib/checks/` — the engine (see `PAGE-CHECKS-TECHNICAL.md`)
+- `src/lib/checks/adapters.ts` — `PageScoreSummary`, `CATEGORY_META`
+- `src/lib/site-aggregate.ts` — site roll-up and "Pages to fix first"
+- `src/components/{SiteSummary,CategoryCards,SiteChecks,WorstPages,AllPagesView,PageScoreRow}.tsx` — Overview UI
+- `src/hooks/useSiteType.ts` — the Site type setting
 - `src/types/dashboard.ts` — `PageMatrixRow`, `MatrixFilter`
 
 ---
 
-## Scoring model overview
+## Scoring model
 
-Each page produces a `SiteScoreResult`:
-- `total` — sum of earned points across all 5 pillars
-- `maxTotal` — sum of max points per pillar (**dynamic**, because the Structured pillar's max varies by page type)
-- `pillars` — earned score per category
-- `maxPillars` — max available per category for this page
-- `label` — `critical` / `warning` / `good`
+Each page is scored by `runPageChecks` with a context from `buildPageContext` — the same function the panel uses — and summarised by `summarisePageReport` into a `PageScoreSummary`:
 
-**Percentage** = `(total / maxTotal) × 100`.
+| Field | Meaning |
+|---|---|
+| `score` | 0–100, or `null` when the gate blocks the page or nothing could be scored |
+| `label` | `critical` / `warning` / `good` from `labelForPct` (80 / 60), or `null` |
+| `blocked`, `gateReason` | the gate (P1): Sitecore Robots Meta Tag field, or a rendered noindex / nosnippet / max-snippet:0 |
+| `categories` | earned and max points for `reach`, `read`, `understand`, `trust` (max 0 when nothing in that category was scored) |
+
+**Pools:** Essential checks share 80 points, Recommended 20, Bonus adds up to 5, capped at 100. N/A and not-checked results are left out of the pools. Full detail in `PAGE-CHECKS-TECHNICAL.md`.
 
 ### Rating bands — `labelForPct`, `src/lib/score-thresholds.ts`
 
-| Label | Range | Text class | Badge class |
-|-------|-------|-----------|-------------|
-| `good` | ≥ 80% | `text-green-600` | `bg-green-50 text-green-700` |
-| `warning` | 60–79% | `text-amber-600` | `bg-amber-50 text-amber-700` |
-| `critical` | < 60% | `text-red-600` | `bg-red-50 text-red-700` |
+| Label | Range | Shown as |
+|-------|-------|----------|
+| `good` | ≥ 80 | Agent-ready (Healthy in the current UI) |
+| `warning` | 60–79 | Almost there (Needs work) |
+| `critical` | < 60 | Not ready (Critical) |
 
-The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, every `ScorePill`, the per-row label (`labelFor` in `site-score.ts`) and the site roll-up (`site-aggregate.ts`). Cached dashboard scores use the key prefix `aiDiscovery:scores:v3:`. It was bumped from v2 when the thresholds and the AI body text changed.
-
-### Fixed pillar maxima (`MAX_PILLARS`, `site-score.ts:61–72`)
-
-| Pillar | Max | Notes |
-|--------|----:|-------|
-| Crawlability | 15 | fixed |
-| Structured | **0–17** | dynamic per page type (see pillar 2); `MAX_PILLARS.structured` is the 17 ceiling, so the maxima sum to 100 |
-| Answerability | 20 | fixed |
-| Authority | 28 | fixed |
-| Retrievability | 20 | fixed |
-
-**Example `maxTotal` values:**
-- Home page → 15 + 3 + 20 + 28 + 20 = **86** (Organization only)
-- Regular inner page → 15 + 3 + 20 + 28 + 20 = **86** (BreadcrumbList only)
-- Article page w/ FAQs → 15 + 17 + 20 + 28 + 20 = **100** (FAQPage + Article + BreadcrumbList)
+The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, every `ScorePill` and the site roll-up.
 
 ---
 
-## Pillar 1 — Crawlability (15 pts)
-**`scoreCrawlability`, `site-score.ts:73–111`** · UI: `MatrixView.tsx` column **CRAWL** — *"can AI bots see this page?"*
+## Scanning a page (`scanOne`, `useSitePages.ts`)
 
-| Signal | Pts | Logic | Thresholds |
-|--------|----:|-------|-----------|
-| AI crawler permissions (robots.txt) | 0–6 | Counts how many of 6 AI crawlers are explicitly blocked: `googleExtended`, `gptBot`, `claudeBot`, `perplexityBot`, `amazonBot`, `appleBotExtended` | 0 blocked → 6 · 1–2 blocked → 3 · 3+ blocked → 0 · no robots data → 3 (neutral fallback) |
-| Canonical URL | 0–5 | Presence + normalized match of `<link rel="canonical">` against page URL | present & self-referencing → 5 · present but different → 2 · missing → 0 |
-| Robots meta | 0–4 | Scans `<meta name="robots">` and `<meta name="googlebot">` for blockers (`noindex`, `nosnippet`, `noimageindex`, `none`) | no blockers → 4 · any blocker → 0 |
+- **Enumeration:** authoring GraphQL walks the site's Home item 5 levels deep; items with `__Renderings` or `__Final Renderings` are pages. For each it reads `template { name }`, `__Updated`, and the fields the checks read, by the shared names in `SCORING_FIELD_NAMES` (`pageTitle`, `MetaDescription` — overridable with `NEXT_PUBLIC_FIELD_TITLE` / `NEXT_PUBLIC_FIELD_META_DESCRIPTION` — and `robotsMetaTag`). `pageFieldsFromValues` normalises them into `row.fields`, exactly as the panel does. The OG description is also read, only as the llms.txt summary fallback.
+- **Scan:** `/api/preview-fetch` for the live HTML, then `/api/ai-check` with `ParsedHtml.mainText` (on `ANTHROPIC_MODEL_BULK`, cached by content hash in localStorage, shared with the panel, and on the server). PageSpeed doesn't run in the dashboard, so P7 is "not checked" and left out of the score.
+- **Concurrency:** 5 pages at a time; all unscanned rows scan in the background after enumeration.
 
-**Signal types:** robots.txt fetch + HTML head parsing.
+### Score cache
 
----
-
-## Pillar 2 — Structured Data (0–17 pts, dynamic)
-**`scoreStructured`, `site-score.ts:113–166`** · UI: column **STRUCT** — *"can AI parse the schema?"*
-
-Conditionally evaluated per page type — pages are **not** penalized for inapplicable schemas; both earned and max accumulate only for applicable checks. JSON-LD parsed from `<script type="application/ld+json">`.
-
-| Signal | Pts | Applicability | Logic |
-|--------|----:|---------------|-------|
-| FAQPage | 0–8 | Only when ≥2 H2s match the question regex | `@type: "FAQPage"` present AND ≥2 question-style H2s → 8 · else 0 |
-| Article | 0–6 | Only when Sitecore template display name = "Article Detail Page" (case-insensitive) | `@type` ∈ {Article, NewsArticle, BlogPosting} → 6 · else 0 |
-| BreadcrumbList | 0–3 | All pages **except** home (`/`) | `@type: "BreadcrumbList"` present → 3 · else 0 |
-| Organization | 0–3 | Home page only (route `/`) | `@type: "Organization"` present → 3 · else 0 |
-
-**Question regex (shared):** `/^(who|what|when|where|why|how|can|does|did|is|are|was|were|should|which|will|would|could)\b/i`
+Summaries are cached in localStorage under **`aiDiscovery:scores:v4:<siteId>`**, keyed by page URL and reused while the page's `__Updated` is unchanged. **v4** is the unified engine (the shape changed from `SiteScoreResult` to `PageScoreSummary`), so v3 scores from the pillar model are never shown. **Refresh** clears the cache and re-fetches the site-check inputs.
 
 ---
 
-## Pillar 3 — Answerability (20 pts)
-**`scoreAnswerability`, `site-score.ts:168–208`** · UI: column **ANSWER** — *"can AI extract a passage?"*
+## Site roll-up (`site-aggregate.ts`)
 
-| Signal | Pts | Logic | Thresholds |
-|--------|----:|-------|-----------|
-| Heading structure | 0–6 | H1 count + hierarchy skip detection (e.g., H1→H3) | exactly 1 H1 AND no skips → 6 · one condition only → 3 · neither → 0 |
-| Question-style H2s | 0–6 | Count of H2s passing the question regex | ≥3 → 6 · 1–2 → 3 · 0 → 0 |
-| Reading grade (ARI) | 0–4 | ARI over concatenated body paragraphs: `4.71·(chars/words) + 0.5·(words/sentences) − 21.43` | grade ≤13 → 4 · 14–16 → 2 · >16 or insufficient text → 0 |
-| Paragraph length | 0–4 | Average word count across `<p>` elements | avg 40–120 → 4 · avg 20–200 → 2 · else/none → 0 |
-
-**Signal types:** HTML parsing of headings + paragraph text (rendered `<main>`/body).
+- **Overall score:** mean of the page scores. Unscanned and **blocked** pages are left out; blocked pages are counted separately ("N Blocked" in the summary).
+- **Category cards:** for each category, the mean of `earned ÷ max` over pages where that category was scored. A page "fails" a category below 40%. The "What's included" list comes from the check registry, so it always matches what's scored.
+- **Pages to fix first:** scored pages sorted by score, lowest first. Blocked pages show "Blocked (noindex)" and sort with the unscanned ones.
+- **Per-page breakdown:** expanding a row shows the four categories as `earned/max` pills (rounded).
 
 ---
 
-## Pillar 4 — Authority (28 pts)
-**`scoreAuthority`, `site-score.ts:210–259`** · UI: column **AUTH** — *"does AI trust this content?"*
+## Site checks card
 
-| Signal | Pts | Logic | Thresholds | Type |
-|--------|----:|-------|-----------|------|
-| AI uniqueness rating | 0–15 | Ingests LLM content classification of `ParsedHtml.mainText` (skipped when the page has none). `/api/ai-check` on `ANTHROPIC_MODEL_BULK`; cached by content hash in localStorage (shared with the panel) and on the server, so re-scans of unchanged pages don't call Claude | `unique` → 15 · `borderline` → 8 · `commodity` or not-yet-run → 0 | **AI/LLM** |
-| Content depth | 0–3 | Total words across body paragraphs | ≥800 → 3 · 400–799 → 2 · 150–399 → 1 · <150 → 0 | HTML |
-| Freshness | 0–8 | Date resolution priority: (1) `<meta property="article:modified_time">` → (2) `<meta name="last-modified">` → (3) Sitecore `updatedAt`/`__Updated` | ≤180d → 8 · 181–365d → 5 · 366–730d → 2 · >730d or none → 0 | HTML + Sitecore |
-| Internal link descriptiveness | 0–2 | Ratio of generic anchors (`ANCHOR_BLOCKLIST`) to total links, with arrow/punctuation normalization | ≤20% generic → 2 · 21–40% → 1 · no links → 1 (fallback) · >40% → 0 | HTML |
+Once per site, the hook fetches `/api/robots-check` and the home page (`/api/preview-fetch` on `<domain>/`), not awaited by enumeration. The page then runs `runSiteChecks` with:
+- the home page HTML (null when it couldn't be fetched → S7 is "Couldn't check", N/A),
+- robots.txt,
+- the organisation for the snippet (`getOrganizationInfo`, `NEXT_PUBLIC_ORG_*` with the site's name and domain as fallbacks) and the configured organisation as the expected value (`getConfiguredOrganization`),
+- the site type.
 
-Heaviest pillar; combines the single LLM signal in the Matrix (uniqueness) with HTML-derived depth/freshness/link quality.
+Site checks get **their own site score** (same pool maths) and never feed page scores. Phase 3 has **S2** `reach.robots-ai-rules` (the old 6-crawler robots.txt signal, moved as is) and **S7** `understand.org-schema` (home page Organization JSON-LD, graded with the four agreed rules). Phase 6 adds the rest and moves them to an Agent access tab.
 
----
-
-## Pillar 5 — Retrievability (20 pts)
-**`scoreRetrievability`, `site-score.ts:261–303`** · UI: column **RETRIEV** — *"does AI prefer it?"*
-
-| Signal | Pts | Logic | Thresholds |
-|--------|----:|-------|-----------|
-| Title length | 0–6 | `<title>` char count | 30–60 → 6 · 20–29 or 61–80 → 3 · <20 or >80 → 0 |
-| Meta description length | 0–6 | `<meta name="description">` char count | 120–160 → 6 · 70–119 or 161–200 → 3 · <70 or >200 → 0 |
-| Open Graph completeness | 0–3 | Presence of `og:title`, `og:description`, `og:image` | 3 → 3 · 2 → 2 · 1 → 1 · 0 → 0 |
-| Semantic landmarks | 0–3 | Count of `<main>`, `<article>`, `<nav>`, `<header>` | ≥3 → 3 · 2 → 2 · 1 → 1 · 0 → 0 |
-| Image alt coverage | 0–2 | Ratio of `<img>` with non-empty `alt` | ≥90% → 2 · 60–89% → 1 · no images → 1 (fallback) · <60% → 0 |
-
-**Signal types:** HTML head + DOM structure parsing.
+**Site type** (Content site / Commerce / App or API) is a select in the card, stored per site in localStorage (`aiDiscovery:siteType:v1:<siteId>`). It decides which Bonus protocol checks apply (S11 App/API, S12 Commerce), which arrive in Phase 6, so it has no visible effect yet.
 
 ---
 
-## UI mapping
+## What changed from the pillar model
 
-### Matrix table — `MatrixView.tsx:36–46`
+| Old pillar signal | Now |
+|---|---|
+| Crawlability: AI crawler permissions | S2 `reach.robots-ai-rules` (site check) |
+| Crawlability: canonical | P2 `reach.canonical` (Essential) |
+| Crawlability: robots meta | P1 gate — blocks the score instead of costing 4 points |
+| Structured: FAQPage / Article / BreadcrumbList | P10 `understand.json-ld` — now validates required properties, reads `@graph` and `@type` arrays, expects FAQPage from real Q&A pairs instead of question H2s |
+| Structured: Organization (home page) | S7 `understand.org-schema` (site check) |
+| Answerability: headings | P8 `understand.headings` |
+| Answerability: question H2s | P13 `understand.question-headings` |
+| Answerability: reading grade + paragraph length | P14 `understand.readability` |
+| Authority: AI uniqueness | P16 `trust.uniqueness` |
+| Authority: content depth | P19 `trust.depth` |
+| Authority: freshness | P18 `trust.freshness` (adds JSON-LD `dateModified`; reads Sitecore's compact date format) |
+| Authority: descriptive anchors | P20 `trust.anchor-text` (prefix rule narrowed, SPIKE-FINDINGS §2) |
+| Retrievability: title + description | P9 `understand.title-meta` (Sitecore field first; title band now 50–60) |
+| Retrievability: OG tags | P11 `understand.metadata` (adds `html lang`, `og:type`) |
+| Retrievability: landmarks | P4 `read.landmarks` |
+| Retrievability: image alt | P15 `understand.image-alt` (N/A without images) |
 
-| Pillar key | Column label | Tooltip (title attr) |
-|------------|--------------|----------------------|
-| `crawlability` | CRAWL | Crawlability — can AI bots see this page? |
-| `structured` | STRUCT | Structured data — can AI parse the schema? |
-| `answerability` | ANSWER | Answerability — can AI extract a passage? |
-| `authority` | AUTH | Authority — does AI trust this content? |
-| `retrievability` | RETRIEV | Retrievability — does AI prefer it? |
-
-**Layout:** Page (30%) · 5 pillars (8% each) · Total (20%) · Action (10%). Pillar cells render `ScorePill` as `earned/max` (e.g. `8/15`); Total cell shows a percentage bar + rounded %.
-
-### Category cards — `CategoryCards.tsx:11–62`
-Aggregated dashboard cards reuse the same pillar keys with full labels, the user-facing question, and bullet lists of included items (FAQ/Article/Breadcrumb/Organization for Structured; H1/question-H2/readability/paragraph for Answerability; uniqueness/depth/freshness/anchors for Authority; title/description/OG/landmarks/alt for Retrievability).
+New in the dashboard because it now shares the panel's checks: P11's lang and og:type, P12 FAQ answer quality, P17 author (article templates), P21 follow-up gaps (Bonus). The unused `MatrixView.tsx` table (replaced earlier by `AllPagesView`) was removed with the pillar types.
 
 ---
 
-## Signal-type summary
+## Demo mode (`?demo=1`)
 
-- **AI/LLM-based:** Authority → uniqueness rating (15 pts) — the only LLM signal in the Matrix.
-- **HTML parsing (rendered fetch):** robots/canonical/robots-meta (Crawlability); JSON-LD (Structured); headings/paragraphs/reading level (Answerability); word count/freshness/anchors (Authority); title/description/OG/landmarks/alt (Retrievability).
-- **Sitecore backend:** template-name match for Article applicability (Structured); `updatedAt` freshness fallback (Authority).
+`makeTestSitePages()` (`src/lib/rule-engine/test-fixture.ts`) builds 12 rows by running the **real engine** on variants of the panel's demo page, so the numbers are consistent: 3 critical, 3 warning, 5 good and 1 blocked (noindex). The row "Blog: content strategy" is the panel's demo page unchanged, so it shows the same score as the panel demo (89). `makeTestSiteContext()` gives the Site checks card a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).
 
 ---
 
 ## Key files
 
-| Aspect | File | Lines |
-|--------|------|-------|
-| Pillar scoring + MAX_PILLARS + labelFor | `src/lib/rule-engine/site-score.ts` | 42–366 |
-| Page Matrix table UI | `src/components/MatrixView.tsx` | 36–305 |
-| Category aggregation + descriptions | `src/components/CategoryCards.tsx` | 11–144 |
-| Helpers (ARI, word count, question regex, anchor blocklist) | `src/lib/rule-engine/helpers.ts` | 34–135 |
-| Dashboard types (`PageMatrixRow`, `MatrixFilter`) | `src/types/dashboard.ts` | 1–29 |
+| Aspect | File |
+|--------|------|
+| Enumeration, scanning, score cache, site-check inputs | `src/hooks/useSitePages.ts` |
+| Check engine, registry, scoring | `src/lib/checks/` |
+| Summary shape and category labels | `src/lib/checks/adapters.ts` |
+| Site roll-up and worst pages | `src/lib/site-aggregate.ts` |
+| Overview UI | `src/components/SiteSummary.tsx`, `CategoryCards.tsx`, `SiteChecks.tsx`, `WorstPages.tsx`, `AllPagesView.tsx`, `PageScoreRow.tsx` |
+| Site type setting | `src/hooks/useSiteType.ts` |
+| Dashboard types | `src/types/dashboard.ts` |
+| Demo data | `src/lib/rule-engine/test-fixture.ts` |

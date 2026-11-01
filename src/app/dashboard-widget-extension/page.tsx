@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useSiteType } from "@/hooks/useSiteType";
 import { AllPagesView } from "@/components/AllPagesView";
 import { SiteSummary } from "@/components/SiteSummary";
 import { CategoryCards } from "@/components/CategoryCards";
@@ -12,8 +13,11 @@ import { CitationView } from "@/components/CitationView";
 import { LlmsTxtGenerator } from "@/components/LlmsTxtGenerator";
 import { RobotsTxtPanel } from "@/components/RobotsTxtPanel";
 import { FooterTrustPanel } from "@/components/FooterTrustPanel";
-import { makeTestSitePages } from "@/lib/rule-engine/test-fixture";
-import { aggregateSite, worstPages } from "@/lib/site-aggregate";
+import { SiteChecks } from "@/components/SiteChecks";
+import { makeTestSiteContext, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
+import { aggregateSite, pageScore, worstPages } from "@/lib/site-aggregate";
+import { runSiteChecks } from "@/lib/checks/engine";
+import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPagesEditorUrl } from "@/lib/pages-editor-url";
 import type { MatrixFilter, MatrixSort, PageMatrixRow } from "@/types/dashboard";
 
@@ -44,6 +48,23 @@ export default function DashboardWidgetPage() {
   const error = useFixture ? null : live.error;
   const scanningCount = useFixture ? 0 : live.scanningCount;
 
+  const [siteType, setSiteType] = useSiteType(siteContext.id);
+
+  // Site checks (S2, S7): once per site, from robots.txt and the home page.
+  const { siteInputs } = live;
+  const siteReport = useMemo(() => {
+    if (useFixture) return runSiteChecks({ ...makeTestSiteContext(), siteType });
+    if (!siteContext.domain || !siteInputs.homeChecked) return null;
+    return runSiteChecks({
+      siteUrl: siteContext.domain,
+      siteType,
+      organization: getOrganizationInfo({ name: siteContext.name, url: siteContext.domain }),
+      expectedOrganization: getConfiguredOrganization(),
+      home: siteInputs.homeHtml,
+      robotsTxt: siteInputs.robotsTxt,
+    });
+  }, [useFixture, siteType, siteContext.domain, siteContext.name, siteInputs]);
+
   const [activeTab, setActiveTab] = useState<"matrix" | "citation" | "llms" | "robots" | "footer">("matrix");
   const [filter, setFilter] = useState<MatrixFilter>("critical");
   const [sortBy, setSortBy] = useState<MatrixSort>("score-asc");
@@ -59,10 +80,8 @@ export default function DashboardWidgetPage() {
       // Unscanned rows are excluded from label filters; visible only under "all".
       out = out.filter((p) => p.score?.label === filter);
     }
-    // Sort by normalized readiness (total / maxTotal), matching the percentage
-    // shown in the matrix — raw totals aren't comparable since maxTotal varies per page.
-    const pctOf = (p: (typeof out)[number]) =>
-      p.score && p.score.maxTotal > 0 ? p.score.total / p.score.maxTotal : -1;
+    // Unscanned and blocked pages have no score and sort last (score ↓) / first (score ↑).
+    const pctOf = (p: (typeof out)[number]) => pageScore(p) ?? -1;
     const sorted = [...out];
     sorted.sort((a, b) => {
       switch (sortBy) {
@@ -188,6 +207,7 @@ export default function DashboardWidgetPage() {
               <div className="px-4 py-3 space-y-4">
                 <SiteSummary aggregate={aggregate} isLoading={isLoading} />
                 <CategoryCards categories={aggregate.categories} />
+                <SiteChecks report={siteReport} siteType={siteType} onSiteTypeChange={setSiteType} />
                 <WorstPages
                   pages={worst}
                   scannedCount={aggregate.scannedCount}
