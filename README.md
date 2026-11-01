@@ -12,14 +12,14 @@ The v2 roadmap is in [docs/IS-IT-AGENT-READY-PLAN.md](docs/IS-IT-AGENT-READY-PLA
 
 | Extension point | Route | What it does |
 |---|---|---|
-| **Pages context panel** | `src/app/pages-contextpanel-extension/page.tsx` | "Is this page agent-ready?" Scores the page open in Page Builder (Technical SEO, Structured Data, Content Quality), runs the AI uniqueness check on the page's main text, and generates meta and Open Graph values in your brand voice. **Populate field** writes them to the page through `xmc.pages.updateFields`. |
-| **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site: page matrix, worst pages, AI citation forecast, llms.txt generator, robots.txt AI-crawler check and footer trust signals. |
+| **Pages context panel** | `src/app/pages-contextpanel-extension/page.tsx` | "Is this page agent-ready?" Scores the page open in Page Builder in four categories (Reach, Read, Understand, Trust), runs the AI uniqueness check on the page's main text, and generates meta and Open Graph values in your brand voice. **Populate field** writes them to the page through `xmc.pages.updateFields`. |
+| **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site with the same checks: site score, category cards, site checks (robots.txt, home page Organization schema), worst pages, AI citation forecast, llms.txt generator, robots.txt AI-crawler check and footer trust signals. |
 
 Both run inside the Sitecore iframe. Opening their routes directly in a browser only works in demo mode (below).
 
 Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `robots-check`, `footer-check`, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-forecast`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
 
-Scores use the same thresholds everywhere: 80% and above is good (Agent-ready), 60–79% is a warning (Almost there), and below 60% is critical (Not ready).
+The panel and the dashboard share one check engine (`src/lib/checks/`), so the same page gets the same score in both. Each page is scored out of 100: Essential checks share 80 points, Recommended checks 20, and Bonus checks add up to 5 (capped at 100). Checks that don't apply are skipped, not failed. Scores use the same thresholds everywhere: 80 and above is good (Agent-ready), 60–79 is a warning (Almost there), and below 60 is critical (Not ready). Details: `docs/PAGE-CHECKS-TECHNICAL.md`.
 
 ## Setup
 
@@ -69,7 +69,7 @@ Put these in `.env.local` for development and in your host's settings for deploy
 | `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN` | Recommended | Published site URL (e.g. `https://www.example.com`), used when the SDK doesn't give a site hostname. |
 | `NEXT_PUBLIC_SITE_ROOT_PATH` | No | Content path of the site's Home item, if the dashboard can't find it through `xmc.sites`. |
 | `NEXT_PUBLIC_FIELD_TITLE`, `NEXT_PUBLIC_FIELD_META_DESCRIPTION`, `NEXT_PUBLIC_FIELD_OG_TITLE`, `NEXT_PUBLIC_FIELD_OG_DESCRIPTION` | No | Sitecore field names for the meta fields, if your templates don't use `pageTitle`, `MetaDescription`, `OpenGraphTitle`, `OpenGraphDescription`. |
-| `NEXT_PUBLIC_ORG_NAME`, `NEXT_PUBLIC_ORG_URL`, `NEXT_PUBLIC_ORG_LOGO`, `NEXT_PUBLIC_ORG_DESCRIPTION`, `NEXT_PUBLIC_ORG_SAME_AS` | No | Organization details for the Organization JSON-LD snippet. `SAME_AS` is a comma-separated list of profile URLs. Without them, the name and URL come from the site in Sitecore, and the rest are placeholders. |
+| `NEXT_PUBLIC_ORG_NAME`, `NEXT_PUBLIC_ORG_URL`, `NEXT_PUBLIC_ORG_LOGO`, `NEXT_PUBLIC_ORG_DESCRIPTION`, `NEXT_PUBLIC_ORG_SAME_AS` | No | Organization details for the Organization JSON-LD snippet. `SAME_AS` is a comma-separated list of profile URLs. Without them, the name and URL come from the site in Sitecore, and the rest are placeholders. When `NEXT_PUBLIC_ORG_NAME` is set, the organisation-schema site check also treats it as the expected name and warns if the home page's schema names someone else. |
 | `NEXT_PUBLIC_SPIKE_DEBUG` | No | `1` shows the temporary `getPageHTML` spike box in the panel (same as `?spike=1`). |
 
 ### Claude API

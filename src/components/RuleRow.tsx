@@ -1,22 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import type { RuleResult } from "@/lib/rule-engine/types";
+import type { CheckRowModel } from "@/lib/checks/adapters";
+import type { CheckStatus } from "@/lib/checks/types";
 
 interface RuleRowProps {
-  result: RuleResult;
+  result: CheckRowModel;
   scanning?: boolean;
   onScan?: () => void;
 }
 
-const dotColor: Record<RuleResult["status"], string> = {
+const dotColor: Record<CheckStatus, string> = {
   pass: "bg-green-500",
   warning: "bg-amber-500",
   fail: "bg-red-500",
   info: "bg-gray-400",
 };
 
-const badgeStyle: Record<RuleResult["status"], string> = {
+const badgeStyle: Record<CheckStatus, string> = {
   pass: "bg-green-50 text-green-700",
   warning: "bg-amber-50 text-amber-700",
   fail: "bg-red-50 text-red-700",
@@ -42,21 +43,24 @@ function Spinner() {
   );
 }
 
+/** Points with at most one decimal: pools split unevenly (e.g. 20 ÷ 12). */
+function pts(n: number): string {
+  return String(Math.round(n * 10) / 10);
+}
+
+function badgeText(result: CheckRowModel): string {
+  if (result.state === "not-applicable") return "n/a";
+  if (result.state === "not-checked") return "not checked";
+  if (result.tier === "bonus") return `+${pts(result.points)} bonus`;
+  return `${pts(result.points)} / ${pts(result.maxPoints)}`;
+}
+
 export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
   const [open, setOpen] = useState(false);
-  const isInfo = result.maxScore === 0;
-  // True for checks that need a manual scan (PSI or AI) and haven't run yet,
-  // or PSI ran but returned an error/zero score (allow retry).
-  const needsScan =
-    !!onScan &&
-    (result.trigger === "psi" || result.trigger === "ai") &&
-    (
-      result.status === "info" ||
-      (result.trigger === "psi" && result.score === 0 && result.status !== "pass")
-    );
-  // Show spinner whenever scanning is active for this row — covers both the
-  // initial "info" state and a retry after a PSI error (status "warning").
-  const showScanning = scanning && (result.status === "info" || needsScan);
+  // Checks filled by an on-demand scan (PSI or AI) that haven't run yet, or
+  // couldn't (e.g. a PSI error): offer the scan, including as a retry.
+  const needsScan = !!onScan && result.runner !== null && result.state === "not-checked";
+  const showScanning = scanning && result.state === "not-checked";
 
   return (
     <div className="border-b border-gray-100 last:border-b-0">
@@ -73,7 +77,7 @@ export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
             aria-hidden
           />
         )}
-        <span className="text-sm font-medium text-gray-900 flex-1 truncate">{result.name}</span>
+        <span className="text-sm font-medium text-gray-900 flex-1 truncate">{result.title}</span>
         {showScanning ? (
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
             Scanning…
@@ -89,8 +93,8 @@ export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
             Run scan
           </span>
         ) : (
-          <span className={`text-xs px-2 py-0.5 rounded-full ${badgeStyle[result.status]}`}>
-            {isInfo ? "info" : `${result.score} / ${result.maxScore}`}
+          <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${badgeStyle[result.status]}`}>
+            {badgeText(result)}
           </span>
         )}
         <svg
@@ -117,7 +121,12 @@ export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
               )}
               <p className="text-sm text-gray-600 mt-1.5">{result.message}</p>
               {result.fixSuggestion && (
-                <p className="text-sm text-blue-600 mt-1.5">→ {result.fixSuggestion}</p>
+                <p className="text-sm text-blue-600 mt-1.5">
+                  → {result.fixSuggestion}
+                  {result.gain >= 0.5 && (
+                    <span className="ml-1 text-xs font-medium text-green-700">+{pts(result.gain)} pts</span>
+                  )}
+                </p>
               )}
               {result.details.length > 0 && (
                 <ul className="text-xs text-gray-500 list-disc pl-4 mt-2 space-y-0.5">

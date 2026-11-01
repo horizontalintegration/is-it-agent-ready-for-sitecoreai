@@ -4,21 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
 import type { AiResults, ParsedHtml, RobotsTxt } from "@/lib/rule-engine/types";
-import {
-  runSiteScore,
-  type SiteScoreResult,
-} from "@/lib/rule-engine/site-score";
+import { getOrganizationInfo } from "@/lib/brand/organization";
+import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/lib/checks/context";
+import { runPageChecks } from "@/lib/checks/engine";
+import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/adapters";
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Bump the version suffix whenever the scoring logic changes shape (pillar maxes,
-// new checks, etc.) so cached SiteScoreResults from an older engine don't render
-// stale values like "3/20" after the structured max became per-page (commit 98c12cb).
+// Bump the version suffix whenever the scoring logic changes shape (new checks,
+// pools, etc.) so cached scores from an older engine don't render stale values.
 // v3: shared 80/60 label thresholds, and the AI check reads the page's main text.
-const CACHE_KEY_PREFIX = "aiDiscovery:scores:v3:";
+// v4: the unified check engine (4 categories, tier pools, gate) — PageScoreSummary.
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v4:";
 
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
@@ -26,12 +26,10 @@ function cacheKey(siteId: string): string {
 const CONCURRENCY = 5;
 const TREE_WALK_DEPTH = 5; // descendants levels fetched per GraphQL call
 
-// Sitecore field names for the metadata pulled at enumeration time (used by the
-// llms.txt generator — independent of the metrics scan). Overridable per-tenant
+// Sitecore field names pulled at enumeration time: the fields the checks read
+// (SCORING_FIELD_NAMES, shared with the panel so both score the same) plus the
+// OG description the llms.txt generator falls back to. Overridable per-tenant
 // via env, since field names vary between SXA and custom templates.
-const FIELD_TITLE = process.env.NEXT_PUBLIC_FIELD_TITLE ?? "pageTitle";
-const FIELD_META_DESCRIPTION =
-  process.env.NEXT_PUBLIC_FIELD_META_DESCRIPTION ?? "MetaDescription";
 const FIELD_OG_DESCRIPTION =
   process.env.NEXT_PUBLIC_FIELD_OG_DESCRIPTION ?? "OpenGraphDescription";
 
@@ -202,6 +200,7 @@ interface GqlItemNode {
   metaTitle?: { value?: string | null } | null;
   metaDescription?: { value?: string | null } | null;
   ogDescription?: { value?: string | null } | null;
+  robotsMetaTag?: { value?: string | null } | null;
   children?: { nodes?: GqlItemNode[] | null } | null;
 }
 
@@ -224,21 +223,22 @@ interface GqlEnvelope {
 // its content tree path (fallback — from the discoverSiteHomePath walk).
 function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
   // template { name } returns the template's display name (e.g.
-  // "Article Detail Page"). We compare against ARTICLE_TEMPLATE_NAME in
-  // site-score.ts (case-insensitive) to gate the Article-schema check —
-  // this avoids the runtime "template doesn't exist" error caused by
-  // resolving template-by-id on items with missing or zero-GUID templates.
+  // "Article Detail Page"). isArticleTemplate in src/lib/checks/context.ts
+  // compares it (case-insensitive) to mark article pages — this avoids the
+  // runtime "template doesn't exist" error caused by resolving
+  // template-by-id on items with missing or zero-GUID templates.
   const itemFields = `
     itemId
     name
     displayName
     path
     template { name }
-    updated: field(name: "__Updated") { value }
+    updated: field(name: "${SCORING_FIELD_NAMES.updated}") { value }
     renderings: field(name: "__Renderings") { value }
     finalRenderings: field(name: "__Final Renderings") { value }
-    metaTitle: field(name: "${FIELD_TITLE}") { value }
-    metaDescription: field(name: "${FIELD_META_DESCRIPTION}") { value }
+    metaTitle: field(name: "${SCORING_FIELD_NAMES.metaTitle}") { value }
+    metaDescription: field(name: "${SCORING_FIELD_NAMES.metaDescription}") { value }
+    robotsMetaTag: field(name: "${SCORING_FIELD_NAMES.robotsMetaTag}") { value }
     ogDescription: field(name: "${FIELD_OG_DESCRIPTION}") { value }
   `;
   let inner = "";
@@ -300,7 +300,7 @@ function pathToRoute(path: string | undefined): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CachedScore {
-  score: SiteScoreResult;
+  score: PageScoreSummary;
   updatedAt: string;
   cachedAt: string;
 }
@@ -382,8 +382,18 @@ async function withConcurrency<T>(
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** What the site checks need, fetched once per site. */
+export interface SiteCheckInputs {
+  /** Home page live HTML. Null when it couldn't be fetched. */
+  homeHtml: ParsedHtml | null;
+  /** True once the home page fetch has finished (successfully or not). */
+  homeChecked: boolean;
+  robotsTxt: RobotsTxt | null;
+}
+
 export interface UseSitePagesResult {
   pages: PageMatrixRow[];
+  siteInputs: SiteCheckInputs;
   siteContext: {
     id: string;
     domain: string;
@@ -424,9 +434,14 @@ export function useSitePages(
 
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-  // Site-wide robots.txt — fetched once per domain, reused for every row's score.
-  const robotsRef = useRef<RobotsTxt | null>(null);
-  const robotsFetchedDomainRef = useRef<string | null>(null);
+  // Site-wide inputs for the site checks — robots.txt and the home page,
+  // fetched once per domain.
+  const [siteInputs, setSiteInputs] = useState<SiteCheckInputs>({
+    homeHtml: null,
+    homeChecked: false,
+    robotsTxt: null,
+  });
+  const siteFetchedDomainRef = useRef<string | null>(null);
 
   const pagesRef = useRef<PageMatrixRow[]>([]);
   useEffect(() => {
@@ -443,7 +458,7 @@ export function useSitePages(
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }, []);
 
-  // ── Scan a single page: HTML + AI in parallel, then runSiteScore ─────────
+  // ── Scan a single page: HTML, then AI, then the page checks ──────────────
   const scanOne = useCallback(
     async (row: PageMatrixRow) => {
       updateRow(row.id, { scanStatus: "scanning", scanError: undefined });
@@ -479,15 +494,21 @@ export function useSitePages(
         return;
       }
 
-      const score = runSiteScore({
-        parsedHtml,
-        robotsTxt: robotsRef.current,
-        ai,
-        updatedAt: row.lastModified,
-        pageUrl: row.pageUrl,
-        isHomePage: row.route === "/" || row.route === "",
-        templateName: row.templateName || null,
-      });
+      // Same context builder as the panel. The dashboard doesn't run PageSpeed,
+      // so read.speed is "not checked" here and left out of the score.
+      const report = runPageChecks(
+        buildPageContext({
+          pageUrl: row.pageUrl,
+          route: row.route,
+          templateName: row.templateName || null,
+          fields: row.fields,
+          html: parsedHtml,
+          ai,
+          psi: null,
+          organization: getOrganizationInfo({ name: currentSiteNameRef.current, url: null }),
+        }),
+      );
+      const score = summarisePageReport(report);
 
       const cachedAt = new Date().toISOString();
       writeCacheEntry(currentSiteIdRef.current, row.pageUrl, {
@@ -629,14 +650,19 @@ export function useSitePages(
         console.warn("[sitePages] application.context query failed:", err);
       }
 
-      // 3. Fetch robots.txt once for this domain
-      if (robotsFetchedDomainRef.current !== domain) {
-        robotsFetchedDomainRef.current = domain;
-        robotsRef.current = await tryJson<RobotsTxt>(
-          fetch(
-            `${base}/api/robots-check?domain=${encodeURIComponent(domain)}`,
-          ),
-        );
+      // 3. Fetch robots.txt and the home page once for this domain (site
+      // checks). Not awaited: page enumeration doesn't depend on them.
+      if (siteFetchedDomainRef.current !== domain) {
+        siteFetchedDomainRef.current = domain;
+        setSiteInputs({ homeHtml: null, homeChecked: false, robotsTxt: null });
+        const homeUrl = buildPageUrl(domain, "/");
+        void Promise.all([
+          tryJson<RobotsTxt>(fetch(`${base}/api/robots-check?domain=${encodeURIComponent(domain)}`)),
+          tryJson<ParsedHtml>(fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(homeUrl)}`)),
+        ]).then(([robotsTxt, homeHtml]) => {
+          if (siteFetchedDomainRef.current !== domain) return;
+          setSiteInputs({ robotsTxt, homeHtml, homeChecked: true });
+        });
       }
 
       // 4. Resolve site Home reference. Three-tier strategy:
@@ -757,9 +783,15 @@ export function useSitePages(
           const cached = cache[pageUrl];
           const fromCache =
             cached && cached.updatedAt === lastModified ? cached : null;
-          const metaTitle = p.metaTitle?.value?.trim() || null;
+          const fields = pageFieldsFromValues({
+            metaTitle: p.metaTitle?.value,
+            metaDescription: p.metaDescription?.value,
+            robotsMetaTag: p.robotsMetaTag?.value,
+            updated: p.updated?.value,
+          });
+          const metaTitle = fields.metaTitle;
           const metaDescription =
-            p.metaDescription?.value?.trim() ||
+            fields.metaDescription ||
             p.ogDescription?.value?.trim() ||
             null;
           return {
@@ -771,6 +803,7 @@ export function useSitePages(
             lastModified,
             metaTitle,
             metaDescription,
+            fields,
             score: fromCache ? fromCache.score : null,
             scanStatus: fromCache ? "scanned" : "idle",
             lastScannedAt: fromCache ? fromCache.cachedAt : undefined,
@@ -878,6 +911,7 @@ export function useSitePages(
 
   const clearAndRefresh = useCallback(() => {
     clearCache(currentSiteIdRef.current);
+    siteFetchedDomainRef.current = null; // re-fetch robots.txt and the home page too
     void enumerateAndScan();
   }, [enumerateAndScan]);
 
@@ -889,6 +923,7 @@ export function useSitePages(
   return useMemo(
     () => ({
       pages,
+      siteInputs,
       siteContext,
       isLoading,
       error,
@@ -900,6 +935,7 @@ export function useSitePages(
     }),
     [
       pages,
+      siteInputs,
       siteContext,
       isLoading,
       error,

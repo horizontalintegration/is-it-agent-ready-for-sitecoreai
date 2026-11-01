@@ -64,7 +64,8 @@ function sectionFor(route: string): string {
 function passesScore(page: PageMatrixRow, threshold: number | null): boolean {
   if (threshold == null) return true;
   if (page.score == null) return true; // unscanned pages are never penalised
-  return page.score.total >= threshold;
+  if (page.score.blocked) return false; // noindex / nosnippet
+  return page.score.score === null || page.score.score >= threshold;
 }
 
 export function buildLlmsTxt(pages: PageMatrixRow[], opts: LlmsTxtOptions): LlmsTxtResult {
@@ -84,7 +85,7 @@ export function buildLlmsTxt(pages: PageMatrixRow[], opts: LlmsTxtOptions): Llms
 
   // Within each section, surface the healthiest pages first when scores exist.
   const byScoreDesc = (a: PageMatrixRow, b: PageMatrixRow) =>
-    (b.score?.total ?? -1) - (a.score?.total ?? -1);
+    (b.score?.score ?? -1) - (a.score?.score ?? -1);
   for (const bucket of sections.values()) bucket.sort(byScoreDesc);
 
   // "Main pages" first, then the remaining sections alphabetically.

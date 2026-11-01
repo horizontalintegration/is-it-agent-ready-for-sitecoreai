@@ -2,22 +2,12 @@
 
 import { useState } from "react";
 import type { PageMatrixRow } from "@/types/dashboard";
-import type { SiteScoreResult } from "@/lib/rule-engine/site-score";
+import { CATEGORY_META } from "@/lib/checks/adapters";
+import { CATEGORIES } from "@/lib/checks/types";
+import type { ScoreLabel } from "@/lib/score-thresholds";
 import { ScorePill } from "./ScorePill";
 
-const PILLARS: Array<{ key: keyof SiteScoreResult["pillars"]; label: string }> = [
-  { key: "crawlability", label: "Crawl" },
-  { key: "structured", label: "Struct" },
-  { key: "answerability", label: "Answer" },
-  { key: "authority", label: "Auth" },
-  { key: "retrievability", label: "Retriev" },
-];
-
-function pctOf(s: SiteScoreResult): number {
-  return s.maxTotal > 0 ? Math.round((s.total / s.maxTotal) * 100) : 0;
-}
-
-function barColor(label: SiteScoreResult["label"]): string {
+function barColor(label: ScoreLabel): string {
   switch (label) {
     case "critical": return "bg-red-500";
     case "warning": return "bg-amber-500";
@@ -25,7 +15,7 @@ function barColor(label: SiteScoreResult["label"]): string {
   }
 }
 
-function pctColor(label: SiteScoreResult["label"]): string {
+function pctColor(label: ScoreLabel): string {
   switch (label) {
     case "critical": return "text-red-600";
     case "warning": return "text-amber-600";
@@ -44,7 +34,11 @@ interface PageScoreRowProps {
 
 export function PageScoreRow({ row, rank, onOpenPage, onScan }: PageScoreRowProps) {
   const [open, setOpen] = useState(false);
-  const score = row.score;
+  const summary = row.score;
+  // Blocked (noindex / nosnippet) or unscorable pages have a summary but no score.
+  const score = summary && summary.score !== null && summary.label !== null
+    ? { pct: summary.score, label: summary.label, categories: summary.categories }
+    : null;
 
   return (
     <div className="px-3 py-2 hover:bg-gray-50">
@@ -75,18 +69,20 @@ export function PageScoreRow({ row, rank, onOpenPage, onScan }: PageScoreRowProp
           <>
             <div className="hidden sm:flex items-center w-28 shrink-0">
               <div className="h-1.5 flex-1 rounded-full bg-gray-100 overflow-hidden">
-                <div className={`h-full ${barColor(score.label)}`} style={{ width: `${pctOf(score)}%` }} />
+                <div className={`h-full ${barColor(score.label)}`} style={{ width: `${score.pct}%` }} />
               </div>
             </div>
             <span className={`text-sm font-semibold tabular-nums w-10 text-right shrink-0 ${pctColor(score.label)}`}>
-              {pctOf(score)}%
+              {score.pct}%
             </span>
           </>
         ) : (
           <span className="text-xs text-gray-400 w-28 text-right shrink-0 truncate">
             {row.scanStatus === "scanning"
               ? "Scanning…"
-              : row.scanStatus === "error"
+              : summary?.blocked
+                ? "Blocked (noindex)"
+                : row.scanStatus === "error"
                 ? (row.scanError ?? "Scan failed")
                 : "Not scanned"}
           </span>
@@ -116,10 +112,10 @@ export function PageScoreRow({ row, rank, onOpenPage, onScan }: PageScoreRowProp
 
       {open && score && (
         <div className={`mt-2 flex flex-wrap gap-x-3 gap-y-1 ${rank !== undefined ? "ml-7" : "ml-0"}`}>
-          {PILLARS.map((p) => (
-            <span key={p.key} className="flex items-center gap-1 text-[11px] text-gray-500">
-              {p.label}
-              <ScorePill score={score.pillars[p.key]} max={score.maxPillars[p.key]} />
+          {CATEGORIES.map((c) => (
+            <span key={c} className="flex items-center gap-1 text-[11px] text-gray-500">
+              {CATEGORY_META[c].label}
+              <ScorePill score={score.categories[c].earned} max={score.categories[c].max} />
             </span>
           ))}
         </div>

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import type { AuthoringFields, FaqItem } from "@/lib/rule-engine/types";
 import { stripHtml } from "@/lib/rule-engine/helpers";
+import { pageFieldsFromFieldMap } from "@/lib/checks/context";
+import type { PageFields } from "@/lib/checks/types";
 
 /**
  * Everything the "Populate field" action needs to write a value back via
@@ -25,7 +27,13 @@ export interface PageWriteContext {
 
 interface UsePageFieldsResult {
   fields: Partial<AuthoringFields> | null;
+  /** The fields the checks read, by the same names the dashboard reads. Null until loaded. */
+  scoringFields: PageFields | null;
   pageUrl: string;
+  /** Public route of the open page ("/" for the home page). */
+  route: string;
+  /** Sitecore template display name, e.g. "Article Detail Page". */
+  templateName: string | null;
   siteDomain: string;
   /** The site's display name (or its name), for the Organization fallback. */
   siteName: string;
@@ -83,6 +91,7 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
     item(where: { path: $path, language: $language }) {
       itemId
       name
+      template { name }
       fields(ownFields: false) {
         nodes {
           name
@@ -102,6 +111,7 @@ interface AuthoringEnvelope {
     item?: {
       itemId?: string;
       name?: string;
+      template?: { name?: string | null } | null;
       fields?: { nodes?: AuthoringItemFieldNode[] };
     } | null;
   };
@@ -113,6 +123,7 @@ interface FieldFetchResult {
   values: Record<string, string>;
   /** Lower-cased field name → original field name, used for write-back via updateFields (which matches by name). */
   names: Record<string, string>;
+  templateName: string | null;
 }
 
 async function fetchItemFieldsAuthoring(
@@ -164,7 +175,7 @@ async function fetchItemFieldsAuthoring(
       names[key] = n.name;
       if (typeof n.value === "string") values[key] = n.value;
     }
-    return { values, names };
+    return { values, names, templateName: envelope?.data?.item?.template?.name ?? null };
   } catch (err) {
     console.error("[usePageFields] authoring.graphql threw:", err);
     return null;
@@ -332,6 +343,9 @@ export function usePageFields(
   isInitialized: boolean,
 ): UsePageFieldsResult {
   const [fields, setFields] = useState<Partial<AuthoringFields> | null>(null);
+  const [scoringFields, setScoringFields] = useState<PageFields | null>(null);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const [route, setRoute] = useState<string>("");
   const [pageUrl, setPageUrl] = useState<string>("");
   const [siteDomain, setSiteDomain] = useState<string>("");
   const [siteName, setSiteName] = useState<string>("");
@@ -360,11 +374,17 @@ export function usePageFields(
   const currentSiteRef = useRef<string | undefined>(undefined);
   const inFlightRef = useRef<Promise<unknown> | null>(null);
   const faqItemsRef = useRef<FaqItem[]>([]);
+  const templateNameRef = useRef<string | null>(null);
 
   const rebuildFields = useCallback(() => {
     setFields(
       mapFieldsToAuthoring(fieldMapRef.current, currentPageNameRef.current, faqItemsRef.current),
     );
+    // Null while the page's fields are loading, so the checks wait for them.
+    setScoringFields(
+      Object.keys(fieldMapRef.current).length > 0 ? pageFieldsFromFieldMap(fieldMapRef.current) : null,
+    );
+    setTemplateName(templateNameRef.current);
     setWriteContext({
       pageId: currentPageIdRef.current ?? null,
       language: currentLanguageRef.current,
@@ -483,6 +503,7 @@ export function usePageFields(
       if (result) {
         fieldMapRef.current = result.values;
         fieldNameMapRef.current = result.names;
+        templateNameRef.current = result.templateName;
         rebuildFields();
       }
     } finally {
@@ -556,12 +577,14 @@ export function usePageFields(
       if (resolvedDomain) setSiteDomain(resolvedDomain);
       if (resolvedSiteName) setSiteName(resolvedSiteName);
       if (resolvedUrl) setPageUrl(resolvedUrl);
+      setRoute(routePath || "/");
 
       if (pageChanged) {
         // Discard fields and FAQ items from the previous page and refetch
         fieldMapRef.current = {};
         fieldNameMapRef.current = {};
         faqItemsRef.current = [];
+        templateNameRef.current = null;
         rebuildFields();
         void refetchFields();
         void refetchFaqItems();
@@ -638,7 +661,7 @@ export function usePageFields(
   }, [client, isInitialized, refetchFields, refetchFaqItems, rebuildFields]);
 
   return useMemo(
-    () => ({ fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext }),
-    [fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext],
+    () => ({ fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext }),
+    [fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext],
   );
 }

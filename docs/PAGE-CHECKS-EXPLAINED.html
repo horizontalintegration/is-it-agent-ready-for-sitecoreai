@@ -33,217 +33,250 @@
 </head>
 <body>
 <h1>Page Checks Explained — A Guide for Marketers</h1>
-<p>This guide explains, in plain language, every page-level check that <strong>Is It Agent-Ready? for SitecoreAI</strong> runs in the Page Builder panel ("Is this page agent-ready?") and <strong>why each one matters</strong>. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"</p>
+<p>This guide explains, in plain language, every check that <strong>Is It Agent-Ready? for SitecoreAI</strong> runs in the Page Builder panel ("Is this page agent-ready?") and <strong>why each one matters</strong>. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"</p>
 <hr/>
-<h2>First, what do SEO, AEO, and GEO mean?</h2>
-<p>Think of these as three different "audiences" reading your page:</p>
+<h2>The big idea: four questions every page must answer</h2>
+<p>AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your pages to answer people's questions. Before an AI agent can quote your page, four things have to be true:</p>
 <table><thead><tr>
-<th style="text-align:left">Term</th>
-<th style="text-align:left">Stands for</th>
-<th style="text-align:left">The audience</th>
-<th style="text-align:left">What they want</th>
+<th style="text-align:left">Category</th>
+<th style="text-align:left">The question</th>
+<th style="text-align:left">In plain terms</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Search Engine Optimization</td>
-<td style="text-align:left">Google, Bing (traditional search)</td>
-<td style="text-align:left">A clean, well-labeled page they can list in search results</td>
+<td style="text-align:left"><strong>Reach</strong></td>
+<td style="text-align:left">Can AI agents get to it?</td>
+<td style="text-align:left">The page isn't hidden, blocked or pointing somewhere else</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">Answer Engine Optimization</td>
-<td style="text-align:left">Voice assistants &amp; "answer boxes" (Alexa, Siri, Google's featured snippets)</td>
-<td style="text-align:left">Clear questions and direct answers they can read aloud or feature</td>
+<td style="text-align:left"><strong>Read</strong></td>
+<td style="text-align:left">Can they read it?</td>
+<td style="text-align:left">The page is laid out so a machine can find the real content</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">Generative Engine Optimization</td>
-<td style="text-align:left">AI assistants (ChatGPT, Gemini, Claude, Perplexity)</td>
-<td style="text-align:left">Trustworthy, easy-to-understand content they can quote and cite</td>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Do they understand it?</td>
+<td style="text-align:left">Clear headings, a good title and summary, and labels that say what the content is</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Will they trust and cite it?</td>
+<td style="text-align:left">Original, current, well-written content from a named source</td>
 </tr>
 </tbody></table>
-<p><strong>The simple version:</strong> SEO gets you *found*. AEO gets you *featured as the answer*. GEO gets you *quoted by AI*. A page that does all three is "search ready."</p>
+<p>The panel and the dashboard use the <strong>same four categories and the same scoring</strong>, so a page shows the same score in both places.</p>
 <hr/>
 <h2>How scoring works (the 30-second version)</h2>
 <ul>
-<li>Every page is graded out of <strong>81 points</strong>, split across three pillars: <strong>SEO (35 pts)</strong>, <strong>AEO (23 pts)</strong>, and <strong>Content Quality / GEO (23 pts)</strong>.</li>
-<li>Each check returns <strong>Pass</strong> (full points), <strong>Warning</strong> (partial points), or <strong>Fail</strong> (zero/low points).</li>
-<li>One special <strong>gate check</strong> runs first: if the page is hidden from search engines on purpose, we stop and tell you — because there's no point scoring a page nobody is allowed to find.</li>
+<li>Every page gets a score <strong>out of 100</strong>.</li>
+<li>Checks come in three kinds:</li>
+</ul>
+<p>  - <strong>Essential</strong> — the must-haves. Together they're worth <strong>80 points</strong>.</p>
+<p>  - <strong>Recommended</strong> — the things that make a good page great. Together they're worth <strong>20 points</strong>.</p>
+<p>  - <strong>Bonus</strong> — extra credit, up to <strong>+5 points</strong> (the score still tops out at 100).</p>
+<ul>
+<li>The points in each group are <strong>shared equally</strong> between the checks that apply to the page. Fixing an Essential check moves the score much more than fixing a Recommended one, and that's on purpose: it's where to start.</li>
+<li><strong>Partial credit counts.</strong> A page that's halfway there gets half the points.</li>
+<li><strong>Checks that don't apply are skipped, never failed.</strong> A page with no images isn't marked down for image descriptions, and a page with no FAQ isn't marked down for FAQ answers. They're listed under "Doesn't apply here".</li>
+<li>Some checks need a scan first (the AI originality check, and page speed). Until they've run they show <strong>"not checked"</strong> and don't count either way.</li>
+<li>The score is <strong>green (Agent-ready) at 80 or more</strong>, <strong>amber (Almost there) from 60 to 79</strong>, and <strong>red (Not ready) below 60</strong>. The dashboard uses the same thresholds.</li>
+<li>Next to each fix, <strong>"+N pts"</strong> shows how much the score would go up if you fixed it.</li>
 </ul>
 <hr/>
-<h2>🚦 The Gate Check (runs first)</h2>
+<h2>🚦 The gate (runs first)</h2>
 <h3>Is this page allowed to be found?</h3>
-<p><strong>What it checks:</strong> Whether the page is deliberately hidden from search engines and AI (a "noindex" or "nosnippet" tag).</p>
-<p><strong>Why it matters:</strong> If a page is set to "do not index," Google won't list it and AI won't quote it — no matter how good the content is. We flag this immediately so you don't waste time optimizing a page that's invisible by design (or catch a mistake where a live page was accidentally hidden).</p>
+<p><strong>What it checks:</strong> Whether the page is deliberately hidden from search engines and AI — the "noindex" setting in Sitecore, or a "noindex" or "nosnippet" tag on the page.</p>
+<p><strong>Why it matters:</strong> If a page is set to "do not index," search won't list it and AI won't quote it, no matter how good the content is. Instead of a score, the panel tells you straight away, so you don't spend time on a page that's invisible by design (or so you catch a live page that was hidden by mistake).</p>
 <hr/>
-<h2>🔵 SEO Checks — Getting Found (35 points)</h2>
-<h3>1. Meta Title Length — *8 points*</h3>
-<p><strong>What it checks:</strong> The length of your page's title (the blue clickable headline in Google results). Ideal is <strong>50–60 characters</strong>.</p>
-<p><strong>Why it matters:</strong> The title is the single biggest factor in whether someone clicks your result. Too short and you waste valuable space; too long and Google chops it off mid-sentence ("...") which looks unprofessional and hides your message.</p>
+<h2>🟢 Reach — Can AI agents get to it?</h2>
+<h3>Canonical points to this page — Essential</h3>
+<p><strong>What it checks:</strong> Whether the page has a "canonical tag" — a behind-the-scenes label that says "this is the official address of this page" — and that it points to this page.</p>
+<p><strong>Why it matters:</strong> The same content is often reachable at several addresses. Without a canonical tag, search engines and AI treat them as duplicates and split the credit between them, or cite the wrong one. (Usually set in the page template by a developer.)</p>
 <hr/>
-<h3>2. Meta Description — *8 points*</h3>
-<p><strong>What it checks:</strong> Whether you have a meta description (the gray summary text under the title in search results) and that it's <strong>120–160 characters</strong>.</p>
-<p><strong>Why it matters:</strong> This is your "ad copy" in search results. A good description convinces people to click. If it's missing, Google writes its own — usually a random, unappealing snippet from your page that you don't control.</p>
+<h2>🔵 Read — Can they read it?</h2>
+<h3>Page structure is machine-readable — Recommended</h3>
+<p><strong>What it checks:</strong> Whether the page uses the standard structural labels in its code (<code>main</code>, <code>article</code>, <code>nav</code>, <code>header</code>) that mark out the key regions, and whether buttons and icon links have a text label.</p>
+<p><strong>Why it matters:</strong> These labels are like room signs in a building: they help AI agents go straight to the real content and skip menus and footers.</p>
+<h3>Page loads fast — Recommended, runs when you ask</h3>
+<p><strong>What it checks:</strong> Google's PageSpeed score for the page. Click <strong>Run scan</strong> on the row to check it.</p>
+<p><strong>Why it matters:</strong> Slow pages frustrate visitors, rank lower, and can time out when an AI assistant fetches them on someone's behalf.</p>
 <hr/>
-<h3>3. Headings &amp; Structure (H1 + hierarchy) — *6 points*</h3>
+<h2>🟣 Understand — Do they understand it?</h2>
+<h3>One clear H1 and logical headings — Essential</h3>
 <p><strong>What it checks:</strong> That the page has exactly <strong>one main headline (H1)</strong> and that sub-headings step down in order (H1 → H2 → H3) without skipping levels.</p>
-<p><strong>Why it matters:</strong> Headings are like a table of contents. Search engines and screen readers use them to understand what the page is about and how it's organized. One clear H1 tells everyone "this is the main topic"; a clean hierarchy makes the page easy to scan and easy for machines to digest.</p>
+<p><strong>Why it matters:</strong> Headings are the page's table of contents. AI uses them to work out what the page is about and where each answer starts.</p>
+<h3>Title and description are set — Essential</h3>
+<p><strong>What it checks:</strong> The page title (ideally <strong>50–60 characters</strong>) and the meta description (ideally <strong>120–160 characters</strong>). It reads the Sitecore fields you edit.</p>
+<p><strong>Why it matters:</strong> These are the summary that search results and AI show before anyone clicks. If the description is missing, search engines write their own, usually a random snippet you don't control. The panel's <strong>Generate</strong> buttons can write both for you.</p>
+<h3>Structured data is present and valid — Essential</h3>
+<p><strong>What it checks:</strong> Whether the page has the "schema" labels (hidden code called JSON-LD) that it needs, and that they're complete:</p>
+<ul>
+<li><strong>Breadcrumbs</strong> on every page except the home page (where the page sits in the site).</li>
+<li><strong>FAQ</strong> labels when the page has questions and answers.</li>
+<li><strong>Article</strong> labels on article pages.</li>
+</ul>
+<p>If something is missing, the check gives you <strong>the code to paste in</strong>.</p>
+<p><strong>Why it matters:</strong> Schema tells AI exactly what the content is — an article, a set of answers, a page in a section — without guessing. <strong>This used to always pass, even when the labels weren't there. It now looks at the real page</strong>, so it tells you what's actually missing.</p>
+<h3>Page identity metadata is complete — Recommended</h3>
+<p><strong>What it checks:</strong> The page's language setting and its social sharing tags (type, title, description and image).</p>
+<p><strong>Why it matters:</strong> These tell AI what the page is and in which language, and they decide whether a shared link shows a rich preview card or a bare address.</p>
+<h3>FAQ answers are quotable — Recommended</h3>
+<p><strong>What it checks:</strong> That each FAQ answer is <strong>40–300 characters</strong> — long enough to be useful, short enough to quote. It finds questions and answers in <strong>any</strong> accordion or expandable section, not just one component.</p>
+<p><strong>Why it matters:</strong> AI assistants lift FAQ answers word for word. A one-line answer is useless; a wall of text won't fit.</p>
+<h3>Sections answer real questions — Recommended</h3>
+<p><strong>What it checks:</strong> Whether some section headings are phrased as the questions people ask ("How do I…?", "What is…?").</p>
+<p><strong>Why it matters:</strong> People ask AI questions. A section headed by the question it answers is easy to match and cite. Only rephrase where it's natural.</p>
+<h3>Easy to read and quote — Recommended</h3>
+<p><strong>What it checks:</strong> How easy the writing is to read, paragraph by paragraph (aiming for an early-college reading level or simpler), and whether paragraphs are a comfortable length (about 40–120 words).</p>
+<p><strong>Why it matters:</strong> Clear, well-sized paragraphs are what AI quotes accurately. Dense text gets paraphrased badly or skipped.</p>
+<h3>Images are described — Recommended</h3>
+<p><strong>What it checks:</strong> What share of images have alt text — a short written description.</p>
+<p><strong>Why it matters:</strong> AI can't see pictures; the alt text is how it learns what an image shows. It's also what screen readers announce.</p>
 <hr/>
-<h3>4. Image Alt Text — *5 points*</h3>
-<p><strong>What it checks:</strong> What percentage of your images have "alt text" — a short written description of the image. Score is proportional (100% of images covered = full points).</p>
-<p><strong>Why it matters:</strong> Search engines can't "see" pictures — they read the alt text instead. It's also what screen readers announce to visually impaired users. Good alt text means your images show up in Google Image search <strong>and</strong> your page is accessible to everyone (which matters legally and for inclusivity).</p>
+<h2>🟤 Trust — Will they trust and cite it?</h2>
+<h3>Content is original, not generic — Recommended</h3>
+<p><strong>What it checks:</strong> Our AI reads the page's main text and judges whether it's genuinely <strong>original and valuable</strong>, or generic content that could have come from anywhere. The answer is remembered until the text changes, so revisiting an unchanged page shows the same rating straight away.</p>
+<p><strong>Why it matters:</strong> AI assistants cite the source that adds something. Content that repeats what's everywhere else is rarely chosen.</p>
+<h3>Author is named and linked — Recommended, article pages only</h3>
+<p><strong>What it checks:</strong> Whether the article names its author and links to an author profile.</p>
+<p><strong>Why it matters:</strong> A named author with a profile lets AI judge expertise before citing an article.</p>
+<h3>Content is recently updated — Recommended</h3>
+<p><strong>What it checks:</strong> When the page was last updated: full marks within six months, partial up to two years.</p>
+<p><strong>Why it matters:</strong> AI favours current sources, especially on fast-moving topics.</p>
+<h3>Enough depth to be cited — Recommended</h3>
+<p><strong>What it checks:</strong> How much body text the page has (full marks at about 800 words).</p>
+<p><strong>Why it matters:</strong> Thin pages rarely hold a complete answer, so AI looks elsewhere.</p>
+<h3>Links say where they go — Recommended</h3>
+<p><strong>What it checks:</strong> Whether links use descriptive text ("view our pricing plans") instead of vague phrases ("click here", "read more"). Links like "Download the 2026 report" count as descriptive.</p>
+<p><strong>Why it matters:</strong> The link text tells AI what the linked page is about before it follows it.</p>
+<h3>Answers the next question too — Bonus</h3>
+<p><strong>What it checks:</strong> Our AI suggests the questions a reader would likely ask next, and checks whether the page answers them.</p>
+<p><strong>Why it matters:</strong> AI prefers sources that also cover the obvious follow-up. Add content only where it genuinely helps readers.</p>
 <hr/>
-<h3>5. Canonical Tag — *5 points*</h3>
-<p><strong>What it checks:</strong> Whether the page has a "canonical tag" — a behind-the-scenes label that says "this is the official version of this page."</p>
-<p><strong>Why it matters:</strong> Websites often have the same content reachable at multiple URLs (e.g., with and without "www"). Without a canonical tag, Google sees these as duplicates and gets confused about which one to rank — splitting your "SEO credit" across copies. The canonical tag points all the credit to one page.</p>
-<hr/>
-<h3>6. Social Sharing Tags (OG Tags) — *3 points*</h3>
-<p><strong>What it checks:</strong> For three "Open Graph" tags — title, description, and image — that control how your page looks when shared on LinkedIn, Facebook, Slack, etc.</p>
-<p><strong>Why it matters:</strong> When someone shares your link, these tags decide whether it appears as a rich preview card (image + headline) or an ugly, bare URL. Rich previews get dramatically more clicks and make your brand look polished.</p>
-<hr/>
-<h3>7. Link Anchor Text Quality — *info only*</h3>
-<p><strong>What it checks:</strong> Whether your internal links use descriptive text instead of vague phrases like "click here" or "read more."</p>
-<p><strong>Why it matters:</strong> The clickable words in a link tell search engines what the linked page is about. "Click here" tells them nothing. Descriptive links (e.g., "view our pricing plans") help both Google and AI understand your site's structure. *(This is shown as guidance, not scored.)*</p>
-<hr/>
-<h2>🟢 AEO Checks — Becoming the Answer (23 points)</h2>
-<h3>8. FAQ Schema — *8 points*</h3>
-<p><strong>What it checks:</strong> Whether your FAQ content is wrapped in special "schema" code (FAQPage JSON-LD) that labels each question and answer for machines. The tool <strong>generates this code for you</strong> ready to paste in.</p>
-<p><strong>Why it matters:</strong> This is how you earn those expandable FAQ results directly in Google, and how voice assistants and AI pull direct answers from your page. It turns plain text into machine-readable Q&amp;A — a fast track to being featured.</p>
-<hr/>
-<h3>9. FAQ Answer Quality — *5 points*</h3>
-<p><strong>What it checks:</strong> That each FAQ answer is a clean, self-contained paragraph of roughly <strong>40–300 characters</strong> (not too short, not a wall of text, no messy formatting).</p>
-<p><strong>Why it matters:</strong> Answer engines prefer answers they can lift and read aloud word-for-word. A one-word answer is useless; a giant paragraph won't fit in an answer box. The "just right" length is what gets featured.</p>
-<hr/>
-<h3>10. Organization Schema — *5 points*</h3>
-<p><strong>What it checks:</strong> Whether your site identifies your company in machine-readable code (name, logo, etc.). The tool <strong>generates this snippet for you</strong>, filled in with your organization's details. If those haven't been set up yet, it uses your site's name and address, and marks the rest as placeholders to replace.</p>
-<p><strong>Why it matters:</strong> This helps your brand appear in Google's "knowledge panel" (the info box on the right of search results) and helps AI confidently state who you are. It's foundational trust-building for your brand identity online.</p>
-<hr/>
-<h3>11. Rich Results Eligibility (Breadcrumbs) — *5 points*</h3>
-<p><strong>What it checks:</strong> Whether the page has "breadcrumb" schema showing where it sits in your site (e.g., Home › Products › Widget). The tool <strong>generates this for you</strong>.</p>
-<p><strong>Why it matters:</strong> Breadcrumbs show up in Google results as a clean navigation path instead of a long messy URL. They make your listing look more trustworthy and tell search engines how your site is organized.</p>
-<hr/>
-<h2>🟣 Content Quality Checks — Earning AI's Trust / GEO (23 points)</h2>
-<h3>12. Unique Content Signal — *10 points (the biggest single check)*</h3>
-<p><strong>What it checks:</strong> Our AI reads the page's main text (headings, paragraphs and lists, without the menu and footer) and judges whether the content is genuinely <strong>unique and valuable</strong> versus generic, "could've-been-copied-from-anywhere" filler. The answer is remembered until the page's text changes, so revisiting a page you haven't edited shows the same rating straight away.</p>
-<p><strong>Why it matters:</strong> This is the heart of GEO. AI assistants and modern search reward original insight, expertise, and real value. Thin, commodity content gets ignored or buried. Unique content is what gets cited and ranked. This carries the most weight because it matters the most.</p>
-<hr/>
-<h3>13. Page Experience (Speed) — *5 points*</h3>
-<p><strong>What it checks:</strong> How fast your page loads, using Google's PageSpeed score and Core Web Vitals (real-world speed measurements).</p>
-<p><strong>Why it matters:</strong> Slow pages frustrate visitors and Google actively ranks them lower. Speed is a confirmed ranking factor — a fast page keeps users and search engines happy.</p>
-<hr/>
-<h3>14. Agentic Readiness (Semantic Landmarks) — *4 points*</h3>
-<p><strong>What it checks:</strong> Whether the page uses proper structural labels in its code (<code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>) that mark out the key regions of the page.</p>
-<p><strong>Why it matters:</strong> AI agents and assistants increasingly "navigate" pages like a user would. These labels are like room signs in a building — they help AI instantly find the real content (vs. menus, ads, footers) so it can read and act on the right part of your page.</p>
-<hr/>
-<h3>15. Reading Grade Level — *4 points*</h3>
-<p><strong>What it checks:</strong> How easy your writing is to read, paragraph by paragraph, aiming for roughly a <strong>grade 13 (early college) level or simpler</strong>.</p>
-<p><strong>Why it matters:</strong> Clear, readable writing wins on every front: real readers stay longer, answer engines can summarize it easily, and AI can quote it cleanly. Dense, jargon-heavy text is hard for both humans and machines to use — so it gets passed over.</p>
-<hr/>
-<h2>Quick reference: the full scorecard</h2>
+<h2>🏢 Site check on the home page: your organisation</h2>
+<h3>Your organisation is described for AI</h3>
+<p><strong>What it checks:</strong> Whether the home page has <strong>Organization schema</strong>: your company's name, website, logo, social profiles, description and contact details, in machine-readable form.</p>
+<p>This is a <strong>site check</strong>: it's about the whole site, so it isn't part of any page's score. The panel shows it when the <strong>home page</strong> is open, and the dashboard shows it in <strong>Site checks</strong>.</p>
 <table><thead><tr>
-<th style="text-align:left">Pillar</th>
-<th style="text-align:left">Check</th>
-<th style="text-align:right">Points</th>
-<th style="text-align:left">The one-liner</th>
+<th style="text-align:left">What the home page has</th>
+<th style="text-align:left">What you see</th>
 </tr></thead><tbody>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Meta Title Length</td>
-<td style="text-align:right">8</td>
-<td style="text-align:left">Your clickable headline in Google</td>
+<td style="text-align:left">Complete organisation details</td>
+<td style="text-align:left">Pass</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Meta Description</td>
-<td style="text-align:right">8</td>
-<td style="text-align:left">Your "ad copy" under the title</td>
+<td style="text-align:left">Some details missing</td>
+<td style="text-align:left">A warning listing them, and corrected code to paste in</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Headings &amp; Structure</td>
-<td style="text-align:right">6</td>
-<td style="text-align:left">A clear table of contents</td>
+<td style="text-align:left">No organisation details at all</td>
+<td style="text-align:left">A warning, "Not added yet", and ready-to-paste code</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Image Alt Text</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Letting machines "see" your images</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Canonical Tag</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Pointing all credit to one page</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Social Sharing (OG) Tags</td>
-<td style="text-align:right">3</td>
-<td style="text-align:left">Pretty preview cards when shared</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>SEO</strong></td>
-<td style="text-align:left">Link Anchor Text</td>
-<td style="text-align:right">info</td>
-<td style="text-align:left">Descriptive links, not "click here"</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">FAQ Schema</td>
-<td style="text-align:right">8</td>
-<td style="text-align:left">Q&amp;A labeled for answer boxes</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">FAQ Answer Quality</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Answers the right length to feature</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">Organization Schema</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Your brand identity for the knowledge panel</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>AEO</strong></td>
-<td style="text-align:left">Rich Results (Breadcrumbs)</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Clean navigation path in results</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">Unique Content Signal</td>
-<td style="text-align:right">10</td>
-<td style="text-align:left">Original value AI wants to cite</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">Page Experience (Speed)</td>
-<td style="text-align:right">5</td>
-<td style="text-align:left">Fast pages rank and convert better</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">Agentic Readiness</td>
-<td style="text-align:right">4</td>
-<td style="text-align:left">Helping AI agents find your real content</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>GEO</strong></td>
-<td style="text-align:left">Reading Grade Level</td>
-<td style="text-align:right">4</td>
-<td style="text-align:left">Easy to read = easy to feature</td>
-</tr>
-<tr>
-<td style="text-align:left"></td>
-<td style="text-align:left"><strong>Total</strong></td>
-<td style="text-align:right"><strong>81</strong></td>
-<td style="text-align:left"></td>
+<td style="text-align:left">The home page couldn't be checked</td>
+<td style="text-align:left">"Couldn't check" — it doesn't count</td>
 </tr>
 </tbody></table>
-<p>The score in the panel header turns <strong>green at 80% or more</strong>, <strong>amber from 60% to 79%</strong>, and <strong>red below 60%</strong>. The dashboard uses the same thresholds.</p>
+<p><strong>Why it matters:</strong> This is how AI and search engines know who runs the site, so they name and cite your brand correctly (and it feeds Google's knowledge panel). <strong>This also used to always pass.</strong> The BrandX demo site has none, and the check now says so.</p>
+<hr/>
+<h2>Quick reference: the scorecard</h2>
+<table><thead><tr>
+<th style="text-align:left">Category</th>
+<th style="text-align:left">Check</th>
+<th style="text-align:left">Kind</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><strong>Reach</strong></td>
+<td style="text-align:left">Canonical points to this page</td>
+<td style="text-align:left">Essential</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Read</strong></td>
+<td style="text-align:left">Page structure is machine-readable</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Read</strong></td>
+<td style="text-align:left">Page loads fast</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">One clear H1 and logical headings</td>
+<td style="text-align:left">Essential</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Title and description are set</td>
+<td style="text-align:left">Essential</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Structured data is present and valid</td>
+<td style="text-align:left">Essential</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Page identity metadata is complete</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">FAQ answers are quotable</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Sections answer real questions</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Easy to read and quote</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Understand</strong></td>
+<td style="text-align:left">Images are described</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Content is original, not generic</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Author is named and linked</td>
+<td style="text-align:left">Recommended (articles)</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Content is recently updated</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Enough depth to be cited</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Links say where they go</td>
+<td style="text-align:left">Recommended</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Trust</strong></td>
+<td style="text-align:left">Answers the next question too</td>
+<td style="text-align:left">Bonus</td>
+</tr>
+<tr>
+<td style="text-align:left">Site</td>
+<td style="text-align:left">Your organisation is described for AI</td>
+<td style="text-align:left">Site check (own score)</td>
+</tr>
+</tbody></table>
+<p>More checks arrive in later releases: whether content shows up without JavaScript, and whether AI agents can get the page as Markdown.</p>
 <hr/>
 <h2>Meta &amp; social generator</h2>
 <p>Below the checks, the panel can write the <strong>meta title, meta description, Open Graph title and Open Graph description</strong> for you. Click <strong>Generate</strong> on a field, review the suggestion, then click <strong>Populate field</strong> to write it into the page in Sitecore.</p>
@@ -256,10 +289,11 @@
 <hr/>
 <h2>Demo talking points (the big picture)</h2>
 <ul>
-<li><strong>"We don't just check boxes — we explain the why."</strong> Every score comes with a reason a marketer can act on.</li>
-<li><strong>"It covers all three frontiers of search."</strong> Traditional Google (SEO), voice/answer boxes (AEO), and AI assistants like ChatGPT (GEO) — most tools only do the first.</li>
-<li><strong>"It does the technical heavy lifting for you."</strong> For schema checks, the tool *generates the code snippet* — no developer required to get the win.</li>
-<li><strong>"Unique content is king."</strong> The single biggest check (10 pts) rewards genuine value — exactly what modern AI search rewards.</li>
+<li><strong>"Four plain questions."</strong> Can AI agents get to it, read it, understand it, and trust it? Every check answers one of them.</li>
+<li><strong>"Fix the essentials first."</strong> Essential checks carry most of the score, and "+N pts" shows exactly what each fix is worth.</li>
+<li><strong>"It checks the real page."</strong> Schema checks look at what's actually on the page, and hand you the code when something's missing.</li>
+<li><strong>"Fair by design."</strong> Checks that don't apply are skipped, not failed.</li>
+<li><strong>"One score everywhere."</strong> The panel and the dashboard show the same score for the same page.</li>
 </ul>
 </body>
 </html>

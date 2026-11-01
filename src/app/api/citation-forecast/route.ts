@@ -12,6 +12,7 @@ import {
 import { extractParsedHtml } from "@/lib/server/extract-html";
 import { safeFetch, SafeFetchError, validateUrl } from "@/lib/server/safe-fetch";
 import { QUESTION_REGEX, wordCount } from "@/lib/rule-engine/helpers";
+import { typesOnPage } from "@/lib/checks/json-ld";
 import type { ParsedHtml } from "@/lib/rule-engine/types";
 import type {
   CitationForecast,
@@ -111,7 +112,7 @@ function parseEngineAccess(robotsBody: string | null): Record<CitationSystem, bo
 
 function schemaTypes(html: ParsedHtml | null): string[] {
   if (!html) return [];
-  return Array.from(new Set(html.jsonLdBlocks.map((b) => b.type).filter(Boolean)));
+  return typesOnPage(html.jsonLdScripts);
 }
 
 function buildPrompt(args: {

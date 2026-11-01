@@ -5,6 +5,7 @@ import {
   buildFaqPageJsonLd,
   isGenericAnchor,
   normaliseUrl,
+  parseDate,
   sentenceCount,
   stripHtml,
   wordCount,
@@ -42,13 +43,28 @@ describe("ari", () => {
 });
 
 describe("isGenericAnchor", () => {
-  it.each(["Click here", "Read more →", "learn more.", "Read more about pricing"])("flags %j", (text) => {
+  it.each([
+    "Click here",
+    "Read more →",
+    "learn more.",
+    "Download",
+    "Read more about pricing",
+    "Click here to download the report",
+  ])("flags %j", (text) => {
     expect(isGenericAnchor(text)).toBe(true);
   });
 
-  // Note: the prefix rule also flags descriptive anchors such as "Download the 2026 report"
-  // (see docs/SPIKE-FINDINGS.md). Revisit when P20 trust.anchor-text becomes scored.
-  it.each(["Pricing for teams", "The 2026 content report", null, ""])("allows %j", (text) => {
+  // The prefix rule is limited to "click here …" / "read more …" style phrases,
+  // so descriptive anchors that start with a blocklisted word pass (SPIKE-FINDINGS §2).
+  it.each([
+    "Pricing for teams",
+    "The 2026 content report",
+    "Download the 2026 report",
+    "Register for the webinar",
+    "Learn more about retirement planning",
+    null,
+    "",
+  ])("allows %j", (text) => {
     expect(isGenericAnchor(text)).toBe(false);
   });
 });
@@ -86,5 +102,18 @@ describe("buildFaqPageJsonLd", () => {
     const json = JSON.parse(script.replace(/<\/?script[^>]*>/g, ""));
     expect(json.mainEntity).toHaveLength(2);
     expect(json.mainEntity[0].acceptedAnswer.text).toBe("A thing.");
+  });
+});
+
+describe("parseDate", () => {
+  it("reads ISO dates and Sitecore's compact format", () => {
+    expect(parseDate("2026-10-31T12:00:00Z")?.toISOString()).toBe("2026-10-31T12:00:00.000Z");
+    expect(parseDate("20261031T120000Z")?.toISOString()).toBe("2026-10-31T12:00:00.000Z");
+  });
+
+  it("returns null for missing or unparseable values", () => {
+    expect(parseDate(null)).toBeNull();
+    expect(parseDate("")).toBeNull();
+    expect(parseDate("not a date")).toBeNull();
   });
 });

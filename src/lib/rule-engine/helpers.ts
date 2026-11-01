@@ -101,16 +101,30 @@ function normaliseAnchor(text: string): string {
     .trim();
 }
 
+/**
+ * Phrases that stay generic whatever follows them ("click here to …",
+ * "read more about …"). Only these get the prefix rule: a descriptive anchor
+ * that merely starts with a blocklisted word ("Download the 2026 report",
+ * "Register for the webinar") is fine (SPIKE-FINDINGS §2).
+ */
+const GENERIC_ANCHOR_PREFIXES = [
+  "click here",
+  "click",
+  "tap here",
+  "press here",
+  "read more",
+  "see more",
+  "view more",
+  "continue reading",
+  "keep reading",
+];
+
 /** Returns true if anchor text is generic / on the blocklist */
 export function isGenericAnchor(text: string | null): boolean {
   if (!text) return false;
   const normalised = normaliseAnchor(text);
   if (ANCHOR_BLOCKLIST.has(normalised)) return true;
-  // Also catch "click here to …" and "read more about …" style phrases
-  for (const phrase of ANCHOR_BLOCKLIST) {
-    if (normalised.startsWith(phrase + " ")) return true;
-  }
-  return false;
+  return GENERIC_ANCHOR_PREFIXES.some((phrase) => normalised.startsWith(phrase + " "));
 }
 
 /** Question-starter regex for H2 headings */
@@ -120,6 +134,20 @@ export const QUESTION_REGEX =
 /** Days between two dates */
 export function daysSince(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Parse a date from HTML meta, JSON-LD or a Sitecore field. Accepts ISO 8601
+ * and Sitecore's compact "yyyyMMddTHHmmss(Z)" format. Null when unparseable.
+ */
+export function parseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const v = value.trim();
+  const compact = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+  const d = compact
+    ? new Date(Date.UTC(+compact[1], +compact[2] - 1, +compact[3], +compact[4], +compact[5], +compact[6]))
+    : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 /** Normalise a URL for canonical comparison — strip trailing slash, lowercase scheme+host */
@@ -188,7 +216,7 @@ export function buildBreadcrumbJsonLd(pageUrl: string): { script: string; trail:
   return { script, trail };
 }
 
-/** Build a FAQPage JSON-LD <script> snippet from AccordionItem FAQ data. */
+/** Build a FAQPage JSON-LD <script> snippet from the page's question/answer pairs. */
 export function buildFaqPageJsonLd(faqItems: import("./types").FaqItem[]): string {
   const jsonLd = {
     "@context": "https://schema.org",
@@ -224,28 +252,29 @@ export function buildOrganizationJsonLd(org: import("./types").OrganizationInfo)
   return `<script type="application/ld+json">\n${JSON.stringify(jsonLd, null, 2)}\n</script>`;
 }
 
-/** Build a RuleResult with sensible defaults for info-only checks */
-export function infoResult(
-  id: string,
-  name: string,
-  pillar: import("./types").Pillar,
-  trigger: import("./types").Trigger,
-  value: string,
-  message: string,
-  details: string[] = [],
-  fixSuggestion: string = ""
-): import("./types").RuleResult {
-  return {
-    id,
-    pillar,
-    trigger,
-    name,
-    status: "info",
-    score: 0,
-    maxScore: 0,
-    value,
-    message,
-    fixSuggestion,
-    details,
+/**
+ * Article JSON-LD <script> snippet for an article page. Unknown values become
+ * obvious placeholders; the author and dates come from the page when it has them.
+ */
+export function buildArticleJsonLd(args: {
+  pageUrl: string;
+  headline: string | null;
+  author: string | null;
+  datePublished: string | null;
+  dateModified: string | null;
+  image: string | null;
+  publisher: import("./types").OrganizationInfo;
+}): string {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: args.headline ?? "YOUR ARTICLE HEADLINE",
+    url: args.pageUrl,
+    ...(args.image ? { image: args.image } : {}),
+    author: { "@type": "Person", name: args.author ?? "AUTHOR NAME" },
+    datePublished: args.datePublished ?? "YYYY-MM-DD",
+    ...(args.dateModified ? { dateModified: args.dateModified } : {}),
+    ...(args.publisher.name ? { publisher: { "@type": "Organization", name: args.publisher.name } } : {}),
   };
+  return `<script type="application/ld+json">\n${JSON.stringify(jsonLd, null, 2)}\n</script>`;
 }

@@ -20,6 +20,18 @@ function withTrailingSlash(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
+/**
+ * The organisation set explicitly in config, with no site fallbacks. The S7
+ * check treats it as the expected value: a schema naming a different
+ * organisation is a warning. Null fields mean "not configured".
+ */
+export function getConfiguredOrganization(): { name: string | null; url: string | null } {
+  return {
+    name: env(process.env.NEXT_PUBLIC_ORG_NAME),
+    url: env(process.env.NEXT_PUBLIC_ORG_URL),
+  };
+}
+
 export function getOrganizationInfo(site: { name?: string | null; url?: string | null }): OrganizationInfo {
   const url = env(process.env.NEXT_PUBLIC_ORG_URL) ?? env(site.url ?? undefined);
   return {

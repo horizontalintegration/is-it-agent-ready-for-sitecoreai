@@ -5,13 +5,15 @@ import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { usePageFields } from "@/hooks/usePageFields";
 import { useScan } from "@/hooks/useScan";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { runRuleEngine } from "@/lib/rule-engine";
-import type { PageData, RuleResult } from "@/lib/rule-engine/types";
 import { makeTestPageData } from "@/lib/rule-engine/test-fixture";
-import { getOrganizationInfo } from "@/lib/brand/organization";
+import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
+import { buildPageContext, isHomeRoute, type PageInput } from "@/lib/checks/context";
+import { runPageChecks, runSiteChecks } from "@/lib/checks/engine";
+import { rowsByCategory, toCheckRow } from "@/lib/checks/adapters";
+import { CATEGORIES } from "@/lib/checks/types";
 import { ScoreRing } from "@/components/ScoreRing";
 import { GateBanner } from "@/components/GateBanner";
-import { PillarSection } from "@/components/PillarSection";
+import { CategorySection } from "@/components/CategorySection";
 import { ScanBar } from "@/components/ScanBar";
 import { MetaGenerator } from "@/components/MetaGenerator";
 import { PageHtmlSpike, usePageHtmlSpikeEnabled } from "@/components/spike/PageHtmlSpike";
@@ -28,8 +30,18 @@ function SkeletonRows() {
 
 export default function PagesContextPanel() {
   const { client, isInitialized } = useMarketplaceClient();
-  const { fields, pageUrl, siteDomain, siteName, editingToken, isLoading, writeContext } =
-    usePageFields(client, isInitialized);
+  const {
+    fields,
+    scoringFields,
+    pageUrl,
+    route,
+    templateName,
+    siteDomain,
+    siteName,
+    editingToken,
+    isLoading,
+    writeContext,
+  } = usePageFields(client, isInitialized);
 
   // Fixture data is opt-in via `?demo=1` in the URL — never auto-activated
   // by the SDK's transient un-initialized state (which flickers during the
@@ -68,60 +80,48 @@ export default function PagesContextPanel() {
     Boolean(effectivePageUrl) &&
     (scan.isScanning || scan.lastScannedAt === null);
 
-  const pageData: PageData = useMemo(
-    () => ({
-      pageUrl: effectivePageUrl,
-      organization,
-      authoring: {
-        pageTitle: effectiveAuthoring?.pageTitle ?? null,
-        metaDescription: effectiveAuthoring?.metaDescription ?? null,
-        ogTitle: effectiveAuthoring?.ogTitle ?? null,
-        ogDescription: effectiveAuthoring?.ogDescription ?? null,
-        ogImage: effectiveAuthoring?.ogImage ?? null,
-        author: effectiveAuthoring?.author ?? null,
-        authorProfileLinked: effectiveAuthoring?.authorProfileLinked ?? false,
-        publishDate: effectiveAuthoring?.publishDate ?? null,
-        lastUpdatedDate: effectiveAuthoring?.lastUpdatedDate ?? null,
-        noIndexField: effectiveAuthoring?.noIndexField ?? false,
-        richTextParagraphs: effectiveAuthoring?.richTextParagraphs ?? [],
-        richTextFull: effectiveAuthoring?.richTextFull ?? "",
-        images: effectiveAuthoring?.images ?? [],
-        links: effectiveAuthoring?.links ?? [],
-        headings: effectiveAuthoring?.headings ?? [],
-        faqItems: effectiveAuthoring?.faqItems ?? [],
-        hasFaqComponent: effectiveAuthoring?.hasFaqComponent ?? false,
-        hasHowToComponent: effectiveAuthoring?.hasHowToComponent ?? false,
-      },
-      parsedHtml: effectiveParsedHtml,
-      robotsTxt: fixture ? fixture.robotsTxt : scan.robotsTxt,
-      psi: fixture ? fixture.psi : scan.psi,
-      ai: fixture ? fixture.ai : scan.ai,
-    }),
-    [
-      effectivePageUrl,
-      organization,
-      effectiveAuthoring,
-      fixture,
-      effectiveParsedHtml,
-      scan.robotsTxt,
-      scan.psi,
-      scan.ai,
-    ],
+  // The same context builder as the dashboard, from the same Sitecore fields
+  // and live HTML, so the same page gets the same score in both.
+  const pageInput: PageInput = useMemo(
+    () =>
+      fixture
+        ? { ...fixture, html: fixture.parsedHtml }
+        : {
+            pageUrl,
+            route,
+            templateName,
+            fields: scoringFields,
+            html: scan.parsedHtml,
+            ai: scan.ai,
+            psi: scan.psi,
+            organization,
+          },
+    [fixture, pageUrl, route, templateName, scoringFields, scan.parsedHtml, scan.ai, scan.psi, organization],
   );
 
-  const engineOutput = useMemo(() => runRuleEngine(pageData), [pageData]);
+  const report = useMemo(() => runPageChecks(buildPageContext(pageInput)), [pageInput]);
+  const rows = useMemo(() => rowsByCategory(report.outcomes), [report]);
+
+  // S7 is a site check, run on the home page's live HTML: it shows here only
+  // when the home page is open, and isn't part of this page's score.
+  const isHomePage = isHomeRoute(pageInput.route);
+  const orgSchemaRow = useMemo(() => {
+    if (!isHomePage || (!pageInput.html && scan.isScanning)) return null;
+    const site = runSiteChecks({
+      siteUrl: effectiveSiteDomain,
+      siteType: "content",
+      organization,
+      expectedOrganization: fixture
+        ? { name: fixture.organization.name, url: fixture.organization.url }
+        : getConfiguredOrganization(),
+      home: pageInput.html,
+      robotsTxt: null,
+    });
+    const outcome = site.outcomes.find((o) => o.check.id === "understand.org-schema");
+    return outcome ? toCheckRow(outcome) : null;
+  }, [isHomePage, pageInput.html, scan.isScanning, effectiveSiteDomain, organization, fixture]);
 
   const showSkeleton = !fixture && isLoading;
-
-  const seoResults = engineOutput.results.filter(
-    (r: RuleResult) => r.pillar === "seo",
-  );
-  const aeoResults = engineOutput.results.filter(
-    (r: RuleResult) => r.pillar === "aeo",
-  );
-  const cqResults = engineOutput.results.filter(
-    (r: RuleResult) => r.pillar === "content-quality",
-  );
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
@@ -131,13 +131,9 @@ export default function PagesContextPanel() {
           aria-hidden
         />
         <h1 className="text-sm font-semibold flex-1">Is this page agent-ready?</h1>
-        {!showSkeleton && !engineOutput.gate.blocked && (
+        {!showSkeleton && !report.gate.blocked && report.score !== null && (
           <div className="flex items-center gap-2">
-            <ScoreRing
-              score={engineOutput.maxTotalScore > 0 ? Math.round((engineOutput.totalScore / engineOutput.maxTotalScore) * 100) : 0}
-              maxScore={100}
-              size={40}
-            />
+            <ScoreRing score={report.score} maxScore={100} size={40} />
           </div>
         )}
       </header>
@@ -154,43 +150,34 @@ export default function PagesContextPanel() {
         )}
         {showSkeleton ? (
           <SkeletonRows />
-        ) : engineOutput.gate.blocked ? (
-          <GateBanner reason={engineOutput.gate.reason} />
+        ) : report.gate.blocked ? (
+          <GateBanner reason={report.gate.reason} />
         ) : (
           <>
-            <PillarSection
-              pillar="seo"
-              results={seoResults}
-              score={engineOutput.seoScore}
-              maxScore={engineOutput.maxSeoScore}
-              isScanning={scan.isScanning}
-              isAiScanning={scan.isAiScanning}
-              isPsiScanning={scan.isPsiScanning}
-              onAiScan={scan.runAiScan}
-              onPsiScan={scan.runPsiScan}
-            />
-            <PillarSection
-              pillar="aeo"
-              results={aeoResults}
-              score={engineOutput.aeoScore}
-              maxScore={engineOutput.maxAeoScore}
-              isScanning={scan.isScanning}
-              isAiScanning={scan.isAiScanning}
-              isPsiScanning={scan.isPsiScanning}
-              onAiScan={scan.runAiScan}
-              onPsiScan={scan.runPsiScan}
-            />
-            <PillarSection
-              pillar="content-quality"
-              results={cqResults}
-              score={engineOutput.contentQualityScore}
-              maxScore={engineOutput.maxContentQualityScore}
-              isScanning={scan.isScanning}
-              isAiScanning={scan.isAiScanning}
-              isPsiScanning={scan.isPsiScanning}
-              onAiScan={scan.runAiScan}
-              onPsiScan={scan.runPsiScan}
-            />
+            {CATEGORIES.map((category) => (
+              <CategorySection
+                key={category}
+                category={category}
+                results={rows[category]}
+                score={report.categories[category].earned}
+                maxScore={report.categories[category].max}
+                isScanning={scan.isScanning}
+                isAiScanning={scan.isAiScanning}
+                isPsiScanning={scan.isPsiScanning}
+                onAiScan={scan.runAiScan}
+                onPsiScan={scan.runPsiScan}
+              />
+            ))}
+            {orgSchemaRow && (
+              <CategorySection
+                category="understand"
+                title="Site check"
+                subtitle="Not in this page's score"
+                results={[orgSchemaRow]}
+                score={orgSchemaRow.points}
+                maxScore={orgSchemaRow.maxPoints}
+              />
+            )}
             <MetaGenerator
               client={client}
               writeContext={writeContext}

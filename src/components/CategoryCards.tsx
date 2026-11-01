@@ -1,65 +1,21 @@
 "use client";
 
-import type { CategoryAggregate, PillarKey, ScoreLabel } from "@/lib/site-aggregate";
+import type { CategoryAggregate, ScoreLabel } from "@/lib/site-aggregate";
+import { CATEGORY_META } from "@/lib/checks/adapters";
+import { PAGE_CHECKS } from "@/lib/checks/registry";
+import type { Category } from "@/lib/checks/types";
 
 interface CategoryCardsProps {
   categories: CategoryAggregate[];
 }
 
-// Plain-English framing + "what's included" for non-expert site owners.
-// The checks mirror src/lib/rule-engine/site-score.ts.
-const META: Record<PillarKey, { label: string; question: string; includes: string[] }> = {
-  crawlability: {
-    label: "Crawlability",
-    question: "Can AI bots reach and index this page?",
-    includes: [
-      "AI crawler access in robots.txt (GPTBot, ClaudeBot, Google-Extended, PerplexityBot…)",
-      "Canonical URL present and self-referencing",
-      "No noindex / nosnippet robots meta tag",
-    ],
-  },
-  structured: {
-    label: "Structured data",
-    question: "Can AI parse the page's meaning from schema?",
-    includes: [
-      "FAQPage schema on question-and-answer pages",
-      "Article schema on article pages",
-      "BreadcrumbList on inner pages",
-      "Organization schema on the home page",
-    ],
-  },
-  answerability: {
-    label: "Answerability",
-    question: "Can AI extract a clean answer from the content?",
-    includes: [
-      "Exactly one H1, with no heading-level skips",
-      "Question-style H2 sections",
-      "Readable prose (reading grade ≤ 13)",
-      "Scannable paragraphs (≈ 40–120 words)",
-    ],
-  },
-  authority: {
-    label: "Authority",
-    question: "Does AI trust this content enough to cite it?",
-    includes: [
-      "Content uniqueness (AI-rated vs. commodity content)",
-      "Content depth (sufficient word count)",
-      "Freshness (recently published or updated)",
-      "Descriptive internal link anchor text",
-    ],
-  },
-  retrievability: {
-    label: "Retrievability",
-    question: "Does AI prefer this page when answering?",
-    includes: [
-      "Title length 30–60 characters",
-      "Meta description 120–160 characters",
-      "Complete Open Graph tags (title, description, image)",
-      "Semantic landmarks (main / article / nav / header)",
-      "Image alt-text coverage",
-    ],
-  },
-};
+// "What's included" comes straight from the check registry, so it can't drift
+// from what's scored. Bonus checks are marked.
+function includes(category: Category): string[] {
+  return PAGE_CHECKS.filter((c) => c.category === category).map(
+    (c) => (c.tier === "bonus" ? `${c.title} (bonus)` : c.title),
+  );
+}
 
 function ring(label: ScoreLabel | null): string {
   switch (label) {
@@ -83,9 +39,9 @@ export function CategoryCards({ categories }: CategoryCardsProps) {
   return (
     <section>
       <h3 className="text-sm font-semibold text-gray-900 mb-2">Readiness by category</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {categories.map((cat) => {
-          const meta = META[cat.key];
+          const meta = CATEGORY_META[cat.key];
           const pctText = cat.pct === null ? "—" : `${Math.round(cat.pct)}%`;
           return (
             <div
@@ -126,7 +82,7 @@ export function CategoryCards({ categories }: CategoryCardsProps) {
                   What&apos;s included
                 </summary>
                 <ul className="mt-1.5 space-y-1 text-[11px] text-gray-500 leading-snug">
-                  {meta.includes.map((item, i) => (
+                  {includes(cat.key).map((item, i) => (
                     <li key={i} className="flex gap-1.5">
                       <span className="text-gray-300 mt-0.5">•</span>
                       <span>{item}</span>

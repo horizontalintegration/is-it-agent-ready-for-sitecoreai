@@ -1,194 +1,143 @@
 # Page Checks — Technical Reference
 
-A detailed, engineering-oriented breakdown of every page-level check in **Is It Agent-Ready? for SitecoreAI** (the Page Builder context panel): what it inspects, the exact thresholds and scoring math, and where it lives in the codebase.
+An engineering-oriented reference for the checks in **Is It Agent-Ready? for SitecoreAI**: the scoring model, every check with its thresholds and credit, and where each one lives in the code. The Page Builder panel ("Is this page agent-ready?") and the dashboard ("Is this site agent-ready?") use **the same engine**, so a page scores the same in both. Dashboard specifics (roll-up, cache, site checks card) are in `PAGE-MATRIX-TECHNICAL.md`.
 
-**Source of truth:** `src/lib/rule-engine/engine.ts` (check definitions), `helpers.ts` (shared utilities), `types.ts` (interfaces), `site-score.ts` (site-level aggregation).
+**Source of truth:** `src/lib/checks/` — `registry.ts` (the check list), `page/*.ts` and `site/*.ts` (the checks), `scoring.ts` (pool maths), `gate.ts`, `engine.ts` (entry points), `context.ts` (inputs), `json-ld.ts` (shared JSON-LD parser), `adapters.ts` (the pre-v2 UI). Plan reference: `docs/IS-IT-AGENT-READY-PLAN.md` section 5.
 
 ---
 
 ## Scoring model
 
-- Each check returns a status of `pass` / `warning` / `fail` and a numeric score `0..max`.
-- Page total = sum of enabled check scores = **81 points** across three pillars:
-  - **SEO**: 35 pts (6 scored + 1 info-only)
-  - **AEO**: 23 pts (4 scored)
-  - **Content Quality (GEO)**: 23 pts (5 scored)
-- Info-only checks contribute `0` to the total but emit findings/guidance.
-- A **gate check** runs before scoring and short-circuits the whole panel if the page is intentionally excluded from indexing.
-- The header `ScoreRing` (and every `ScorePill`) is green at ≥ 80%, amber at 60–79% and red below 60%. These thresholds live in `src/lib/score-thresholds.ts` (`READY_PCT`, `ALMOST_PCT`, `labelForPct`) and are shared with the dashboard.
+- Every check belongs to one of **four categories**, phrased as questions: **Reach** (Can AI agents get to it?), **Read** (Can they read it?), **Understand** (Do they understand it?), **Trust** (Will they trust and cite it?).
+- Every check has a **tier**. **Essential** checks share an **80-point pool**, **Recommended** checks a **20-point pool**, and **Bonus** checks add **up to +5**. The total is capped at 100.
+- A check returns a **credit from 0 to 1** (partial credit is normal) and a status (`pass` / `warning` / `fail` / `info`). Its points are `credit × its share of the tier pool`. Shares are equal unless a check sets the optional `weight` multiplier (default 1; none are set today).
+- A check can also return **N/A** (`not-applicable`) or **not checked** (`not-checked`: AI pending, PageSpeed not run, fetch failed). Both are **left out of the pools, never failed**. The pool is split across the checks that are scored, so a page is only graded on what applies to it.
+- If Essential or Recommended has nothing scored, the other one is scaled up so the base still totals 100. With nothing scored at all, there is no score yet (`null`).
+- The score is rounded to a whole number. Exact points are kept per check and per category (`ScoreBreakdown` in `types.ts`).
+- Thresholds are shared by the panel and the dashboard (`src/lib/score-thresholds.ts`): **Agent-ready ≥ 80**, **Almost there 60–79**, **Not ready < 60**.
 
-### SEO / AEO / GEO definitions (technical framing)
+**Points in Phase 3.** Four Essential page checks exist (P2, P8, P9, P10), so when all apply each is worth 20 points; on the home page P10 is usually N/A and the other three are worth 26.7 each. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phases 4 and 7 add P3 and P5 to Essential, which brings each Essential check to about 13 points.
 
-| Pillar | Optimizes for | Primary consumers | Signal type |
-|--------|---------------|-------------------|-------------|
-| **SEO** | Crawl + index + SERP rendering | Googlebot, Bingbot | HTML `<head>` metadata, document structure, link graph |
-| **AEO** | Featured snippets, voice, answer boxes | Google answer surfaces, voice assistants | Structured data (JSON-LD), Q&A formatting |
-| **GEO** | LLM retrieval & citation | ChatGPT, Gemini, Claude, Perplexity, AI Overviews | Content originality, readability, semantic HTML, performance |
+**Scopes.** Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get **their own site score**; they are never part of a page score. Phase 3 has two site checks: S2 and S7.
+
+**Same score in both views.** Both views build the check context with `buildPageContext` (`context.ts`) from the same inputs: the page's live HTML (`/api/preview-fetch` → `ParsedHtml`), the AI results (`/api/ai-check`, cached by content hash), and the same Sitecore fields read by the same names (`SCORING_FIELD_NAMES`: title, meta description, `robotsMetaTag`, `__Updated`). The panel reads them with `pageFieldsFromFieldMap`, the dashboard with `pageFieldsFromValues`. The one difference is PageSpeed: only the panel can run it, so after you run it there, the panel includes P7 and the dashboard doesn't. `src/lib/checks/parity.test.ts` covers this.
 
 ---
 
-## Gate check — noindex / nosnippet
+## The gate — P1 `reach.indexable`
 
-**Location:** `engine.ts:33–72`
+**Location:** `gate.ts`
 
-**Logic:** Before any scoring, evaluate exclusion signals:
-1. Sitecore `noindex` field set on the item, **OR**
-2. `<meta name="robots">` / `<meta name="googlebot">` containing `noindex`, `nosnippet`, or `max-snippet:0`.
+Runs before any check. The page is **blocked** when:
+- the Sitecore **Robots Meta Tag** field (`robotsMetaTag`) contains `noindex`, **or**
+- the rendered `<meta name="robots">` or `<meta name="googlebot">` contains `noindex`, `nosnippet` or `max-snippet:0`.
 
-**Behavior:** If triggered, the panel is blocked and surfaces a single message; no checks are scored. Rationale: optimizing a non-indexable page produces misleading scores.
-
----
-
-## SEO checks (35 pts)
-
-### 1. `seo-meta-title` — Meta Title Length
-- **Location:** `engine.ts:79`
-- **Inspects:** Character length of the page title field.
-- **Scoring (max 8):**
-  - `pass` 8 — length ∈ [50, 60]
-  - `warning` 5 — length ∈ [30, 49] ∪ [61, 70]
-  - `fail` 2 — length < 30 or > 70
-- **Rationale:** ~600px SERP truncation budget; titles outside the band are truncated or under-utilized.
-
-### 2. `seo-meta-description` — Meta Description Present + Length
-- **Location:** `engine.ts:155`
-- **Inspects:** Presence and length of the meta description.
-- **Scoring (max 8):**
-  - `pass` 8 — length ∈ [120, 160]
-  - `warning` 4 — present but outside range
-  - `fail` 0 — missing
-- **Rationale:** Controls SERP snippet copy; absent → Google auto-generates from body.
-
-### 3. `seo-headings` — H1 Count + Heading Hierarchy
-- **Location:** `engine.ts:213`
-- **Inspects:** Count of `<h1>` and whether heading levels descend without skips.
-- **Scoring (max 6 = 3 + 3):**
-  - H1 sub-score (3): exactly one H1 → 3; zero or 2+ → 0–1
-  - Hierarchy sub-score (3): no skipped levels (e.g., H2→H4) → 3; skips present → 0
-- **Rationale:** Single H1 = unambiguous topic; ordered hierarchy = parseable document outline for crawlers and assistive tech.
-
-### 4. `seo-image-alt` — Image Alt Text Coverage
-- **Location:** `engine.ts:289`
-- **Inspects:** Ratio of `<img>` elements with non-empty `alt`.
-- **Scoring (max 5):** `round((imagesWithAlt / totalImages) * 5)`
-  - `pass` 5 — 100% coverage
-  - `warning` 1–4 — partial
-  - `fail` 0 — none (or no images → treated as full)
-- **Rationale:** Image search indexing + WCAG accessibility.
-
-### 5. `seo-canonical` — Canonical Tag
-- **Location:** `engine.ts:366`
-- **Inspects:** Presence and target of `<link rel="canonical">`.
-- **Scoring (max 5):**
-  - `pass` 5 — present and self-referencing
-  - `warning` 2 — present but points to a different URL
-  - `fail` 0 — missing
-- **Rationale:** Duplicate-content consolidation; prevents ranking-signal dilution across URL variants.
-
-### 6. `seo-og-tags` — Open Graph Tags
-- **Location:** `engine.ts:427`
-- **Inspects:** Presence of `og:title`, `og:description`, `og:image`.
-- **Scoring (max 3):** score = count of present tags
-  - `pass` 3 — all three; `warning` 2 — two of three; `fail` 0–1 — fewer
-- **Rationale:** Controls social/link-unfurl preview cards (LinkedIn, Slack, Facebook).
-
-### 7. `seo-anchor-text` — Internal Link Anchor Text Quality *(info-only, 0 pts)*
-- **Location:** `engine.ts:473`
-- **Inspects:** Internal anchors against a generic-phrase blocklist ("click here", "read more", "learn more", etc.; see `helpers.ts`).
-- **Output:** Count and list of generic anchors; no score.
-- **Rationale:** Anchor text is a relevance signal; generic anchors waste it.
+A blocked page shows the gate message instead of a score (`PageReport.score` is `null`, no outcomes). The dashboard reads the same field (it was added to its page query), shows the row as "Blocked (noindex)", and leaves it out of the averages.
 
 ---
 
-## AEO checks (23 pts)
+## Page checks
 
-### 8. `aeo-faq-schema` — FAQPage JSON-LD
-- **Location:** `engine.ts:512`
-- **Inspects:** FAQ accordion items in content; **generates** a `FAQPage` JSON-LD block ready to paste.
-- **Scoring (max 8):** full score when no FAQ items present, otherwise emits generated schema.
-- **Rationale:** Eligibility for FAQ rich results and direct answer extraction.
+All page checks except P7, P9, P16 and P21 read the page's **live HTML**. "Not yet scanned" (not checked) means the HTML hasn't arrived yet.
 
-### 9. `aeo-faq-answer-quality` — FAQ Answer Length & Quality
-- **Location:** `engine.ts:554`
-- **Inspects:** Each FAQ answer for: plain text (no HTML), length ∈ [40, 300] chars, self-contained.
-- **Scoring (max 5):** `(qualifyingAnswers / totalAnswers) * 5`
-- **Rationale:** Snippet/voice extraction favors concise, standalone answers.
+### Reach
 
-### 10. `aeo-organization-schema` — Organization JSON-LD
-- **Location:** `engine.ts:704`
-- **Inspects:** Generates a ready-to-paste `Organization` JSON-LD snippet (`buildOrganizationJsonLd` in `helpers.ts`) from `PageData.organization`. That comes from `getOrganizationInfo` (`src/lib/brand/organization.ts`): the `NEXT_PUBLIC_ORG_NAME` / `_URL` / `_LOGO` / `_DESCRIPTION` / `_SAME_AS` env vars, falling back to the site's display name and domain from `pages.context`. A missing name, URL or logo becomes a placeholder; when there's no name the value reads "Not configured". BrandX appears only in the demo fixture.
-- **Scoring (max 5):** always full — provides the snippet for the global template.
-- **Rationale:** Knowledge-panel eligibility and entity disambiguation.
+| ID | Title | Tier | Credit | Was |
+|---|---|---|---|---|
+| P2 `reach.canonical` | Canonical points to this page | Essential | self-referencing `<link rel="canonical">` → 1 · points elsewhere → 0.4 · missing → 0 | `seo-canonical` |
 
-### 11. `aeo-structured-data` — Rich Results Eligibility (Breadcrumbs)
-- **Location:** `engine.ts:732`
-- **Inspects:** Derives `BreadcrumbList` JSON-LD from the URL path.
-- **Scoring (max 5):** always full — provides generated snippet.
-- **Rationale:** Breadcrumb SERP rendering + site-hierarchy signal.
+### Read
 
----
+| ID | Title | Tier | Credit | Was |
+|---|---|---|---|---|
+| P4 `read.landmarks` | Page structure is machine-readable | Recommended | landmarks present ÷ 4 (`<main>`, `<article>`, `<nav>`, `<header>`); unlabelled buttons/links are listed | `cq-agentic-readiness` |
+| P7 `read.speed` | Page loads fast | Recommended | PageSpeed ≥ 70 → 1 · 50–69 → 0.6 · < 50 or not crawlable → 0. **Not checked** until PageSpeed runs, or when PSI errors | `cq-page-experience` |
 
-## Content Quality / GEO checks (23 pts)
+P3 (content without JavaScript), P5 and P6 (Markdown for agents) arrive in Phases 4 and 7.
 
-### 12. `cq-uniqueness` — Unique Content Signal
-- **Location:** `engine.ts:791`
-- **Inspects:** LLM (Claude) classification of body content as `unique` / `borderline` / `commodity`. The body is `ParsedHtml.mainText` from `/api/preview-fetch`: the text of `<main>` (or `<body>` without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; `/api/ai-check` sends the first 3,000 to Claude. `useScan` calls `ai-check` only after `preview-fetch` returns, and skips it when there's no main text. The browser console (`[scan] ai-check body: …`) and the server log (`[ai-check] … received N chars`) show what was sent. Phase 4 switches the source to the sanitised `getPageHTML` draft.
-- **Claude call:** `ANTHROPIC_MODEL_BULK` (default `ANTHROPIC_MODEL`, then `claude-opus-5-5`), effort `low`, structured output `{ rating, explanation }`. It runs in parallel with the follow-up-gaps call (effort `medium`). A refusal returns `422 { error: "refused", category }` and the check stays unscored.
-- **Caching:** results are keyed by SHA-256 of the normalised title and text (`src/lib/ai/content-key.ts`). The browser cache (`aiDiscovery:ai-results:<AI_CHECK_VERSION>` in localStorage, 500 pages) is shared by the panel and the dashboard, and the route keeps a per-instance in-memory cache keyed by check, model and content. An unchanged page doesn't call Claude again (console: `[ai-cache] hit …`). The row's AI re-run button skips both caches.
-- **Scoring (max 10):** `unique` → 10 (`pass`), `borderline` → 5 (`warning`), `commodity` → 0 (`fail`).
-- **Rationale:** Originality is the dominant GEO/E-E-A-T signal; highest single weight by design.
+### Understand
 
-### 13. `cq-page-experience` — Performance Score
-- **Location:** `engine.ts:970`
-- **Inspects:** PageSpeed Insights score + Core Web Vitals (external API).
-- **Scoring (max 5):**
-  - `pass` 5 — PSI ≥ 70
-  - `warning` 3 — PSI ∈ [50, 69]
-  - `fail` 0 — PSI < 50 or page not crawlable
-- **Rationale:** Confirmed ranking factor; UX proxy.
+| ID | Title | Tier | Credit | Was |
+|---|---|---|---|---|
+| P8 `understand.headings` | One clear H1 and logical headings | Essential | half for exactly one H1 (1/6 for several), half for no skipped levels | `seo-headings` |
+| P9 `understand.title-meta` | Title and description are set | Essential | average of title (50–60 chars → 1 · 30–70 → 0.6 · other → 0.25 · missing → 0) and description (120–160 → 1 · other → 0.5 · missing → 0). Reads the Sitecore field first, the rendered tag as fallback | `seo-meta-title` + `seo-meta-description` |
+| P10 `understand.json-ld` | Structured data is present and valid | Essential | mean over the schemas this page needs: valid → 1 · present but missing required properties → 0.5 · missing → 0. A block that doesn't parse caps it at 0.5 (fail). N/A when nothing is expected | `aeo-structured-data` + `aeo-faq-schema` |
+| P11 `understand.metadata` | Page identity metadata is complete | Recommended | present ÷ 5 of `html lang`, `og:type`, `og:title`, `og:description`, `og:image` | `seo-og-tags` |
+| P12 `understand.faq-quality` | FAQ answers are quotable | Recommended | answers of 40–300 chars ÷ all answers. N/A without Q&A pairs | `aeo-faq-answer-quality` |
+| P13 `understand.question-headings` | Sections answer real questions | Recommended | ≥ 3 question H2s or ≥ 50% of H2s → 1 · at least one → 0.5 · none → 0. N/A without H2s | `aeo-question-headings` (was off) |
+| P14 `understand.readability` | Easy to read and quote | Recommended | half: share of 20+-word paragraphs at ARI grade ≤ 13; half: average paragraph 40–120 words → 1 · 20–200 → 0.5. N/A without paragraphs | `cq-reading-grade` + the matrix's paragraph length |
+| P15 `understand.image-alt` | Images are described | Recommended | images with alt ÷ all images. N/A without images | `seo-image-alt` |
 
-### 14. `cq-agentic-readiness` — Semantic Landmarks
-- **Location:** `engine.ts:1052`
-- **Inspects:** Presence of HTML5 landmarks `<main>`, `<article>`, `<nav>`, `<header>`; also flags interactive elements missing `aria-label`.
-- **Scoring (max 4):** score = count of landmarks present (0–4)
-  - `pass` 4 — all four; `warning` 3; `fail` 0–2
-- **Rationale:** Agent/assistant DOM navigation; isolates primary content from chrome.
+**P10 in detail (fixes D2).** The three old schema checks always passed and only printed a snippet. P10 reads the real `application/ld+json` blocks through the shared parser and expects:
+- **BreadcrumbList** on every page except the home page. Required: `itemListElement` with `position` and `name` on each item.
+- **FAQPage** when the page has two or more Q&A pairs. Required: `mainEntity` with `name` and `acceptedAnswer.text` on each question.
+- **Article** (or any subtype, e.g. `BlogPosting`, `NewsArticle`) on article templates (template name "Article Detail Page"). Required: `headline` (or `name`).
 
-### 15. `cq-reading-grade` — Passage-level Reading Grade
-- **Location:** `engine.ts:1122`
-- **Inspects:** Automated Readability Index (ARI) per paragraph (paragraphs ≥ 20 words).
-  - `ARI = 4.71*(chars/words) + 0.5*(words/sentences) − 21.43`
-- **Scoring (max 4):** `(paragraphsAtGrade≤13 / totalParagraphs) * 4`
-  - `pass` 4 — all ≤ grade 13; `warning` 3 — ≥75%; `fail` 0–2 — <75%
-- **Rationale:** Readability correlates with dwell time and clean LLM summarization/quotation.
+The fix snippet contains only the missing or incomplete schemas (`buildBreadcrumbJsonLd`, `buildFaqPageJsonLd`, `buildArticleJsonLd` in `helpers.ts`). The site's Organization schema is S7, not part of P10.
+
+**Q&A pairs (P10, P12).** `extractQaPairs` (`src/lib/server/extract-html.ts`) finds them in **any component**: an accordion toggle (`[aria-controls][aria-expanded]`) whose controlled panel holds the answer (collapsed, `aria-hidden` panels included), or a `<details>` whose `<summary>` is the question. Only toggles that read as a question (end in "?" or start with a question word) count, so menus and "Expand all" are skipped. On BrandX's FAQ page it finds all 8 questions. The AccordionItem datasource fetch in `usePageFields` is no longer used for scoring.
+
+### Trust
+
+| ID | Title | Tier | Credit | Was |
+|---|---|---|---|---|
+| P16 `trust.uniqueness` | Content is original, not generic | Recommended | AI rating `unique` → 1 · `borderline` → 0.5 · `commodity` → 0. Not checked until the AI has run | `cq-uniqueness` |
+| P17 `trust.author` | Author is named and linked | Recommended | named and linked → 1 · named only → 0.5 · none → 0. **Article templates only** (N/A elsewhere) | `cq-author` (was off) |
+| P18 `trust.freshness` | Content is recently updated | Recommended | ≤ 180 days → 1 · ≤ 365 → 0.6 · ≤ 730 → 0.25 · older or no date → 0 | `cq-freshness` (was off) + the matrix's bands |
+| P19 `trust.depth` | Enough depth to be cited | Recommended | words in body paragraphs: ≥ 800 → 1 · ≥ 400 → 2/3 · ≥ 150 → 1/3 · fewer → 0 | the matrix's content depth |
+| P20 `trust.anchor-text` | Links say where they go | Recommended | generic anchors ≤ 20% → 1 · ≤ 40% → 0.5 · more → 0. N/A without links | `seo-anchor-text` (was info only) |
+| P21 `trust.follow-up-gaps` | Answers the next question too | **Bonus** | follow-up questions covered ÷ all. Not checked until the AI has run | `cq-followup-gaps` (was off) |
+
+- **P16 body and caching.** The body is `ParsedHtml.mainText` from `/api/preview-fetch`: the text of `<main>` (or `<body>` without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; `/api/ai-check` sends the first 3,000 to Claude on `ANTHROPIC_MODEL_BULK` (effort `low`, structured output). The panel calls `ai-check` after `preview-fetch` returns and skips it when there's no main text (console: `[scan] ai-check body: …`). Results are keyed by SHA-256 of the normalised title and text (`src/lib/ai/content-key.ts`) and cached in localStorage (`aiDiscovery:ai-results:<AI_CHECK_VERSION>`, shared by the panel and the dashboard) and in memory on the server, so an unchanged page doesn't call Claude again (console: `[ai-cache] hit …`). The AI re-run button skips both caches. A refusal returns `422` and the check stays not checked. Phase 4 switches the body to the sanitised `getPageHTML` draft.
+- **P17 author signals**, in order: the `author` of an Article-type JSON-LD node (a string, an inline Person/Organization, or an `@id` reference; linked when it has `url` or `sameAs`), then `<meta name="author">`, then a `rel="author"` link (which counts as the profile link).
+- **P18 date sources**, in order: `<meta property="article:modified_time">`, a JSON-LD `dateModified`, `<meta name="last-modified">`, then Sitecore `__Updated`. `parseDate` (`helpers.ts`) reads ISO dates and Sitecore's compact `yyyyMMddTHHmmssZ` format.
+- **P20 generic anchors.** `isGenericAnchor` (`helpers.ts`) matches the `ANCHOR_BLOCKLIST` exactly, plus a prefix rule limited to phrases that stay generic whatever follows ("click here …", "read more …", "see more …"). Descriptive anchors that start with a blocklisted word ("Download the 2026 report", "Register for the webinar") pass (SPIKE-FINDINGS §2).
+
+`aeo-howto-schema` stays off (plan section 5.3); revisit only if HowTo content templates exist.
 
 ---
 
-## Disabled checks (defined, commented out in the orchestrator)
+## Site checks
 
-These exist in code but are not currently part of the 81-pt total. Useful to know for roadmap discussions.
+Run once per site by `runSiteChecks` (`engine.ts`), with their own site score from the same pool maths. The dashboard shows them in the **Site checks** card on the Overview (Phase 6 moves them to the Agent access tab).
 
-| Check ID | Name | Max | Location | Notes |
-|----------|------|----:|----------|-------|
-| `aeo-howto-schema` | HowTo Schema | 7 | `engine.ts:627–699` | Validates HowTo JSON-LD step `name`/`text` |
-| `aeo-question-headings` | Question-format H2s | 0 (info) | `engine.ts:756` | Regex count of interrogative H2s |
-| `cq-author` | Author Present + Linked | 6 | `engine.ts:849` | linked → 6 / name only → 3 / missing → 0 |
-| `cq-freshness` | Published Date + Freshness | 5 | `engine.ts:901` | ≤365d → 5 / ≤730d → 2 / >730d → 0 |
-| `cq-followup-gaps` | Content follow-up gaps | 0 (info) | `engine.ts:1197–1232` | LLM-generated follow-up questions vs. coverage |
+| ID | Title | Tier | Credit | Was |
+|---|---|---|---|---|
+| S2 `reach.robots-ai-rules` | robots.txt lets AI search in | Essential | 0 of 6 named AI crawlers blocked → 1 · 1–2 → 0.5 · 3+ → 0 | the matrix's crawler permissions, moved as is; Phase 6 replaces it with bot groups by purpose |
+| S7 `understand.org-schema` | Your organisation is described for AI | Recommended | see below | `aeo-organization-schema` |
+
+### S7 `understand.org-schema` (`site/org-schema.ts`)
+
+Graded on the **home page's live HTML** (the `getPageHTML` draft has no `<head>` scripts). The four rules agreed on 2026-10-31:
+
+| What the home page has | Result |
+|---|---|
+| Complete Organization schema | credit 1, pass |
+| Organization schema with missing fields | partial credit, warning listing the fields, corrected snippet |
+| No Organization schema (page fetched) | credit 0, **warning** ("Not added yet"), ready-to-paste snippet |
+| Home page couldn't be fetched | **N/A** ("Couldn't check"), snippet |
+
+- **Credit:** 70% for the required fields (`name`; `url` on the site's own domain, `www.` and subdomains allowed; `logo` as a URL or ImageObject) and 30% for the recommended ones (`sameAs`, `description`, `contactPoint`). Bonus fields (`address` as a PostalAddress, `legalName`) are listed as tips and not scored.
+- **Detection:** every `application/ld+json` block, including `@graph` bundles, `@type` arrays (`["Organization", "LocalBusiness"]`), all 167 Organization subtypes from schema.org V30.1 (`schema-org-types.ts`, generated by `scripts/gen-schema-org-types.mjs`), and a `WebSite.publisher` that points to an Organization inline or by `@id`. The same entity declared twice under one `@id` counts once.
+- **A block that doesn't parse** is a fail (credit 0) with the parse error shown.
+- **Config is the expected value:** when `NEXT_PUBLIC_ORG_NAME` is set and the schema names a different organisation, or there are several Organization entries with conflicting names or URLs, the result is a warning and the credit is capped at 0.9.
+- **Fix snippet:** starts from the schema already on the site and fills only the gaps (name, url, logo, description, sameAs) from `NEXT_PUBLIC_ORG_*` (`getOrganizationInfo`, with the site's name and domain as fallbacks). A `url` off the site's domain is replaced; other values are kept. With no schema at all it's `buildOrganizationJsonLd`.
+- **In the panel** S7 shows only when the home page is open, in a "Site check — not in this page's score" section. The "site issues affecting this page" strip comes in Phase 6.
+- **Evidence:** the BrandX home page has no JSON-LD at all (checked 2026-10-31 and 2026-11-01). The old check gave it 5/5; S7 gives it 0 with a warning and a snippet.
 
 ---
 
-## Site-level scoring (aggregate, not page-level)
+## Shared JSON-LD parser (`json-ld.ts`)
 
-**Location:** `site-score.ts:307–366`. Rolls page-derived HTML signals into 5 site pillars. Listed for completeness — these are separate from the per-page panel.
+`extract-html.ts` keeps every block as `ParsedHtml.jsonLdScripts`, either `{ ok: true, value }` or `{ ok: false, error }`, so parse errors are reported instead of dropped. `collectNodes` turns the blocks into typed nodes: each top-level object, each array entry and each `@graph` member (nested objects stay inside their parent; read them with `resolve`, which also follows `{"@id": …}` references). `@type` is always a list with `schema:` / `https://schema.org/` prefixes removed. `isOrganization` and `isArticle` match subtypes. `typesOnPage` feeds the citation forecast prompt.
 
-| Pillar | Max | Inputs |
-|--------|----:|--------|
-| Crawlability | 15 | AI-crawler permissions, canonical, robots meta |
-| Structured | 0–17 | Conditional schema presence (FAQPage, Article, BreadcrumbList, Organization); the max varies per page |
-| Answerability | 20 | H1 count, question H2s, reading grade, paragraph length |
-| Authority | 28 | AI uniqueness, content depth, freshness, anchor-text quality |
-| Retrievability | 20 | Title length, meta description, OG tags, landmarks, image alt coverage |
+---
+
+## The adapter to the pre-v2 UI
+
+`adapters.ts` maps reports onto the current components until the Phase 5 redesign:
+- **Panel:** `rowsByCategory` → one `CategorySection` per category (`src/components/CategorySection.tsx`) with a `RuleRow` per check showing `points / max` (one decimal), "n/a", "not checked" or a **Run scan** button for AI and PageSpeed checks, and "+N pts" next to the fix. N/A checks are listed under "Doesn't apply here". The header ring shows the 0–100 score.
+- **Dashboard:** `summarisePageReport` → `PageScoreSummary` (`score`, `label`, `blocked`, `gateReason`, per-category earned/max), which is what the dashboard caches.
 
 ---
 
@@ -199,7 +148,6 @@ These exist in code but are not currently part of the 81-pt total. Useful to kno
 - **Model:** `ANTHROPIC_MODEL` (default `claude-opus-5-5`), effort `low`, structured output `{ value }`.
 - **Length limits** (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with `overLimit: true`, and the UI shows the count in amber. Values are never cut off.
 - **Prompt caching:** the brand voice (system prompt) and the page title and text (first user block) carry `cache_control`, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
-
 - **Body:** `bodyText` is the same `ParsedHtml.mainText` the uniqueness check uses. **Generate** is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.
 - **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`, server only) reads the Markdown file named by `BRAND_VOICE_FILE` (relative to the project root, read once per server instance) and the name in `BRAND_NAME`. With neither set, or if the file can't be read, it uses a neutral default voice. `brand/brandx.md` is the BrandX demo voice, and `next.config.ts` (`outputFileTracingIncludes`) bundles `brand/` into the Vercel function.
 - **Log:** `[generate-meta] <field>: N chars of body text, brand voice: <source>`.
@@ -220,15 +168,33 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 
 ---
 
+## Tests
+
+| File | Covers |
+|---|---|
+| `src/lib/checks/scoring.test.ts` | pools, partial credit, weights, N/A and not checked, rescaling, bonus cap, categories, the gate |
+| `src/lib/checks/page/page-checks.test.ts` | P10 real detection (D2), P9, N/A and not-checked cases, P17, P18, the fixture page |
+| `src/lib/checks/site/org-schema.test.ts` | S7: the four rules, `@graph`, `@type` arrays, subtypes, `WebSite.publisher`, parse errors, config mismatch, duplicates, BrandX |
+| `src/lib/checks/json-ld.test.ts` | the shared parser |
+| `src/lib/checks/parity.test.ts` | panel and dashboard read the same fields and give the same score; the 80 / 60 thresholds |
+| `src/lib/server/extract-html.test.ts` | `mainText`, Q&A pairs (BrandX accordion markup), metadata, JSON-LD blocks |
+
+---
+
 ## Key files
 
 | File | Responsibility |
 |------|----------------|
-| `src/lib/rule-engine/engine.ts` | All check definitions, scoring logic, gate (lines 33–1328) |
-| `src/lib/rule-engine/helpers.ts` | ARI, word/char counts, anchor blocklist, shared parsing utils |
-| `src/lib/rule-engine/types.ts` | Check/result interfaces and status enums |
-| `src/lib/rule-engine/site-score.ts` | Site-level aggregation pillars |
-| `src/lib/score-thresholds.ts` | Shared 80 / 60 score thresholds |
-| `src/lib/server/extract-html.ts` | Parses fetched HTML into `ParsedHtml`, incl. `mainText` |
-| `src/lib/server/safe-fetch.ts` | SSRF-safe fetch for server routes |
+| `src/lib/checks/registry.ts` | Every check, in display order |
+| `src/lib/checks/page/{reach,read,understand,trust}.ts` | Page checks P2–P21 |
+| `src/lib/checks/site/reach.ts`, `site/org-schema.ts` | Site checks S2, S7 |
+| `src/lib/checks/scoring.ts`, `gate.ts`, `engine.ts` | Pool maths, the gate, `runPageChecks` / `runSiteChecks` |
+| `src/lib/checks/context.ts` | `buildPageContext`, the shared field names, article/home detection |
+| `src/lib/checks/json-ld.ts`, `schema-org-types.ts` | JSON-LD parsing and the schema.org subtype lists |
+| `src/lib/checks/adapters.ts` | Reports → pre-v2 UI rows and dashboard summaries |
+| `src/lib/rule-engine/helpers.ts` | ARI, word counts, anchor blocklist, dates, snippet builders |
+| `src/lib/rule-engine/types.ts` | Input types (`ParsedHtml`, `AiResults`, `PageData`, …) |
+| `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1` |
+| `src/lib/score-thresholds.ts` | Shared 80 / 60 thresholds |
+| `src/lib/server/extract-html.ts` | Parses fetched HTML into `ParsedHtml` |
 | `src/lib/brand/organization.ts`, `brand-voice.ts` | Organization identity and brand voice config |
