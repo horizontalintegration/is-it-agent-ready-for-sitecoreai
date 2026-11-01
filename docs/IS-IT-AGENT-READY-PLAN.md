@@ -19,6 +19,7 @@
    - It's a private claude.ai artifact. Read it with the Artifact tool (`action: "read"`); each screen is a `project/*.dc.html` file.
    - Screens: Cover, Current → v2 mapping, Page Builder (Score / Agent View / AI Assist), Dashboard (Overview / Pages / Agent access / AI citations / Files).
    - When this plan and the mockups disagree on layout or copy, follow the mockups. When they disagree on behaviour or scoring, follow this plan.
+9. **Check the open items (section 13)** at the start of each phase, pick up the ones assigned to it, and add anything a phase leaves open before its PR is merged.
 
 ---
 
@@ -492,11 +493,13 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 - Build S7 `understand.org-schema` with the same JSON-LD parser, using the four scoring rules in section 5.2. Its home-page detection and grading move here from Phase 6, so the false 5/5 is gone before the UI redesign. Phase 6 only adds it to the Agent access tab.
 - The engine is UI-agnostic. Keep the old UI temporarily through an adapter.
 - **Accept when:** vitest covers the scoring maths (pools, partial credit, N/A, bonus cap, gate), and the panel and dashboard show the **same** score for the same page. S7 has vitest cases for all four rules, plus `@graph`, `@type` arrays and subtypes, and BrandX's home page (no JSON-LD) scores 0 with a warning and a snippet.
+- **Status (2026-11-01):** merged in PR #6. All automated checks pass, and both demo views show the same score (89). The parity check inside Sitecore is still open, because the dashboard can't load pages there (section 13, item 1).
 
 ### Phase 4 — Draft and live data sources (section 7)
 - Create a `usePageHtml` hook (getPageHTML with debounced refresh on `fieldsUpdated`, plus fallback).
 - Add the draft HTML sanitiser (section 7) and use it in the hook, so no check ever sees raw editor output.
 - Decode HTML entities (`&nbsp;` etc.) in `preview-fetch` text extraction, so draft and live text compare cleanly.
+- Include collapsed accordion answers in the body text (section 13, item 3).
 - Show a source chip on each result.
 - Show a "Draft differs from live" banner when the main-text hashes differ.
 - Add P3 (content without JS). The spike confirmed the draft includes client-rendered content. Compare the sanitised draft with the full server `<body>` text, and treat empty-state messages ("No articles found") as "couldn't render in the editor", not content. Use the BrandX Related Articles cards as the test case.
@@ -578,3 +581,16 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 | 3 | Optional extra citation engines (Perplexity / Gemini / OpenAI keys) | Claude only |
 | 4 | Blok vs custom tokens | Decided by the Phase 0 spike |
 | 5 | Build the public scanner (Phase 11)? | Not now |
+
+---
+
+## 13. Open items
+
+Things left open by a phase. Each phase session reads this list first and picks up the items assigned to it.
+
+| # | Item | Status | Next step |
+|---|---|---|---|
+| 1 | **The dashboard can't call SitecoreAI APIs.** Every `xmc.*` call from the dashboard widget fails with `[HostSDK] Error processing generic api request: Error: Authentication required but getAccessToken method not provided` (thrown in the host's `_addAuthorizationHeader`). The same app's Page builder panel still makes the same calls with built-in authorization. All SitecoreAI APIs are enabled for the app. The dashboard code hasn't changed since it worked in early June 2026, and the v1 deployment on the old SDK shows the same message, so the change is on Sitecore's side. | Support ticket raised 2026-11-01 `[ticket #]`, waiting on Sitecore. | Separate session. While waiting, research custom authorization (client credentials, Auth0, the SDK's experimental XMC client with `getAccessToken`). **Don't create client credentials in the Cloud Portal** until it's confirmed that the panel can stay on built-in authorization. Branch `fix/dashboard-xmc-context-id` (`50fae90`, local, not pushed) makes the dashboard read `application.context` first and send the Context ID to `xmc.sites.retrieveSite`. That's a real fix but doesn't clear this error; ship it with whatever fixes item 1. Blocks item 2 and Phase 9's bulk writes from the dashboard. |
+| 2 | **Phase 3 parity check in Sitecore:** the panel and the dashboard show the same score for the same page (without running PageSpeed in the panel). | Blocked by item 1. | Run it once the dashboard loads pages. |
+| 3 | **Collapsed FAQ answers are missing from the AI body text.** BrandX's accordion answer panels are `aria-hidden="true"` until opened, and `extractMainText` skips `aria-hidden` elements, so `mainText` (sent to `ai-check` and `generate-meta`) leaves out every collapsed answer. `extractQaPairs` already reads them. | Open. | Phase 4, together with the draft body text. |
+| 4 | **The panel's AccordionItem datasource fetch is unused for scoring.** Since Phase 3, Q&A pairs come from the rendered HTML; `usePageFields` still fetches the AccordionItem datasources on every page change. | Kept on purpose. | Phase 9: use it for the FAQ answer rewrites, or remove it. |
