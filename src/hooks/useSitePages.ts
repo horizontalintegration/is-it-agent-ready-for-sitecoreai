@@ -154,10 +154,14 @@ interface RetrieveSiteResult {
 async function retrieveSiteInfo(
   client: ClientSDK,
   siteId: string,
+  sitecoreContextId: string | undefined,
 ): Promise<RetrieveSiteResult> {
   try {
     const res = await client.query("xmc.sites.retrieveSite", {
-      params: { path: { siteId } },
+      params: {
+        path: { siteId },
+        ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+      },
     } as Parameters<ClientSDK["query"]>[1]);
 
     const outer = (res as { data?: unknown })?.data;
@@ -564,44 +568,10 @@ export function useSitePages(
     setError(null);
 
     try {
-      // 1. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
-      // AND homePageId (the home item ID) in one call. If the Sites scope isn't
-      // available (401 M2M error), we fall back to env domain + content-tree walk.
-      const siteInfo = await retrieveSiteInfo(client, siteId);
-      if (siteInfo.apiError) {
-        console.warn(
-          "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
-          siteInfo.apiError,
-        );
-      }
-
-      // Domain: SDK hostname wins; env is the fallback
-      const sdkDomain = siteInfo.targetHostname
-        ? siteInfo.targetHostname.startsWith("http")
-          ? siteInfo.targetHostname
-          : `https://${siteInfo.targetHostname}`
-        : "";
-      const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
-      const envDomainNormalized = envDomain
-        ? envDomain.startsWith("http")
-          ? envDomain
-          : `https://${envDomain}`
-        : "";
-      const domain = sdkDomain || envDomainNormalized;
-
-      setSiteContext((prev) => ({ ...prev, id: siteId, domain, name: siteName }));
-
-      if (!domain) {
-        setError(
-          "Site domain not configured. Either configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
-        );
-        setPages([]);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. application.context → sitecoreContextId for the GraphQL call, plus
-      //    organizationId + tenantName for Pages-editor deep-links.
+      // 1. application.context → sitecoreContextId, plus organizationId and
+      //    tenantName for Pages-editor deep-links. Read first: every XM Cloud
+      //    call needs the Context ID of an environment where the app is
+      //    installed, including retrieveSite below.
       let sitecoreContextId: string | undefined;
       try {
         interface AppCtxShape {
@@ -641,6 +611,7 @@ export function useSitePages(
           organization,
           tenantName,
           resourceCount: list.length,
+          hasContextId: Boolean(sitecoreContextId),
           raw: app,
         });
         if (organization || tenantName) {
@@ -648,6 +619,47 @@ export function useSitePages(
         }
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
+      }
+      if (!sitecoreContextId) {
+        console.warn(
+          "[sitePages] no Context ID in application.context (no resource with context.preview or context.live) — XM Cloud calls go out without one and may be refused",
+        );
+      }
+
+      // 2. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
+      // AND homePageId (the home item ID) in one call. If the Sites scope isn't
+      // available (401 M2M error), we fall back to env domain + content-tree walk.
+      const siteInfo = await retrieveSiteInfo(client, siteId, sitecoreContextId);
+      if (siteInfo.apiError) {
+        console.warn(
+          "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
+          siteInfo.apiError,
+        );
+      }
+
+      // Domain: SDK hostname wins; env is the fallback
+      const sdkDomain = siteInfo.targetHostname
+        ? siteInfo.targetHostname.startsWith("http")
+          ? siteInfo.targetHostname
+          : `https://${siteInfo.targetHostname}`
+        : "";
+      const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
+      const envDomainNormalized = envDomain
+        ? envDomain.startsWith("http")
+          ? envDomain
+          : `https://${envDomain}`
+        : "";
+      const domain = sdkDomain || envDomainNormalized;
+
+      setSiteContext((prev) => ({ ...prev, id: siteId, domain, name: siteName }));
+
+      if (!domain) {
+        setError(
+          "Site domain not configured. Either configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
+        );
+        setPages([]);
+        setIsLoading(false);
+        return;
       }
 
       // 3. Fetch robots.txt and the home page once for this domain (site
