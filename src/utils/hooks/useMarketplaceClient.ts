@@ -3,6 +3,7 @@
 import { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { XMC } from "@sitecore-marketplace-sdk/xmc";
+import { isDemoUrl } from "@/hooks/useDemoMode";
 
 export interface MarketplaceClientState {
   client: ClientSDK | null;
@@ -117,7 +118,10 @@ export function useMarketplaceClient(options: UseMarketplaceClientOptions = {}) 
   }, [opts.retryAttempts, opts.retryDelay]);
 
   useEffect(() => {
-    if (opts.autoInit) {
+    // Demo mode (?demo=1) shows fixture data and must never talk to Sitecore,
+    // even when the page is open inside a Sitecore extension point: with no
+    // client, no live hook reads from or writes to the real site.
+    if (opts.autoInit && !isDemoUrl()) {
       initializeClient();
     }
 

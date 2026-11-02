@@ -40,6 +40,8 @@ The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, e
 
 ## Scanning a page (`scanOne`, `useSitePages.ts`)
 
+- **Context first:** `application.context` is read before any XM Cloud call, and its Context ID (`resourceAccess[].context.preview`, else `.live`) is sent as `sitecoreContextId` on `xmc.sites.retrieveSite` and every authoring GraphQL call. The console line `[sitePages] application.context →` shows the host type (`appType`), the extension points and whether a Context ID was found. It names fields one by one, because the raw context can hold the editing secret.
+- **Host refusing authorization:** if the Sitecore host refuses a call with "getAccessToken method not provided" (plan section 13, item 1), `isHostAuthError` (`src/lib/xmc-errors.ts`) recognises it. The Overview then says Sitecore didn't authorize the request, instead of falling back to the content-tree walk and reporting a missing Home item. Other errors, including a plain 401 from an API, keep the existing fallbacks.
 - **Enumeration:** authoring GraphQL walks the site's Home item 5 levels deep; items with `__Renderings` or `__Final Renderings` are pages. For each it reads `template { name }`, `__Updated`, and the fields the checks read, by the shared names in `SCORING_FIELD_NAMES` (`pageTitle`, `MetaDescription` — overridable with `NEXT_PUBLIC_FIELD_TITLE` / `NEXT_PUBLIC_FIELD_META_DESCRIPTION` — and `robotsMetaTag`). `pageFieldsFromValues` normalises them into `row.fields`, exactly as the panel does. The OG description is also read, only as the llms.txt summary fallback.
 - **Scan:** `/api/preview-fetch` for the live HTML, then `/api/ai-check` with `ParsedHtml.mainText` (on `ANTHROPIC_MODEL_BULK`, cached by content hash in localStorage, shared with the panel, and on the server). PageSpeed doesn't run in the dashboard, so P7 is "not checked" and left out of the score.
 - **Concurrency:** 5 pages at a time; all unscanned rows scan in the background after enumeration.
@@ -102,6 +104,8 @@ New in the dashboard because it now shares the panel's checks: P11's lang and og
 
 `makeTestSitePages()` (`src/lib/rule-engine/test-fixture.ts`) builds 12 rows by running the **real engine** on variants of the panel's demo page, so the numbers are consistent: 3 critical, 3 warning, 5 good and 1 blocked (noindex). The row "Blog: content strategy" is the panel's demo page unchanged, so it shows the same score as the panel demo (89). `makeTestSiteContext()` gives the Site checks card a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).
 
+Demo mode never starts the Marketplace client (`useMarketplaceClient` checks `isDemoUrl()`), in the dashboard or the panel. So it makes no SitecoreAI calls and can't write to a real page, even if `?demo=1` is opened inside a Sitecore extension point. The panel doesn't auto-scan in demo mode either: the fixture already holds the HTML and AI results, so nothing fetches the fixture URL or calls `ai-check` on load. The Robots.txt and Footer trust tabs still check `example.com` (free). Generate meta and Citation forecast still call Claude when clicked.
+
 ---
 
 ## Key files
@@ -109,6 +113,8 @@ New in the dashboard because it now shares the panel's checks: P11's lang and og
 | Aspect | File |
 |--------|------|
 | Enumeration, scanning, score cache, site-check inputs | `src/hooks/useSitePages.ts` |
+| Host authorization refusal | `src/lib/xmc-errors.ts` |
+| Demo mode check (`?demo=1`) | `src/hooks/useDemoMode.ts` |
 | Check engine, registry, scoring | `src/lib/checks/` |
 | Summary shape and category labels | `src/lib/checks/adapters.ts` |
 | Site roll-up and worst pages | `src/lib/site-aggregate.ts` |

@@ -16,10 +16,16 @@ import { useSyncExternalStore } from "react";
  */
 const subscribe = () => () => {};
 
-function getClientSnapshot(): boolean {
+/**
+ * The same check outside React, for code that runs only in the browser
+ * (effects, event handlers). False during SSR.
+ */
+export function isDemoUrl(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("demo") === "1";
 }
+
+const getClientSnapshot = isDemoUrl;
 
 function getServerSnapshot(): boolean {
   return false;

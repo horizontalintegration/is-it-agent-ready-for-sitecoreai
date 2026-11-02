@@ -9,6 +9,7 @@ import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/l
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/adapters";
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
+import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -126,6 +127,8 @@ async function discoverSiteHomePath(
     if (!siteNode?.path) return null;
     return `${siteNode.path}/Home`;
   } catch (err) {
+    // The host refusing authorization isn't a missing site: let it surface.
+    if (isHostAuthError(err)) throw err;
     console.warn("[sitePages] discoverSiteHomePath threw:", err);
     return null;
   }
@@ -169,6 +172,11 @@ async function retrieveSiteInfo(
       outer as { error?: { status?: number; detail?: string; title?: string } }
     )?.error;
     if (apiError) {
+      // Every other XM Cloud call would be refused the same way, so don't
+      // fall back to the content-tree walk.
+      if (isHostAuthError(apiError)) {
+        throw new Error("Host authorization refused", { cause: apiError });
+      }
       return { targetHostname: null, homePageId: null, apiError };
     }
 
@@ -183,6 +191,7 @@ async function retrieveSiteInfo(
       homePageId: primary?.homePageId ?? null,
     };
   } catch (err) {
+    if (isHostAuthError(err)) throw err;
     console.warn("[sitePages] retrieveSiteInfo threw:", err);
     return { targetHostname: null, homePageId: null };
   }
@@ -575,8 +584,11 @@ export function useSitePages(
       let sitecoreContextId: string | undefined;
       try {
         interface AppCtxShape {
+          type?: string;
+          installationId?: string;
           organizationId?: string;
           MarketplaceAppTenantId?: string;
+          extensionPoints?: Array<{ extensionPointId?: string; route?: string }>;
           resourceAccess?: Array<{
             tenantName?: string;
             tenantId?: string;
@@ -607,12 +619,20 @@ export function useSitePages(
           }
         }
         const organization = app?.organizationId ?? "";
+        // Named fields only: the raw context can hold the editing secret.
+        // type and extensionPoints show which host the widget runs in, for
+        // the dashboard authorization case (plan section 13, item 1).
         console.log("[sitePages] application.context →", {
           organization,
           tenantName,
+          appType: app?.type,
+          installationId: app?.installationId,
+          extensionPoints: (app?.extensionPoints ?? []).map((e) => ({
+            id: e?.extensionPointId,
+            route: e?.route,
+          })),
           resourceCount: list.length,
           hasContextId: Boolean(sitecoreContextId),
-          raw: app,
         });
         if (organization || tenantName) {
           setSiteContext((prev) => ({ ...prev, organization, tenantName }));
@@ -841,7 +861,7 @@ export function useSitePages(
     } catch (err) {
       console.error("[sitePages] enumeration failed:", err);
       const message = err instanceof Error ? err.message : String(err);
-      setError(`Could not load pages: ${message}`);
+      setError(isHostAuthError(err) ? HOST_AUTH_ERROR_MESSAGE : `Could not load pages: ${message}`);
       setIsLoading(false);
     }
   }, [client, base, scanOne]);
