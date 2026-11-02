@@ -194,7 +194,7 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 | `src/lib/checks/adapters.ts` | Reports → pre-v2 UI rows and dashboard summaries |
 | `src/lib/rule-engine/helpers.ts` | ARI, word counts, anchor blocklist, dates, snippet builders |
 | `src/lib/rule-engine/types.ts` | Input types (`ParsedHtml`, `AiResults`, `PageData`, …) |
-| `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1` |
+| `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1`. Demo mode never starts the Marketplace client and doesn't auto-scan, so it makes no SitecoreAI or paid calls on load (`useDemoMode.ts`, `useMarketplaceClient.ts`) |
 | `src/lib/score-thresholds.ts` | Shared 80 / 60 thresholds |
 | `src/lib/server/extract-html.ts` | Parses fetched HTML into `ParsedHtml` |
 | `src/lib/brand/organization.ts`, `brand-voice.ts` | Organization identity and brand voice config |

@@ -95,6 +95,8 @@
 <hr/>
 <h2>Scanning a page (<code>scanOne</code>, <code>useSitePages.ts</code>)</h2>
 <ul>
+<li><strong>Context first:</strong> <code>application.context</code> is read before any XM Cloud call, and its Context ID (<code>resourceAccess[].context.preview</code>, else <code>.live</code>) is sent as <code>sitecoreContextId</code> on <code>xmc.sites.retrieveSite</code> and every authoring GraphQL call. The console line <code>[sitePages] application.context →</code> shows the host type (<code>appType</code>), the extension points and whether a Context ID was found. It names fields one by one, because the raw context can hold the editing secret.</li>
+<li><strong>Host refusing authorization:</strong> if the Sitecore host refuses a call with "getAccessToken method not provided" (plan section 13, item 1), <code>isHostAuthError</code> (<code>src/lib/xmc-errors.ts</code>) recognises it. The Overview then says Sitecore didn't authorize the request, instead of falling back to the content-tree walk and reporting a missing Home item. Other errors, including a plain 401 from an API, keep the existing fallbacks.</li>
 <li><strong>Enumeration:</strong> authoring GraphQL walks the site's Home item 5 levels deep; items with <code>__Renderings</code> or <code>__Final Renderings</code> are pages. For each it reads <code>template { name }</code>, <code>__Updated</code>, and the fields the checks read, by the shared names in <code>SCORING_FIELD_NAMES</code> (<code>pageTitle</code>, <code>MetaDescription</code> — overridable with <code>NEXT_PUBLIC_FIELD_TITLE</code> / <code>NEXT_PUBLIC_FIELD_META_DESCRIPTION</code> — and <code>robotsMetaTag</code>). <code>pageFieldsFromValues</code> normalises them into <code>row.fields</code>, exactly as the panel does. The OG description is also read, only as the llms.txt summary fallback.</li>
 <li><strong>Scan:</strong> <code>/api/preview-fetch</code> for the live HTML, then <code>/api/ai-check</code> with <code>ParsedHtml.mainText</code> (on <code>ANTHROPIC_MODEL_BULK</code>, cached by content hash in localStorage, shared with the panel, and on the server). PageSpeed doesn't run in the dashboard, so P7 is "not checked" and left out of the score.</li>
 <li><strong>Concurrency:</strong> 5 pages at a time; all unscanned rows scan in the background after enumeration.</li>
@@ -195,6 +197,7 @@
 <hr/>
 <h2>Demo mode (<code>?demo=1</code>)</h2>
 <p><code>makeTestSitePages()</code> (<code>src/lib/rule-engine/test-fixture.ts</code>) builds 12 rows by running the <strong>real engine</strong> on variants of the panel's demo page, so the numbers are consistent: 3 critical, 3 warning, 5 good and 1 blocked (noindex). The row "Blog: content strategy" is the panel's demo page unchanged, so it shows the same score as the panel demo (89). <code>makeTestSiteContext()</code> gives the Site checks card a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).</p>
+<p>Demo mode never starts the Marketplace client (<code>useMarketplaceClient</code> checks <code>isDemoUrl()</code>), in the dashboard or the panel. So it makes no SitecoreAI calls and can't write to a real page, even if <code>?demo=1</code> is opened inside a Sitecore extension point. The panel doesn't auto-scan in demo mode either: the fixture already holds the HTML and AI results, so nothing fetches the fixture URL or calls <code>ai-check</code> on load. The Robots.txt and Footer trust tabs still check <code>example.com</code> (free). Generate meta and Citation forecast still call Claude when clicked.</p>
 <hr/>
 <h2>Key files</h2>
 <table><thead><tr>
@@ -204,6 +207,14 @@
 <tr>
 <td style="text-align:left">Enumeration, scanning, score cache, site-check inputs</td>
 <td style="text-align:left"><code>src/hooks/useSitePages.ts</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Host authorization refusal</td>
+<td style="text-align:left"><code>src/lib/xmc-errors.ts</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Demo mode check (<code>?demo=1</code>)</td>
+<td style="text-align:left"><code>src/hooks/useDemoMode.ts</code></td>
 </tr>
 <tr>
 <td style="text-align:left">Check engine, registry, scoring</td>

@@ -63,9 +63,11 @@ export default function PagesContextPanel() {
 
   const pageTitle = effectiveAuthoring?.pageTitle ?? "";
 
+  // The fixture already holds the parsed HTML and AI results, so demo mode
+  // doesn't scan: no fetch of the fixture URL and no paid ai-check on load.
   const scan = useScan({
-    pageUrl: effectivePageUrl,
-    siteDomain: effectiveSiteDomain,
+    pageUrl: fixture ? "" : pageUrl,
+    siteDomain: fixture ? "" : siteDomain,
     editingToken,
     pageTitle,
   });

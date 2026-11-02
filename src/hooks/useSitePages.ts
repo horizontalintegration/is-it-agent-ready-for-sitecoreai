@@ -9,6 +9,7 @@ import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/l
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/adapters";
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
+import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -126,6 +127,8 @@ async function discoverSiteHomePath(
     if (!siteNode?.path) return null;
     return `${siteNode.path}/Home`;
   } catch (err) {
+    // The host refusing authorization isn't a missing site: let it surface.
+    if (isHostAuthError(err)) throw err;
     console.warn("[sitePages] discoverSiteHomePath threw:", err);
     return null;
   }
@@ -154,10 +157,14 @@ interface RetrieveSiteResult {
 async function retrieveSiteInfo(
   client: ClientSDK,
   siteId: string,
+  sitecoreContextId: string | undefined,
 ): Promise<RetrieveSiteResult> {
   try {
     const res = await client.query("xmc.sites.retrieveSite", {
-      params: { path: { siteId } },
+      params: {
+        path: { siteId },
+        ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+      },
     } as Parameters<ClientSDK["query"]>[1]);
 
     const outer = (res as { data?: unknown })?.data;
@@ -165,6 +172,11 @@ async function retrieveSiteInfo(
       outer as { error?: { status?: number; detail?: string; title?: string } }
     )?.error;
     if (apiError) {
+      // Every other XM Cloud call would be refused the same way, so don't
+      // fall back to the content-tree walk.
+      if (isHostAuthError(apiError)) {
+        throw new Error("Host authorization refused", { cause: apiError });
+      }
       return { targetHostname: null, homePageId: null, apiError };
     }
 
@@ -179,6 +191,7 @@ async function retrieveSiteInfo(
       homePageId: primary?.homePageId ?? null,
     };
   } catch (err) {
+    if (isHostAuthError(err)) throw err;
     console.warn("[sitePages] retrieveSiteInfo threw:", err);
     return { targetHostname: null, homePageId: null };
   }
@@ -564,49 +577,18 @@ export function useSitePages(
     setError(null);
 
     try {
-      // 1. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
-      // AND homePageId (the home item ID) in one call. If the Sites scope isn't
-      // available (401 M2M error), we fall back to env domain + content-tree walk.
-      const siteInfo = await retrieveSiteInfo(client, siteId);
-      if (siteInfo.apiError) {
-        console.warn(
-          "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
-          siteInfo.apiError,
-        );
-      }
-
-      // Domain: SDK hostname wins; env is the fallback
-      const sdkDomain = siteInfo.targetHostname
-        ? siteInfo.targetHostname.startsWith("http")
-          ? siteInfo.targetHostname
-          : `https://${siteInfo.targetHostname}`
-        : "";
-      const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
-      const envDomainNormalized = envDomain
-        ? envDomain.startsWith("http")
-          ? envDomain
-          : `https://${envDomain}`
-        : "";
-      const domain = sdkDomain || envDomainNormalized;
-
-      setSiteContext((prev) => ({ ...prev, id: siteId, domain, name: siteName }));
-
-      if (!domain) {
-        setError(
-          "Site domain not configured. Either configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
-        );
-        setPages([]);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. application.context → sitecoreContextId for the GraphQL call, plus
-      //    organizationId + tenantName for Pages-editor deep-links.
+      // 1. application.context → sitecoreContextId, plus organizationId and
+      //    tenantName for Pages-editor deep-links. Read first: every XM Cloud
+      //    call needs the Context ID of an environment where the app is
+      //    installed, including retrieveSite below.
       let sitecoreContextId: string | undefined;
       try {
         interface AppCtxShape {
+          type?: string;
+          installationId?: string;
           organizationId?: string;
           MarketplaceAppTenantId?: string;
+          extensionPoints?: Array<{ extensionPointId?: string; route?: string }>;
           resourceAccess?: Array<{
             tenantName?: string;
             tenantId?: string;
@@ -637,17 +619,67 @@ export function useSitePages(
           }
         }
         const organization = app?.organizationId ?? "";
+        // Named fields only: the raw context can hold the editing secret.
+        // type and extensionPoints show which host the widget runs in, for
+        // the dashboard authorization case (plan section 13, item 1).
         console.log("[sitePages] application.context →", {
           organization,
           tenantName,
+          appType: app?.type,
+          installationId: app?.installationId,
+          extensionPoints: (app?.extensionPoints ?? []).map((e) => ({
+            id: e?.extensionPointId,
+            route: e?.route,
+          })),
           resourceCount: list.length,
-          raw: app,
+          hasContextId: Boolean(sitecoreContextId),
         });
         if (organization || tenantName) {
           setSiteContext((prev) => ({ ...prev, organization, tenantName }));
         }
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
+      }
+      if (!sitecoreContextId) {
+        console.warn(
+          "[sitePages] no Context ID in application.context (no resource with context.preview or context.live) — XM Cloud calls go out without one and may be refused",
+        );
+      }
+
+      // 2. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
+      // AND homePageId (the home item ID) in one call. If the Sites scope isn't
+      // available (401 M2M error), we fall back to env domain + content-tree walk.
+      const siteInfo = await retrieveSiteInfo(client, siteId, sitecoreContextId);
+      if (siteInfo.apiError) {
+        console.warn(
+          "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
+          siteInfo.apiError,
+        );
+      }
+
+      // Domain: SDK hostname wins; env is the fallback
+      const sdkDomain = siteInfo.targetHostname
+        ? siteInfo.targetHostname.startsWith("http")
+          ? siteInfo.targetHostname
+          : `https://${siteInfo.targetHostname}`
+        : "";
+      const envDomain = process.env.NEXT_PUBLIC_DEFAULT_SITE_DOMAIN ?? "";
+      const envDomainNormalized = envDomain
+        ? envDomain.startsWith("http")
+          ? envDomain
+          : `https://${envDomain}`
+        : "";
+      const domain = sdkDomain || envDomainNormalized;
+
+      setSiteContext((prev) => ({ ...prev, id: siteId, domain, name: siteName }));
+
+      if (!domain) {
+        setError(
+          "Site domain not configured. Either configure Marketplace M2M for xmc.sites.retrieveSite, or set NEXT_PUBLIC_DEFAULT_SITE_DOMAIN.",
+        );
+        setPages([]);
+        setIsLoading(false);
+        return;
       }
 
       // 3. Fetch robots.txt and the home page once for this domain (site
@@ -829,7 +861,7 @@ export function useSitePages(
     } catch (err) {
       console.error("[sitePages] enumeration failed:", err);
       const message = err instanceof Error ? err.message : String(err);
-      setError(`Could not load pages: ${message}`);
+      setError(isHostAuthError(err) ? HOST_AUTH_ERROR_MESSAGE : `Could not load pages: ${message}`);
       setIsLoading(false);
     }
   }, [client, base, scanOne]);

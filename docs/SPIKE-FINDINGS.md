@@ -252,3 +252,147 @@ Confirmed with a local `next dev` run against the BrandX article *Banking Sector
 - **Low effort barely thinks:** output was 35–185 tokens per meta call, so costs came in well under the planned estimate.
 - **One `ogDescription` call took 61 s** for 57 output tokens. That looks like one attempt hitting the SDK's 60 s timeout and the internal retry then finishing in about 1 s. The timeout is now 30 s with one retry, so a stalled call is capped at about a minute.
 - **Confirmed:** after deploy (2026-10-31), the panel console showed `[ai-cache] hit` on the second visit to an unchanged page.
+
+## 7. Dashboard authorization (open item 1, 2026-11-01)
+
+Plan section 13, item 1. Every `xmc.*` call from the dashboard widget fails with `[HostSDK] … Authentication required but getAccessToken method not provided`. The Page builder panel makes the same calls with built-in authorization and they work. Sitecore support ticket **CS0746928** is open.
+
+Branch: `fix/dashboard-xmc-auth` (from `50fae90`, the Context ID fix). No code changed and nothing was deployed for this section.
+
+### 7.1 Where the error comes from
+
+**From docs/types** (SDK bundles in `node_modules`, client 0.4.1 and xmc 0.4.4, both the latest on npm):
+
+- A built-in call (`client.query/mutate("xmc.*")`) never leaves the iframe as HTTP. The xmc module's fetch hands the request to `ClientSDK._fetch`. That posts a `host.request` message to the Sitecore host with only the path, method, headers and body, plus `requiresAuth: true`.
+- The **host page's** HostSDK attaches the token (`_addAuthorizationHeader`) and makes the HTTP call. **Confirmed:** none of the error's strings (`[HostSDK]`, `_addAuthorizationHeader`, `getAccessToken method not provided`, `Error processing generic api request`) appear anywhere in `@sitecore-marketplace-sdk/client`, `core` or `xmc`. The error is raised by Sitecore code the app doesn't ship. Why that HostSDK has no `getAccessToken` can't be seen without the host's code.
+- `ClientSDK.init` takes `target`, `origin`, `timeout`, `modules`, `events` and `navbarItems`. There's **no option for an app to supply a token** to the built-in path. The public `ClientSDK` methods offer no raw request either.
+- **Lead:** the host message type (`GenericRequestData` in `core`) has an optional `contextId` ("An optional context ID associated with the request"), but `ClientSDK._fetch` never sets it. Our calls carry the Context ID only as the `sitecoreContextId` query parameter. If the dashboard host picks its token provider by `contextId`, that would explain why the panel works and the dashboard doesn't. Only Sitecore can confirm this, and only the SDK or the host can change it.
+- **Confirmed (git):** the dashboard's SDK calls (`ClientSDK.init`, every `client.query/mutate` line in `useSitePages.ts` and `useMarketplaceClient.ts`) are unchanged between `7af212a` (2026-06-02, when the dashboard last worked) and `main`. v1 ran the same code on client 0.3.2 / xmc 0.4.1. So whatever changed is outside this repo: either the Sitecore host, or this app's Cloud Portal configuration or installation. These findings don't tell which.
+- **Confirmed: no SDK change since June needs handling in our code.**
+  - `_fetch` (the code that sends every built-in call to the host) is identical in client 0.3.2 (v1, June) and 0.4.1, and on the SDK repo's `main`.
+  - The client changelog from 0.3.2 to 0.4.1 lists security fixes, core bumps, `getPageHTML` and dependency clean-up. Core 0.3.2 → 0.5.0 adds per-request timeouts, developer info, URL state and a stricter message filter (2026-10-30, after the error was first seen). Neither touches authorization or the request message.
+  - xmc 0.4.1 → 0.4.4 only swapped the bundled HTTP client ("runtime behaviour are unchanged").
+  - The repo has no host SDK package, so the host side can't be read.
+  - Sources: [client](https://github.com/Sitecore/sitecore-marketplace-sdk/blob/main/packages/client/CHANGELOG.md), [core](https://github.com/Sitecore/sitecore-marketplace-sdk/blob/main/packages/core/CHANGELOG.md) and [xmc](https://github.com/Sitecore/sitecore-marketplace-sdk/blob/main/packages/xmc/CHANGELOG.md) changelogs, and the npm tarballs.
+- **Confirmed: the panel and the dashboard call the host the same way.** Same `ClientSDK.init` (`target: window.parent`, `modules: [XMC]`), same `pickContextId` logic, and the same `sitecoreContextId` query parameter on every call.
+- **The dashboard host's behaviour changed.** The June code (`48b4f9c`, 2026-06-01) handles a "401 M2M error" from `retrieveSite` and falls back to GraphQL. So in June the dashboard host **did** attach the built-in machine token: GraphQL worked and only the Sites scope was refused. Now that host attaches no token at all, with unchanged app code and an unchanged SDK protocol.
+- **Diagnostic still open:** the SDK knows three host types (`AppType`: `portal`, `xmc:xmapps`, `xmc:pages-contextview`), and `application.context` returns `type` and `extensionPoints`. On this branch the dashboard logs them as `appType` and `extensionPoints` in `[sitePages] application.context →`, and no longer logs the raw context, which can hold the editing secret. If `appType` is now `portal`, the dashboard widget runs in a different host than it did in June. That would explain why only the dashboard lost its token, and is a question for Sitecore.
+- So the app can't fix this through built-in authorization. Either Sitecore fixes the cause, or the app stops using the host for SitecoreAI calls (custom authorization, 7.3).
+
+### 7.2 What the docs say about custom authorization
+
+**From docs** (sources in 7.6):
+
+| Question | Answer | Source |
+|---|---|---|
+| App-wide or per extension point? | Framed per app: you can "replace the built-in authorization with Auth0 authorization". No per-extension-point setting is documented. | [Architecture and authorization options](https://doc.sitecore.com/mp/en/developers/marketplace/app-architecture-and-authorization-options.html) |
+| Do built-in `xmc.*` calls stop once client credentials exist? | **Not documented.** Sitecore's own full-stack quick-start page (`app/page.tsx`) renders a built-in XMC example next to the custom-auth examples, which hints that both work together. Unconfirmed: ask support. | [quickstart-with-full-stack-xmc.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-full-stack-xmc.json) |
+| Does revoking credentials bring built-in back? | **Not documented.** Revoking is under *Settings > Revoke access*. | [Create client credentials](https://doc.sitecore.com/mp/en/developers/marketplace/create-client-credentials.html) |
+| App type | **Single-page app (SPA):** client ID only, used with `@auth0/auth0-react`. **Regular web app:** client ID and secret, for server-side `@auth0/nextjs-auth0`. The quick start says to pick SPA "even if you're building a full-stack Next.js app". Maximum of two sets per type. | [Create client credentials](https://doc.sitecore.com/mp/en/developers/marketplace/create-client-credentials.html), [Quick start (CLI)](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/quick-start--cli-.html) |
+| Cloud Portal fields | Allowed callback, logout, origin and web origin URLs. All are optional and editable later. They "must correspond to the deployment URL, and the localhost URL or custom DNS you develop your app on". | [Create client credentials](https://doc.sitecore.com/mp/en/developers/marketplace/create-client-credentials.html) |
+| Local development | Custom DNS and HTTPS are required. Use `next dev --experimental-https --hostname myapp.local`, and the deployment URL is set to that custom DNS. | [Quick start (CLI)](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/quick-start--cli-.html), [Configure and activate a custom app](https://doc.sitecore.com/mp/en/developers/marketplace/configure-and-activate-a-custom-app.html) |
+| Whose identity | Built-in swaps the user's token for "a machine token, which has admin rights". The custom flow uses the signed-in user's own token. | [Built-in authorization](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/built-in-authorization.html) |
+| Dashboard widgets | Not mentioned on any page read. | — |
+| When custom authorization arrived | Announced as new on 2025-10-23 ("This involves creating client credentials for your app"). No Marketplace changelog entry from 2026-06 to 2026-11 changes authorization or dashboard widgets. The feed only covers 2026-01-27 onward. | [Changelog 2025-10-23](https://developers.sitecore.com/changelog/marketplace/23102025/introducing-full-stack-marketplace-apps-and-granular-app-access-control), [changelog feed](https://developers.sitecore.com/changelog/marketplace) |
+| Has this app ever used custom authorization? | **Confirmed not, as far as the repo shows:** no commit since the first (2026-05-24) mentions Auth0, a client ID or a client secret, and neither `.env.example` nor `.env.local` has any. The user doesn't recall creating credentials, and the Cloud Portal itself hasn't been checked. | `git log --all -S` |
+| Status | The token tooling is labelled "experimental phase". | [experimental-xmc.md](https://github.com/Sitecore/marketplace-sdk/blob/main/docs/experimental-xmc.md) |
+
+**The quick start's custom-auth template** ([quickstart-with-custom-auth.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-custom-auth.json)) uses an SPA credential:
+
+- `Auth0Provider` with `domain`, `clientId` and `authorizationParams` (`organization_id`, `tenant_id`, `product_codes: mkp_<app id>`, `audience`, `redirect_uri`, `scope`). The whole app is wrapped in `withAuthenticationRequired`.
+- `getAccessTokenSilently` is wrapped to always send `organization_id` and `tenant_id`.
+- Env vars:
+  - `NEXT_PUBLIC_AUTH0_DOMAIN=https://auth.sitecorecloud.io`
+  - `NEXT_PUBLIC_AUTH0_AUDIENCE=https://api-webapp.sitecorecloud.io`
+  - `NEXT_PUBLIC_AUTH0_SCOPE="openid profile email offline_access"`
+  - `NEXT_PUBLIC_AUTH0_CLIENT_ID`
+  - `NEXT_PUBLIC_SITECORE_APP_ID`
+  - `NEXT_PUBLIC_APP_BASE_URL`
+  - `NEXT_PUBLIC_SITECORE_ORGANIZATION_ID`
+  - `NEXT_PUBLIC_SITECORE_TENANT_ID` (known only after installation)
+- It sets CSP `frame-ancestors` to `marketplace-app.sitecorecloud.io`, `pages.sitecorecloud.io` and `xmapps.sitecorecloud.io`.
+- In the [full-stack XMC template](https://blok.sitecore.com/r/marketplace/next/quickstart-with-full-stack-xmc.json), the browser gets the token and sends it as `Authorization: Bearer …` to an API route or a server action. On the server, that code calls `experimental_createXMCClient({ getAccessToken: async () => token })` and passes `sitecoreContextId` on every call. The Context ID comes from `application.context` → `resourceAccess[0].context.preview`.
+- The template doesn't set `useRefreshTokens` or `cacheLocation`. It doesn't say how login works inside the Sitecore iframe either: with these defaults, auth0-react redirects, and silent renewal uses a hidden iframe.
+
+### 7.3 What the experimental XMC client does
+
+**From docs/types** (xmc 0.4.4 bundle):
+
+- `experimental_createXMCClient({ getAccessToken })` builds plain HTTP clients against `https://edge-platform.sitecorecloud.io`, or `EDGE_PLATFORM_PROXY_URL` if set. It calls `getAccessToken()` for every request and sends `Authorization: Bearer <token>`, `sc-resource: marketplace` and `sc-marketplace-auth: interactive/v1`. **The Sitecore host isn't involved,** so the dashboard host's missing `getAccessToken` can't affect it.
+- It logs to `console.log` on every call (`🎭 [experimental_XMC] Calling …`, `🔑 … Getting access token`).
+- Every operation the app uses exists with the same parameters:
+
+| App call today (built-in) | Experimental equivalent | Used by |
+|---|---|---|
+| `xmc.authoring.graphql` (×4) | `authoring.graphql` (`/v1/authoring/graphql`) | panel fields + FAQ items, dashboard page enumeration ×2 |
+| `xmc.pages.retrievePage` | `pages.retrievePage` | panel |
+| `xmc.pages.updateFields` | `pages.updateFields` | panel (meta Populate, the only write) |
+| `xmc.sites.retrieveSite` | `sites.retrieveSite` | dashboard |
+
+The call shape differs: built-in takes `{ params: { path, query, body } }`, the experimental client takes `{ path, query, body }`. Host-only calls stay on the ClientSDK because they don't use a SitecoreAI token: `application.context`, `pages.context`, `site.context`, the `pages.content.fieldsUpdated` subscription, `getPageHTML` and `navigateToExternalUrl`.
+
+### 7.4 Contingency: custom authorization for the whole app
+
+**Cloud Portal** (only once the plan is agreed):
+
+1. Recommended: first create a **separate test custom app** in App Studio, pointing at a Vercel preview deployment, with the same two extension points and the same APIs. Then the production app's authorization never changes until the flow is proven.
+2. On the test app, create **SPA** client credentials. Fill in callback, logout, origin and web origin URLs for the preview URL and for the local custom DNS (e.g. `https://agentready.local:3000`).
+3. Activate and install it, then note the organization ID and tenant ID.
+4. Once validated, do the same on the production app with the production URL.
+
+**Code** (behind a switch, so it can ship before the credentials exist):
+
+- `@auth0/auth0-react` with the template's provider, and `withAuthenticationRequired` only when `NEXT_PUBLIC_AUTH0_CLIENT_ID` is set. Never in `?demo=1`.
+- One `src/lib/xmc/` module with the four operations above. It has two implementations: built-in (today's calls) and custom. The custom one sends the bearer token to a small server route that allows only these four operations and calls `experimental_createXMCClient`. It never logs the token. The 7 call sites in `usePageFields.ts`, `useSitePages.ts` and `MetaGenerator.tsx` move to this module.
+- The server route follows Sitecore's template. Calling the experimental client straight from the browser would skip a hop, but whether CORS allows that from our origin is unverified.
+- Env vars: the eight `NEXT_PUBLIC_*` values above, per environment in Vercel.
+- `next.config.ts`: add the template's `frame-ancestors` CSP, and keep `Authorization` out of the `/api/*` wildcard CORS.
+- Tests for the module (both implementations) and the route's allow-list. Update `*-TECHNICAL.md` too.
+
+**Effort:**
+
+| Step | Estimate |
+|---|---|
+| Test app setup in Cloud Portal (user) | ~30 min |
+| Spike on the test app: auth provider and one read in both extension points, Chrome and Edge, plus Safari if used | ~1 day |
+| Full migration behind the switch: module, route, 7 call sites, demo exemption, tests, docs | ~1.5–2 days |
+| Production cutover with the user: credentials, env vars, redeploy, smoke test both extension points | ~1–2 h |
+| **Total** | **~3 working days** |
+
+**What could break** (all **Open** until the spike):
+
+1. **Login inside the iframe.** The template's default is a redirect to `auth.sitecorecloud.io` inside the extension iframe. If that page refuses to be framed, we'd need `loginWithPopup`, which needs the app's pop-up permission.
+2. **Silent token renewal.** Without refresh tokens, auth0-react renews through a hidden iframe to `auth.sitecorecloud.io`, which needs third-party cookies. Safari, Firefox strict mode and Chrome with third-party cookies blocked would then log users out or loop. The template asks for `offline_access`, so `useRefreshTokens` should work, but only if Sitecore's Auth0 client has refresh-token rotation on.
+3. **Permissions change.** Built-in calls run as a machine user with admin rights. Custom calls run as the author. Authors without write access to an item would get a 403 on Populate, and reads follow item security.
+4. **The panel during cutover.** If built-in calls stop once credentials exist (7.2, not documented), the panel breaks between creating the credentials and deploying the custom flow. The test app avoids this for validation. For production, deploy the switch first, then create the credentials and set the env vars in one sitting.
+5. **Rollback.** Whether revoking the credentials restores built-in authorization isn't documented.
+6. **Demo mode.** `withAuthenticationRequired` would force a login on a standalone `?demo=1` tab unless demo mode is exempt.
+7. **Experimental API.** It's labelled experimental and may change between SDK versions. Pin the version.
+8. **Tenant ID per install.** It's only known after installation, so a reinstall means updating the env var.
+
+### 7.5 `?demo=1` as the Symposium fallback
+
+**From code reading** of `main` before the hardening at the end of this section (not run in a browser, see the check below):
+
+- Both routes swap their *displayed* data for fixtures. The live hooks still mount: `useMarketplaceClient`, `useSitePages` and `usePageFields`.
+- **Standalone tab (outside Sitecore): no SitecoreAI calls.** The ClientSDK handshake has no host to talk to, so `client` stays null and every live hook returns before its first `xmc.*`, `application.context` or `site.context` call. The SDK only uses `postMessage`, so nothing goes to `*.sitecorecloud.io`.
+- **Inside Sitecore with `?demo=1` (if the extension URL carried it): SitecoreAI calls still run.** The live hooks run behind the fixture display. In the panel, Populate would write the generated value to the **real** open page, because `writeContext` comes from the live hook.
+- Other network calls in demo mode, all to the app's own `/api` routes:
+  - Panel auto-scan: `preview-fetch` of the fixture URL `https://example.com/blog/…`, then `ai-check` (Claude, paid) if that page returns main text. The result is cached in localStorage after the first run, at about $0.01 per browser.
+  - `robots-check` and `footer-check` for `example.com`: free.
+  - Only on click: Generate meta and Citation forecast (Claude, paid), and PSI.
+- Check to run before the Symposium (free, about 5 minutes): open `/pages-contextpanel-extension?demo=1` and `/dashboard-widget-extension?demo=1` in a normal tab. In DevTools > Network, filter by `sitecorecloud` and confirm there are no requests. Then filter by `/api/` and note which calls appear.
+- **Hardening done on this branch:** demo mode no longer initialises the ClientSDK (`useMarketplaceClient` checks `isDemoUrl()`), and the panel no longer auto-scans the fixture URL. Demo mode now makes no Sitecore calls and no paid calls on load, wherever it runs. The browser check above still applies after deploy.
+
+### 7.6 Sources
+
+- [App architecture and authorization options](https://doc.sitecore.com/mp/en/developers/marketplace/app-architecture-and-authorization-options.html)
+- [Choosing the right architecture and authorization](https://doc.sitecore.com/mp/en/developers/marketplace/choosing-the-right-architecture-and-authorization.html)
+- [Create client credentials](https://doc.sitecore.com/mp/en/developers/marketplace/create-client-credentials.html)
+- [Configure and activate a custom app](https://doc.sitecore.com/mp/en/developers/marketplace/configure-and-activate-a-custom-app.html)
+- [Built-in authorization](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/built-in-authorization.html)
+- [Quick start (CLI)](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/quick-start--cli-.html)
+- [Changelog: full-stack apps and granular access control (2025-10-23)](https://developers.sitecore.com/changelog/marketplace/23102025/introducing-full-stack-marketplace-apps-and-granular-app-access-control)
+- [marketplace-sdk docs/experimental-xmc.md](https://github.com/Sitecore/marketplace-sdk/blob/main/docs/experimental-xmc.md)
+- Templates: [quickstart-with-custom-auth.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-custom-auth.json), [quickstart-with-full-stack-xmc.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-full-stack-xmc.json)
+- SDK bundles: `node_modules/@sitecore-marketplace-sdk/xmc/dist/index.esm.js` (`experimental_XMC`, `createCustomClients`) and `node_modules/@sitecore-marketplace-sdk/client/dist/index.esm.js` (`_fetch`)
