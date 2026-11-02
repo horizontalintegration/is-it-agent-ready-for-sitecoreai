@@ -15,7 +15,7 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 | **Understand** | Do they understand it? | Clear headings, a good title and summary, and labels that say what the content is |
 | **Trust** | Will they trust and cite it? | Original, current, well-written content from a named source |
 
-The panel and the dashboard use the **same four categories and the same scoring**, so a page shows the same score in both places.
+The panel and the dashboard use the **same four categories and the same scoring**. The difference is what they look at: the panel scores **the page as you're editing it**, and the dashboard scores **the published page**. So when you've made changes you haven't published yet, the two scores can differ, and the panel tells you so.
 
 ---
 
@@ -32,6 +32,19 @@ The panel and the dashboard use the **same four categories and the same scoring*
 - Some checks need a scan first (the AI originality check, and page speed). Until they've run they show **"not checked"** and don't count either way.
 - The score is **green (Agent-ready) at 80 or more**, **amber (Almost there) from 60 to 79**, and **red (Not ready) below 60**. The dashboard uses the same thresholds.
 - Next to each fix, **"+N pts"** shows how much the score would go up if you fixed it.
+
+---
+
+## Your draft or the published page?
+
+The panel reads the page **as it is in Page Builder right now**, including edits you haven't saved or published. Change a heading and the score updates by itself a moment later. There's no need to re-scan.
+
+- **Content checks** (headings, paragraphs, images, links, FAQ answers, and the AI checks) read **your draft**.
+- **Behind-the-scenes checks** (the title tag, canonical, metadata and structured data) read **the published page**, because they live in a part of the page the editor doesn't show. They catch up when you publish.
+- Open a check to see where it looked: a small **Draft** or **Live** label sits at the top.
+- When your draft's text differs from the published page, a blue **"Draft differs from live"** note appears above the checks.
+- The AI checks don't re-run on every edit. When you've changed the text since they ran, they say so and offer **Re-run**.
+- If the editor can't share the draft, the panel falls back to the published page, as before, and the labels say **Live**.
 
 ---
 
@@ -54,6 +67,13 @@ The panel and the dashboard use the **same four categories and the same scoring*
 ---
 
 ## 🔵 Read — Can they read it?
+
+### Content is there without JavaScript — Essential, Page Builder panel only
+**What it checks:** Whether the text on your page is in the page's HTML from the start, or only appears after code runs in the visitor's browser. The panel compares what the editor shows with what the server sends, and lists the components whose text only appears in the browser (for example, a "Related articles" list that loads after the page opens).
+
+**Why it matters:** Most AI crawlers don't run that code. They read the HTML the server sends, so anything added later in the browser is invisible to them, however good it is. (A fix for your developer: render that content on the server.)
+
+**Good to know:** messages like "No articles found" that a listing shows only in the editor aren't counted. New text you haven't published yet can also show up here until you publish. The dashboard can't see your draft, so it doesn't score this check.
 
 ### Page structure is machine-readable — Recommended
 **What it checks:** Whether the page uses the standard structural labels in its code (`main`, `article`, `nav`, `header`) that mark out the key regions, and whether buttons and icon links have a text label.
@@ -199,7 +219,7 @@ More checks arrive in later releases: whether content shows up without JavaScrip
 
 Below the checks, the panel can write the **meta title, meta description, Open Graph title and Open Graph description** for you. Click **Generate** on a field, review the suggestion, then click **Populate field** to write it into the page in Sitecore.
 
-- Suggestions are written **from the page's main text**, so they describe what the page actually says. The button waits until the page scan has read the text.
+- Suggestions are written **from the page's main text, as in your draft**, so they describe what the page actually says, unpublished edits included. The button waits until the page scan has read the text.
 - They follow your **brand voice document**: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.
 - Suggestions **stay within the character limit** shown next to them (60 for the meta title, 155 for the meta description, 70 and 200 for the Open Graph fields). If the first draft runs long, the tool asks the AI for a shorter one. In the rare case that it's still over, the count turns amber so you can trim it before populating.
 - Nothing is saved until you click **Populate field**.
@@ -212,4 +232,6 @@ Below the checks, the panel can write the **meta title, meta description, Open G
 - **"Fix the essentials first."** Essential checks carry most of the score, and "+N pts" shows exactly what each fix is worth.
 - **"It checks the real page."** Schema checks look at what's actually on the page, and hand you the code when something's missing.
 - **"Fair by design."** Checks that don't apply are skipped, not failed.
-- **"One score everywhere."** The panel and the dashboard show the same score for the same page.
+- **"Score as you write."** Edit a heading and the score updates by itself, before you publish.
+- **"It sees what AI crawlers see."** The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.
+- **"One set of rules everywhere."** The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.

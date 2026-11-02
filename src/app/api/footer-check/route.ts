@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractFooterTrust } from "@/lib/server/extract-html";
+import { extractFooterTrust } from "@/lib/html/extract-html";
 import { safeFetch, SafeFetchError } from "@/lib/server/safe-fetch";
 import type { FooterTrust } from "@/lib/rule-engine/types";
 

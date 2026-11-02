@@ -20,6 +20,8 @@ interface CategorySectionProps {
   isAiScanning?: boolean;
   /** True only during an individual PSI scan. */
   isPsiScanning?: boolean;
+  /** The AI result judged an earlier version of the text. */
+  aiStale?: boolean;
   onAiScan?: () => void;
   onPsiScan?: () => void;
 }
@@ -41,6 +43,7 @@ export function CategorySection({
   isScanning = false,
   isAiScanning = false,
   isPsiScanning = false,
+  aiStale = false,
   onAiScan,
   onPsiScan,
 }: CategorySectionProps) {
@@ -82,7 +85,13 @@ export function CategorySection({
       </div>
       <div className="bg-white border border-gray-100 rounded-lg mx-3">
         {counted.map((r) => (
-          <RuleRow key={r.id} result={r} scanning={scanningFor(r)} onScan={onScanFor(r)} />
+          <RuleRow
+            key={r.id}
+            result={r}
+            scanning={scanningFor(r)}
+            stale={aiStale && r.runner === "ai"}
+            onScan={onScanFor(r)}
+          />
         ))}
         {notApplicable.length > 0 && (
           <>

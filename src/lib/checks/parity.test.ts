@@ -1,12 +1,14 @@
-// The panel and the dashboard must show the same score for the same page
-// (Phase 3 acceptance). Both read the same Sitecore fields by the same names
-// and the same live HTML, and go through the same context builder.
+// The panel and the dashboard give the same score for the same inputs (Phase 3
+// acceptance). Both read the same Sitecore fields by the same names and the
+// same live HTML, and go through the same context builder. Since Phase 4 the
+// panel also scores its Page Builder draft, so its score follows unpublished
+// edits and client-rendered content, and can differ from the dashboard's.
 
 import { describe, expect, it } from "vitest";
 import { buildPageContext, pageFieldsFromFieldMap, pageFieldsFromValues, SCORING_FIELD_NAMES } from "./context";
 import { runPageChecks } from "./engine";
 import { summarisePageReport } from "./adapters";
-import { makeTestPageData, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
+import { makeTestDraft, makeTestPageData, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
 import { labelForPct } from "@/lib/score-thresholds";
 
 // Raw values as Sitecore returns them (untrimmed, empty strings).
@@ -56,11 +58,20 @@ describe("panel vs dashboard", () => {
     expect(dashboard.label).toBe(labelForPct(panel.score!));
   });
 
-  it("show the same score for the demo page in both demo views", () => {
+  it("show the same score for the demo page on live HTML", () => {
     const data = makeTestPageData();
     const panel = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml }));
     const row = makeTestSitePages().find((r) => r.route === data.route)!;
     expect(row.score?.score).toBe(panel.score);
+  });
+
+  it("differ when the panel scores a draft (plan section 7): the dashboard has none", () => {
+    const data = makeTestPageData();
+    const live = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml }));
+    const draft = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml, draft: makeTestDraft() }));
+    expect(live.outcomes.find((o) => o.check.ref === "P3")!.result.state).toBe("not-checked");
+    expect(draft.outcomes.find((o) => o.check.ref === "P3")!.result.state).toBe("scored");
+    expect(draft.score).not.toBe(live.score);
   });
 });
 

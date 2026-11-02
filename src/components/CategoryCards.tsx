@@ -9,11 +9,15 @@ interface CategoryCardsProps {
   categories: CategoryAggregate[];
 }
 
+// Checks the dashboard can't run: P3 needs the Page Builder draft and P7 runs
+// PageSpeed on demand. They count only in the panel.
+const PANEL_ONLY = new Set(["read.no-js-content", "read.speed"]);
+
 // "What's included" comes straight from the check registry, so it can't drift
-// from what's scored. Bonus checks are marked.
+// from what's scored. Bonus and panel-only checks are marked.
 function includes(category: Category): string[] {
-  return PAGE_CHECKS.filter((c) => c.category === category).map(
-    (c) => (c.tier === "bonus" ? `${c.title} (bonus)` : c.title),
+  return PAGE_CHECKS.filter((c) => c.category === category).map((c) =>
+    c.tier === "bonus" ? `${c.title} (bonus)` : PANEL_ONLY.has(c.id) ? `${c.title} (Page Builder panel only)` : c.title,
   );
 }
 

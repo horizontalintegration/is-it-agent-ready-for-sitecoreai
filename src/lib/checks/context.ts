@@ -1,11 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Builds the check contexts. The panel and the dashboard both go through these
 // functions with the same Sitecore fields and the same live HTML, so the same
-// page gets the same score in both.
+// inputs give the same score in both. The panel also passes its Page Builder
+// draft: the body checks then read the draft, so its score follows unpublished
+// edits and can differ from the dashboard's (plan section 7).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AiResults, OrganizationInfo, ParsedHtml, PsiResult } from "@/lib/rule-engine/types";
-import type { PageContext, PageFields } from "./types";
+import type { DraftHtml, PageContext, PageFields } from "./types";
 
 // Only pages whose Sitecore template name matches this are treated as articles
 // (Article JSON-LD expected, author check applies). Case-insensitive compare.
@@ -61,19 +63,26 @@ export interface PageInput {
   route: string | null;
   templateName: string | null;
   fields: PageFields | null;
+  /** Live HTML. */
   html: ParsedHtml | null;
+  /** The panel's Page Builder draft. The dashboard has none and leaves it out. */
+  draft?: DraftHtml | null;
   ai: AiResults | null;
   psi: PsiResult | null;
   organization: OrganizationInfo;
 }
 
 export function buildPageContext(input: PageInput): PageContext {
+  const draft = input.draft ?? null;
   return {
     pageUrl: input.pageUrl,
     isHomePage: isHomeRoute(input.route),
     templateName: clean(input.templateName),
     fields: input.fields,
     html: input.html,
+    draft,
+    body: draft ? draft.html : input.html,
+    bodySource: draft ? "draft" : "live",
     ai: input.ai,
     psi: input.psi,
     organization: input.organization,

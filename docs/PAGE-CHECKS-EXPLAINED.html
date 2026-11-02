@@ -63,7 +63,7 @@
 <td style="text-align:left">Original, current, well-written content from a named source</td>
 </tr>
 </tbody></table>
-<p>The panel and the dashboard use the <strong>same four categories and the same scoring</strong>, so a page shows the same score in both places.</p>
+<p>The panel and the dashboard use the <strong>same four categories and the same scoring</strong>. The difference is what they look at: the panel scores <strong>the page as you're editing it</strong>, and the dashboard scores <strong>the published page</strong>. So when you've made changes you haven't published yet, the two scores can differ, and the panel tells you so.</p>
 <hr/>
 <h2>How scoring works (the 30-second version)</h2>
 <ul>
@@ -82,6 +82,17 @@
 <li>Next to each fix, <strong>"+N pts"</strong> shows how much the score would go up if you fixed it.</li>
 </ul>
 <hr/>
+<h2>Your draft or the published page?</h2>
+<p>The panel reads the page <strong>as it is in Page Builder right now</strong>, including edits you haven't saved or published. Change a heading and the score updates by itself a moment later. There's no need to re-scan.</p>
+<ul>
+<li><strong>Content checks</strong> (headings, paragraphs, images, links, FAQ answers, and the AI checks) read <strong>your draft</strong>.</li>
+<li><strong>Behind-the-scenes checks</strong> (the title tag, canonical, metadata and structured data) read <strong>the published page</strong>, because they live in a part of the page the editor doesn't show. They catch up when you publish.</li>
+<li>Open a check to see where it looked: a small <strong>Draft</strong> or <strong>Live</strong> label sits at the top.</li>
+<li>When your draft's text differs from the published page, a blue <strong>"Draft differs from live"</strong> note appears above the checks.</li>
+<li>The AI checks don't re-run on every edit. When you've changed the text since they ran, they say so and offer <strong>Re-run</strong>.</li>
+<li>If the editor can't share the draft, the panel falls back to the published page, as before, and the labels say <strong>Live</strong>.</li>
+</ul>
+<hr/>
 <h2>🚦 The gate (runs first)</h2>
 <h3>Is this page allowed to be found?</h3>
 <p><strong>What it checks:</strong> Whether the page is deliberately hidden from search engines and AI — the "noindex" setting in Sitecore, or a "noindex" or "nosnippet" tag on the page.</p>
@@ -93,6 +104,10 @@
 <p><strong>Why it matters:</strong> The same content is often reachable at several addresses. Without a canonical tag, search engines and AI treat them as duplicates and split the credit between them, or cite the wrong one. (Usually set in the page template by a developer.)</p>
 <hr/>
 <h2>🔵 Read — Can they read it?</h2>
+<h3>Content is there without JavaScript — Essential, Page Builder panel only</h3>
+<p><strong>What it checks:</strong> Whether the text on your page is in the page's HTML from the start, or only appears after code runs in the visitor's browser. The panel compares what the editor shows with what the server sends, and lists the components whose text only appears in the browser (for example, a "Related articles" list that loads after the page opens).</p>
+<p><strong>Why it matters:</strong> Most AI crawlers don't run that code. They read the HTML the server sends, so anything added later in the browser is invisible to them, however good it is. (A fix for your developer: render that content on the server.)</p>
+<p><strong>Good to know:</strong> messages like "No articles found" that a listing shows only in the editor aren't counted. New text you haven't published yet can also show up here until you publish. The dashboard can't see your draft, so it doesn't score this check.</p>
 <h3>Page structure is machine-readable — Recommended</h3>
 <p><strong>What it checks:</strong> Whether the page uses the standard structural labels in its code (<code>main</code>, <code>article</code>, <code>nav</code>, <code>header</code>) that mark out the key regions, and whether buttons and icon links have a text label.</p>
 <p><strong>Why it matters:</strong> These labels are like room signs in a building: they help AI agents go straight to the real content and skip menus and footers.</p>
@@ -281,7 +296,7 @@
 <h2>Meta &amp; social generator</h2>
 <p>Below the checks, the panel can write the <strong>meta title, meta description, Open Graph title and Open Graph description</strong> for you. Click <strong>Generate</strong> on a field, review the suggestion, then click <strong>Populate field</strong> to write it into the page in Sitecore.</p>
 <ul>
-<li>Suggestions are written <strong>from the page's main text</strong>, so they describe what the page actually says. The button waits until the page scan has read the text.</li>
+<li>Suggestions are written <strong>from the page's main text, as in your draft</strong>, so they describe what the page actually says, unpublished edits included. The button waits until the page scan has read the text.</li>
 <li>They follow your <strong>brand voice document</strong>: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.</li>
 <li>Suggestions <strong>stay within the character limit</strong> shown next to them (60 for the meta title, 155 for the meta description, 70 and 200 for the Open Graph fields). If the first draft runs long, the tool asks the AI for a shorter one. In the rare case that it's still over, the count turns amber so you can trim it before populating.</li>
 <li>Nothing is saved until you click <strong>Populate field</strong>.</li>
@@ -293,7 +308,9 @@
 <li><strong>"Fix the essentials first."</strong> Essential checks carry most of the score, and "+N pts" shows exactly what each fix is worth.</li>
 <li><strong>"It checks the real page."</strong> Schema checks look at what's actually on the page, and hand you the code when something's missing.</li>
 <li><strong>"Fair by design."</strong> Checks that don't apply are skipped, not failed.</li>
-<li><strong>"One score everywhere."</strong> The panel and the dashboard show the same score for the same page.</li>
+<li><strong>"Score as you write."</strong> Edit a heading and the score updates by itself, before you publish.</li>
+<li><strong>"It sees what AI crawlers see."</strong> The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.</li>
+<li><strong>"One set of rules everywhere."</strong> The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.</li>
 </ul>
 </body>
 </html>

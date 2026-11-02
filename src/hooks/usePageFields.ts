@@ -40,6 +40,8 @@ interface UsePageFieldsResult {
   editingToken: string;
   isLoading: boolean;
   writeContext: PageWriteContext;
+  /** Goes up on every `pages.content.fieldsUpdated`, so the draft HTML can be re-read. */
+  contentVersion: number;
 }
 
 type SdkPageInfo = {
@@ -351,6 +353,7 @@ export function usePageFields(
   const [siteName, setSiteName] = useState<string>("");
   const [editingToken, setEditingToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [contentVersion, setContentVersion] = useState(0);
   const [writeContext, setWriteContext] = useState<PageWriteContext>({
     pageId: null,
     language: "en",
@@ -597,6 +600,7 @@ export function usePageFields(
     const onFieldsUpdated = () => {
       // Notification only — re-fetch from authoring API to get authoritative values.
       void refetchFields();
+      setContentVersion((v) => v + 1);
     };
 
     (async () => {
@@ -661,7 +665,7 @@ export function usePageFields(
   }, [client, isInitialized, refetchFields, refetchFaqItems, rebuildFields]);
 
   return useMemo(
-    () => ({ fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext }),
-    [fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext],
+    () => ({ fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion }),
+    [fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion],
   );
 }

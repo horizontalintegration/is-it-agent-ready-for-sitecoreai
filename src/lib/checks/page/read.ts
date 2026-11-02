@@ -1,8 +1,103 @@
 // Page checks — Read: can they read it?
-// P3 (content without JS), P5 and P6 (Markdown) come in Phases 4 and 7.
+// P5 and P6 (Markdown) come in Phase 7.
 
-import { htmlNotScanned, notChecked, scored } from "../result";
+import { wordCount } from "@/lib/rule-engine/helpers";
+import type { BodyBlock } from "@/lib/rule-engine/types";
+import { compareBlocks } from "../draft-diff";
+import { htmlNotScanned, notApplicable, notChecked, scored } from "../result";
 import type { CheckDef, PageContext } from "../types";
+
+/** "authorable/articles/relatedarticles" → "relatedarticles". */
+const componentName = (c: string | null) => (c ? (c.split("/").pop() ?? c) : "Other content");
+
+const excerpt = (s: string, max = 70) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** One flagged line per component: its client-only word count and the first block. */
+function byComponent(blocks: BodyBlock[]): string[] {
+  const groups = new Map<string, BodyBlock[]>();
+  for (const b of blocks) {
+    const key = componentName(b.component);
+    groups.set(key, [...(groups.get(key) ?? []), b]);
+  }
+  return [...groups].map(([name, list]) => {
+    const words = list.reduce((s, b) => s + wordCount(b.text), 0);
+    return `${name}: ${words} words, e.g. "${excerpt(list[0].text)}"`;
+  });
+}
+
+/**
+ * P3 — new. Needs the Page Builder draft, which includes content rendered by
+ * JavaScript, and the server HTML, which is what crawlers that don't run
+ * JavaScript get. Panel only: the dashboard has no draft, so it's not checked there.
+ */
+export const noJsContent: CheckDef<PageContext> = {
+  id: "read.no-js-content",
+  ref: "P3",
+  title: "Content is there without JavaScript",
+  why: "Most AI crawlers don't run JavaScript, so content rendered in the browser is invisible to them.",
+  category: "read",
+  tier: "essential",
+  scope: "page",
+  sources: ["draft", "live"],
+  owner: "developer",
+  fix: "send-to-developer",
+  applies: () => true,
+  run({ draft, html }) {
+    if (!draft) {
+      return notChecked(
+        "Page Builder only",
+        "Checked in the Page Builder panel, which compares what the editor renders with the page's server HTML.",
+      );
+    }
+    if (!html) {
+      return notChecked(
+        "Published page not fetched",
+        "This compares the draft with the published page's server HTML. If the page isn't published yet, publish it and re-scan.",
+      );
+    }
+
+    const diff = compareBlocks(draft.html.bodyBlocks, html.bodyBlocks);
+    const total = diff.serverWords + diff.clientOnlyWords;
+    if (total === 0) return notApplicable("No text", "The page has no text to compare.");
+
+    const share = diff.serverWords / total;
+    const credit = share >= 0.95 ? 1 : share >= 0.8 ? 0.5 : 0;
+    const pct = Math.floor(share * 100);
+
+    const details = [
+      "Full credit when at least 95% of the text is in the server HTML, half at 80%.",
+      "Only blocks of 4+ words are judged; dates, buttons and labels are skipped.",
+    ];
+    if (diff.edited.length > 0) {
+      const n = diff.edited.length;
+      details.push(`${n} block${n > 1 ? "s" : ""} edited in the draft ${n > 1 ? "count" : "counts"} as server content.`);
+    }
+    if (diff.clientOnly.length > 0) {
+      details.push("Text added in the draft and not published yet also shows up here until it's published.");
+    }
+    for (const msg of draft.emptyStates) {
+      details.push(`Couldn't render in the editor, not counted: "${msg}". Check this listing on the published page.`);
+    }
+
+    return scored(
+      credit,
+      diff.clientOnlyWords === 0
+        ? "All text is in the server HTML"
+        : `${diff.clientOnlyWords} of ${total} words need JavaScript (${pct}% in the server HTML)`,
+      diff.clientOnlyWords === 0
+        ? "Agents that don't run JavaScript see all of this page's content."
+        : `${diff.clientOnlyWords} words appear only after JavaScript runs in the browser. Crawlers that don't run JavaScript miss them.`,
+      {
+        fixSuggestion:
+          diff.clientOnlyWords === 0
+            ? ""
+            : "Render this content on the server (SSR or SSG), so it's in the HTML. For listings, fetch the data at build or request time, not in the browser.",
+        details,
+        flaggedItems: diff.clientOnly.length > 0 ? byComponent(diff.clientOnly) : undefined,
+      },
+    );
+  },
+};
 
 /** P4 — was cq-agentic-readiness */
 export const landmarks: CheckDef<PageContext> = {
@@ -13,11 +108,11 @@ export const landmarks: CheckDef<PageContext> = {
   category: "read",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "developer",
   fix: "send-to-developer",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
 
     const items = [
@@ -111,4 +206,4 @@ export const speed: CheckDef<PageContext> = {
   },
 };
 
-export const READ_PAGE_CHECKS = [landmarks, speed];
+export const READ_PAGE_CHECKS = [noJsContent, landmarks, speed];

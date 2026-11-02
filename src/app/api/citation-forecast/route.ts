@@ -9,7 +9,7 @@ import {
   hasApiKey,
   structuredCall,
 } from "@/lib/server/anthropic";
-import { extractParsedHtml } from "@/lib/server/extract-html";
+import { extractParsedHtml } from "@/lib/html/extract-html";
 import { safeFetch, SafeFetchError, validateUrl } from "@/lib/server/safe-fetch";
 import { QUESTION_REGEX, wordCount } from "@/lib/rule-engine/helpers";
 import { typesOnPage } from "@/lib/checks/json-ld";

@@ -165,10 +165,10 @@ export const depth: CheckDef<PageContext> = {
   category: "trust",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     const words = html.paragraphs.reduce((s, p) => s + wordCount(p), 0);
     const credit = words >= 800 ? 1 : words >= 400 ? 2 / 3 : words >= 150 ? 1 / 3 : 0;
@@ -194,10 +194,10 @@ export const anchorText: CheckDef<PageContext> = {
   category: "trust",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     if (html.links.length === 0) return notApplicable("No links", "No links in the page content to check.");
 

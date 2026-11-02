@@ -70,6 +70,13 @@ export interface QaPair {
   answer: string; // plain text
 }
 
+/** One block of rendered text, with the component it sits in. */
+export interface BodyBlock {
+  text: string;
+  /** Nearest `data-component` value (e.g. "authorable/articles/relatedarticles"), or null. */
+  component: string | null;
+}
+
 export interface ParsedHtml {
   // <title> text and <meta name="description"> content
   title: string | null;
@@ -96,6 +103,10 @@ export interface ParsedHtml {
   // All readable text of <main> (or <body> without header/nav/footer), one
   // block per line, entities decoded. Sent to the AI checks as the page body.
   mainText: string;
+
+  // Every text block in <body>, header, nav and footer included. P3 compares
+  // the draft's blocks with the live page's to find client-rendered content.
+  bodyBlocks: BodyBlock[];
 
   // <html lang>
   htmlLang: string | null;
