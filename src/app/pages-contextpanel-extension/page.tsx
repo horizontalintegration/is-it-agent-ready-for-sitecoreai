@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { mdiRefresh, mdiRobotOutline } from "@mdi/js";
+import { mdiRefresh } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { usePageFields } from "@/hooks/usePageFields";
 import { usePageHtml } from "@/hooks/usePageHtml";
 import { useScan } from "@/hooks/useScan";
 import { useAgentAccess } from "@/hooks/useAgentAccess";
-import { useDemoMode } from "@/hooks/useDemoMode";
+import { useDemoMode, useDemoServesMarkdown } from "@/hooks/useDemoMode";
+import { useMarkdownCheck } from "@/hooks/useMarkdownCheck";
 import { useScanDelta } from "@/hooks/useScoreHistory";
-import { DEMO_PREVIOUS_PAGE_SCORE, makeTestAgentAccess, makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import { DEMO_PREVIOUS_PAGE_SCORE, makeTestAgentAccess, makeTestDraft, makeTestMarkdownCheck, makeTestPageData } from "@/lib/rule-engine/test-fixture";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, isHomeRoute, type PageInput } from "@/lib/checks/context";
 import { draftDiffersFromLive } from "@/lib/checks/draft-diff";
@@ -19,7 +20,7 @@ import { Icon } from "@/lib/icon";
 import { cn } from "@/lib/utils";
 import { AppMark } from "@/components/shared/AppMark";
 import { Chip } from "@/components/shared/Chips";
-import { EmptyState } from "@/components/shared/EmptyState";
+import { AgentViewTab } from "@/components/panel/AgentViewTab";
 import { ScoreTab } from "@/components/panel/ScoreTab";
 import { ScanNote } from "@/components/panel/ScanNote";
 import { MetaGenerator } from "@/components/MetaGenerator";
@@ -101,6 +102,15 @@ export default function PagesContextPanel() {
     draftStatus: pageHtml.status,
   });
 
+  // P5/P6: the published page requested as an agent and as a browser. Demo
+  // mode uses a fixture: a page without Markdown, or with it for `&md=1`.
+  const demoServesMarkdown = useDemoServesMarkdown();
+  const demoMarkdown = useMemo(
+    () => (fixture ? makeTestMarkdownCheck({ serves: demoServesMarkdown }) : null),
+    [fixture, demoServesMarkdown],
+  );
+  const markdownCheck = useMarkdownCheck(fixture ? "" : pageUrl, demoMarkdown);
+
   // The page body for the meta generator: the same text the AI checks judge.
   const liveHtml = fixture ? fixture.parsedHtml : scan.parsedHtml;
   const bodyText = fixture ? (draft?.html ?? liveHtml)?.mainText ?? "" : scan.bodyText;
@@ -111,7 +121,7 @@ export default function PagesContextPanel() {
   const pageInput: PageInput = useMemo(
     () =>
       fixture
-        ? { ...fixture, html: fixture.parsedHtml, draft: fixtureDraft }
+        ? { ...fixture, html: fixture.parsedHtml, draft: fixtureDraft, markdown: demoMarkdown }
         : {
             pageUrl,
             route,
@@ -122,9 +132,10 @@ export default function PagesContextPanel() {
             draftUnavailable: pageHtml.status === "unavailable",
             ai: scan.ai,
             psi: scan.psi,
+            markdown: markdownCheck.data,
             organization,
           },
-    [fixture, fixtureDraft, pageUrl, route, templateName, scoringFields, scan.parsedHtml, pageHtml.draft, pageHtml.status, scan.ai, scan.psi, organization],
+    [fixture, fixtureDraft, demoMarkdown, pageUrl, route, templateName, scoringFields, scan.parsedHtml, pageHtml.draft, pageHtml.status, scan.ai, scan.psi, markdownCheck.data, organization],
   );
 
   // "Draft differs from live": compares main text, ignoring client-rendered
@@ -134,12 +145,15 @@ export default function PagesContextPanel() {
     [draft, liveHtml],
   );
 
-  // Rows wait ("Scanning…") for the first draft read as well as the live fetch.
-  const isScanning = scan.isScanning || (pageHtml.status === "loading" && !pageHtml.draft);
+  // Rows wait ("Scanning…") for the first draft read as well as the live
+  // fetch, and for the Markdown requests (P5 is Essential).
+  const isScanning =
+    scan.isScanning || (pageHtml.status === "loading" && !pageHtml.draft) || markdownCheck.status === "loading";
 
   const rescan = () => {
     pageHtml.refresh();
     scan.runScan();
+    markdownCheck.refresh();
   };
 
   const report = useMemo(() => runPageChecks(buildPageContext(pageInput)), [pageInput]);
@@ -152,11 +166,12 @@ export default function PagesContextPanel() {
     console.info(`[score] panel (draft): ${report.score} · live only, as the dashboard scores it: ${live.score}`);
   }, [pageInput, report.score]);
   const rows = useMemo(() => rowsByCategory(report.outcomes), [report]);
+  const p5Row = useMemo(() => rows.read.find((r) => r.id === "read.markdown-page") ?? null, [rows]);
 
   // Site checks, from the same agent-access scan as the dashboard (cached an
   // hour per domain, so page changes don't rescan the site). None is part of
   // this page's score.
-  const demoAccess = useMemo(() => (fixture ? makeTestAgentAccess() : null), [fixture]);
+  const demoAccess = useMemo(() => (fixture ? makeTestAgentAccess({ servesMarkdown: demoServesMarkdown }) : null), [fixture, demoServesMarkdown]);
   const siteAccess = useAgentAccess(fixture ? "" : siteDomain, demoAccess);
   const isHomePage = isHomeRoute(pageInput.route);
   const siteReport = useMemo(
@@ -287,9 +302,20 @@ export default function PagesContextPanel() {
           </TabsContent>
 
           <TabsContent value="agent-view" forceMount className={tabContent}>
-            <EmptyState icon={mdiRobotOutline} title="See your page the way an AI agent does">
-              Coming soon: the Markdown an agent receives from this page, how many tokens it saves, and how to serve it.
-            </EmptyState>
+            {showSkeleton ? (
+              <SkeletonRows />
+            ) : (
+              <AgentViewTab
+                data={pageInput.markdown ?? null}
+                status={markdownCheck.status}
+                p5={p5Row}
+                pageUrl={effectivePageUrl}
+                draftSource={draft?.source ?? null}
+                body={draft?.html ?? liveHtml}
+                live={liveHtml}
+                fields={pageInput.fields}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="assist" forceMount className={tabContent}>

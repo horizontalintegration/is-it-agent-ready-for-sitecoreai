@@ -129,7 +129,7 @@ export function usePageHtml({ client, pageKey, contentVersion, enabled }: UsePag
         clean.emptyStates.length > 0 ? `empty states: ${clean.emptyStates.join(" | ")}` : "",
       );
       hasDraftRef.current = true;
-      setDraft({ html, emptyStates: clean.emptyStates });
+      setDraft({ html, source: clean.html, emptyStates: clean.emptyStates });
       setCapturedAt(new Date());
       setStatus("ready");
     } else if (hasDraftRef.current) {

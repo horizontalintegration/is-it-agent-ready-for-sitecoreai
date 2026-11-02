@@ -52,6 +52,7 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
   const delta = history.length >= 2 ? history[history.length - 1] - history[history.length - 2] : null;
   const shown = showAll ? issues : issues.slice(0, FIX_FIRST_LIMIT);
   const sentence = useMemo(() => heroSentence(aggregate, issues, scanning), [aggregate, issues, scanning]);
+  const notServed = aggregate.markdown.checked - aggregate.markdown.served;
 
   return (
     <div className="mx-auto flex max-w-[1320px] flex-col gap-5 p-4 sm:p-6">
@@ -123,7 +124,12 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
               </div>
               <Bar pct={pct} color={meta.color} height={8} />
               <p className="text-md text-subtle-text">{meta.question}</p>
-              {c.applicableCount > 0 && (
+              {c.key === "read" && notServed > 0 ? (
+                // As in the mockup: Markdown is the Read issue that affects the most pages.
+                <p className="text-sm font-semibold text-danger-fg">
+                  {notServed} of {plural(aggregate.markdown.checked, "page")} not served as Markdown
+                </p>
+              ) : c.applicableCount > 0 && (
                 <p className={c.failingCount > 0 ? "text-sm font-semibold text-warning-fg" : "text-sm font-semibold text-success-fg"}>
                   {c.failingCount > 0 ? `${plural(c.failingCount, "page")} need${c.failingCount === 1 ? "s" : ""} work` : "Every scanned page passes"}
                 </p>

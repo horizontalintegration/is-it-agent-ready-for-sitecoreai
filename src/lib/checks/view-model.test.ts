@@ -128,6 +128,7 @@ describe("groupPageIssues", () => {
     blocked: false,
     gateReason: "",
     categories: { reach: { earned: 0, max: 0 }, read: { earned: 0, max: 0 }, understand: { earned: 0, max: 0 }, trust: { earned: 0, max: 0 } },
+    servesMarkdown: null,
     issues,
   });
 

@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Check registry (plan section 5.2). Every check the engine runs, in display
-// order. Checks from later phases are added when they're built:
-//   Phase 7: P5 read.markdown-page, P6 read.markdown-quality
+// order. Checks from later phases are added when they're built.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { READ_PAGE_CHECKS } from "./page/read";

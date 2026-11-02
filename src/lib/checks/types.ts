@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AgentAccessData } from "@/lib/agent-access/types";
+import type { MarkdownCheckData } from "@/lib/markdown/types";
 import type {
   AiResults,
   OrganizationInfo,
@@ -99,6 +100,8 @@ export interface PageFields {
 /** The Page Builder draft (`getPageHTML`), sanitised and parsed. Panel only. */
 export interface DraftHtml {
   html: ParsedHtml;
+  /** The sanitised HTML, for the Agent View's Markdown preview. */
+  source: string;
   /** Empty-state messages the sanitiser removed ("No articles found"). */
   emptyStates: string[];
 }
@@ -126,6 +129,8 @@ export interface PageContext {
   bodySource: BodySource;
   ai: AiResults | null;
   psi: PsiResult | null;
+  /** The page requested as an agent and as a browser (/api/markdown-check), for P5 and P6. Null until it's in. */
+  markdown: MarkdownCheckData | null;
   /** For the fix snippets. */
   organization: OrganizationInfo;
 }
@@ -146,6 +151,8 @@ export interface SiteContext {
   home: ParsedHtml | null;
   /** Evidence from /api/agent-access (S1–S6, S8–S12). Null until the site is scanned. */
   access: AgentAccessData | null;
+  /** P5 across the dashboard's scanned pages, for S3's message. Left out in the panel. */
+  markdownPages?: { served: number; checked: number } | null;
 }
 
 // ── Engine output ─────────────────────────────────────────────────────────────

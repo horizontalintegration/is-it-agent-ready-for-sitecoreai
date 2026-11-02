@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/shared/Chips";
 import { FixButton, FlashText, useFlash } from "@/components/shared/FixButton";
+import { MarkdownFixes } from "@/components/shared/MarkdownFixes";
 import { Spinner, StatusIcon } from "@/components/shared/StatusIcon";
 import { Segmented } from "@/components/shared/Segmented";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ interface AgentAccessTabProps {
   onOpenFiles: () => void;
 }
 
-function ChecklistItem({ row, action }: { row: CheckRowModel; action?: React.ReactNode }) {
+function ChecklistItem({ row, action, children }: { row: CheckRowModel; action?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <li className="flex flex-wrap items-start gap-3 border-t py-3">
       {/* A scored "info" result is a Bonus check that isn't set: it applies, it just adds nothing. */}
@@ -46,6 +47,7 @@ function ChecklistItem({ row, action }: { row: CheckRowModel; action?: React.Rea
         <span className="text-sm leading-snug text-subtle-text">{row.message}</span>
       </div>
       {action}
+      {children && <div className="basis-full">{children}</div>}
     </li>
   );
 }
@@ -53,6 +55,7 @@ function ChecklistItem({ row, action }: { row: CheckRowModel; action?: React.Rea
 export function AgentAccessTab({ siteUrl, report, access, status, onRetry, onOpenFiles }: AgentAccessTabProps) {
   const [purpose, setPurpose] = useState<"all" | BotPurpose>("all");
   const [flash, setFlash] = useFlash();
+  const [markdownFixes, setMarkdownFixes] = useState(false);
 
   const rows = useMemo(() => (access ? botGrid(access) : []), [access]);
   const shown = rows.filter((r) => purpose === "all" || r.bot.purpose === purpose);
@@ -69,6 +72,13 @@ export function AgentAccessTab({ siteUrl, report, access, status, onRetry, onOpe
     if (!needsWork(row)) return undefined;
     if (row.id === "reach.robots-ai-rules") return filesButton("Open robots.txt help");
     if (row.id === "read.llms-txt") return filesButton("Open generator");
+    if (row.id === "read.markdown-site") {
+      return (
+        <Button type="button" size="sm" variant="outline" className="text-sm" aria-expanded={markdownFixes} onClick={() => setMarkdownFixes((v) => !v)}>
+          {markdownFixes ? "Hide fixes" : "See fixes"}
+        </Button>
+      );
+    }
     if (fixButton(row) === "show-how") return undefined;
     return <FixButton row={row} pageUrl={siteUrl} />;
   };
@@ -87,7 +97,19 @@ export function AgentAccessTab({ siteUrl, report, access, status, onRetry, onOpe
           <ul>
             {report.outcomes.map((o) => {
               const row = toCheckRow(o);
-              return <ChecklistItem key={row.id} row={row} action={actionFor(row)} />;
+              const fixes = row.id === "read.markdown-site" && markdownFixes && needsWork(row);
+              return (
+                <ChecklistItem key={row.id} row={row} action={actionFor(row)}>
+                  {fixes && (
+                    <div className="flex flex-col gap-2 pt-1">
+                      <MarkdownFixes />
+                      <div className="flex justify-end">
+                        <FixButton row={row} pageUrl={siteUrl} />
+                      </div>
+                    </div>
+                  )}
+                </ChecklistItem>
+              );
             })}
           </ul>
         )}

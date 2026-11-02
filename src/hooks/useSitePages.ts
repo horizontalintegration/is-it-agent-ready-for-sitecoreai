@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
 import type { AiResults, ParsedHtml } from "@/lib/rule-engine/types";
+import type { MarkdownCheckData } from "@/lib/markdown/types";
 import { getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
@@ -20,7 +21,8 @@ import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 // v3: shared 80/60 label thresholds, and the AI check reads the page's main text.
 // v4: the unified check engine (4 categories, tier pools, gate) — PageScoreSummary.
 // v5: the summary keeps each page's issues for "Fix first"; v2 label names.
-const CACHE_KEY_PREFIX = "aiDiscovery:scores:v5:";
+// v6: P5 and P6 (Markdown for agents), and whether each page serves Markdown.
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v6:";
 
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
@@ -458,22 +460,20 @@ export function useSitePages(
     async (row: PageMatrixRow) => {
       updateRow(row.id, { scanStatus: "scanning", scanError: undefined });
 
-      const [htmlRes, aiRes] = await Promise.allSettled([
+      // The live page, and the page requested as an agent and as a browser (P5, P6).
+      // A failed Markdown request leaves P5 "not checked", out of the score.
+      const [htmlRes, markdownRes] = await Promise.allSettled([
         tryJson<ParsedHtml>(
           fetch(
             `${base}/api/preview-fetch?url=${encodeURIComponent(row.pageUrl)}`,
           ),
         ),
-        // Skip AI when we don't yet have body text. We'll let preview-fetch settle first
-        // and re-call AI separately — but a simpler approach: kick AI off now with the
-        // page title only, body text will fold in once HTML lands. Cheaper: fire AI
-        // only after HTML returns so we can include real body text.
-        Promise.resolve(null as AiResults | null),
+        tryJson<MarkdownCheckData>(fetch(`${base}/api/markdown-check?url=${encodeURIComponent(row.pageUrl)}`)),
       ]);
 
       const parsedHtml = htmlRes.status === "fulfilled" ? htmlRes.value : null;
-      let ai: AiResults | null =
-        aiRes.status === "fulfilled" ? aiRes.value : null;
+      const markdown = markdownRes.status === "fulfilled" ? markdownRes.value : null;
+      let ai: AiResults | null = null;
 
       // Fire AI with the page's main text once HTML is in hand (same body as the panel).
       // Cached by content hash, so re-scans of unchanged pages don't call Claude.
@@ -499,6 +499,7 @@ export function useSitePages(
           fields: row.fields,
           html: parsedHtml,
           ai,
+          markdown,
           psi: null,
           organization: getOrganizationInfo({ name: currentSiteNameRef.current, url: null }),
         }),

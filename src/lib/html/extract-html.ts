@@ -33,7 +33,7 @@ function plainText(el: HTMLElement): string {
  * Ids of panels that a toggle controls (`aria-controls`). They're hidden until
  * opened (collapsed FAQ answers), but they're content, so the text keeps them.
  */
-function controlledPanelIds(root: HTMLElement): Set<string> {
+export function controlledPanelIds(root: HTMLElement): Set<string> {
   const ids = new Set<string>();
   for (const toggle of root.querySelectorAll("[aria-controls]")) {
     for (const id of (toggle.getAttribute("aria-controls") ?? "").split(/\s+/)) if (id) ids.add(id);

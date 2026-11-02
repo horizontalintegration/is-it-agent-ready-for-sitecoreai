@@ -34,3 +34,12 @@ function getServerSnapshot(): boolean {
 export function useDemoMode(): boolean {
   return useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 }
+
+/** `?demo=1&md=1`: the demo site serves Markdown (P5 4/4, S3 passes). Without it, it doesn't, as in the mockup. */
+function isDemoMarkdownUrl(): boolean {
+  return isDemoUrl() && new URLSearchParams(window.location.search).get("md") === "1";
+}
+
+export function useDemoServesMarkdown(): boolean {
+  return useSyncExternalStore(subscribe, isDemoMarkdownUrl, getServerSnapshot);
+}

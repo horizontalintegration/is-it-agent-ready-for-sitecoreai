@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { buildPageContext, pageFieldsFromFieldMap, pageFieldsFromValues, SCORING_FIELD_NAMES } from "./context";
 import { runPageChecks } from "./engine";
 import { summarisePageReport } from "./view-model";
-import { makeTestDraft, makeTestPageData, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
+import { makeTestDraft, makeTestMarkdownCheck, makeTestPageData, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
 import { labelForPct } from "@/lib/score-thresholds";
 
 // Raw values as Sitecore returns them (untrimmed, empty strings).
@@ -58,10 +58,11 @@ describe("panel vs dashboard", () => {
     expect(dashboard.label).toBe(labelForPct(panel.score!));
   });
 
-  it("show the same score for the demo page on live HTML", () => {
+  it.each([false, true])("show the same score for the demo page on live HTML (serves Markdown: %s)", (serves) => {
     const data = makeTestPageData();
-    const panel = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml }));
-    const row = makeTestSitePages().find((r) => r.route === data.route)!;
+    const markdown = makeTestMarkdownCheck({ serves });
+    const panel = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml, markdown }));
+    const row = makeTestSitePages({ servesMarkdown: serves }).find((r) => r.route === data.route)!;
     expect(row.score?.score).toBe(panel.score);
   });
 

@@ -22,6 +22,7 @@ function ctx(html: Partial<ParsedHtml> | null, over: Partial<PageContext> = {}):
     bodySource: "live",
     ai: null,
     psi: null,
+    markdown: null,
     organization: { name: "BrandX", url: null, logo: null, description: null, sameAs: [] },
     ...over,
   };
@@ -159,7 +160,7 @@ describe("demo fixture page", () => {
     expect(report.score).toBeGreaterThan(0);
     expect(report.score).toBeLessThanOrEqual(100);
     expect(report.outcomes.map((o) => o.check.ref)).toEqual([
-      "P2", "P3", "P4", "P7", "P8", "P9", "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20", "P21",
+      "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20", "P21",
     ]);
     for (const o of report.outcomes) {
       expect(o.points, o.check.id).toBeLessThanOrEqual(o.maxPoints + 1e-9);
@@ -170,7 +171,7 @@ describe("demo fixture page", () => {
 // ── Phase 4: draft vs live ────────────────────────────────────────────────────
 
 const withDraft = (live: Partial<ParsedHtml> | null, draft: Partial<ParsedHtml>, emptyStates: string[] = []): PageContext => {
-  const d: DraftHtml = { html: makeParsedHtml(draft), emptyStates };
+  const d: DraftHtml = { html: makeParsedHtml(draft), source: "", emptyStates };
   return ctx(live, { draft: d, body: d.html, bodySource: "draft" });
 };
 const blocks = (...texts: string[]): BodyBlock[] => texts.map((text) => ({ text, component: null }));
