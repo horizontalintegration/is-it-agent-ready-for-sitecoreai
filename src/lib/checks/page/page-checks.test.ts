@@ -17,6 +17,7 @@ function ctx(html: Partial<ParsedHtml> | null, over: Partial<PageContext> = {}):
     fields: FIELDS,
     html: live,
     draft: null,
+    draftUnavailable: false,
     body: live,
     bodySource: "live",
     ai: null,
@@ -185,6 +186,22 @@ describe("P3 read.no-js-content", () => {
     const r = outcome(ctx({ bodyBlocks: ARTICLE }), "read.no-js-content");
     expect(r.state).toBe("not-checked");
     expect(r.value).toBe("Page Builder only");
+  });
+
+  it("in the panel, says the draft couldn't be read when getPageHTML failed", () => {
+    const c = buildPageContext({
+      pageUrl: "https://example.com/blog/post",
+      route: "/blog/post",
+      templateName: null,
+      fields: FIELDS,
+      html: makeParsedHtml({ bodyBlocks: ARTICLE }),
+      draft: null,
+      draftUnavailable: true,
+      ai: null,
+      psi: null,
+      organization: { name: "BrandX", url: null, logo: null, description: null, sameAs: [] },
+    });
+    expect(outcome(c, "read.no-js-content")).toMatchObject({ state: "not-checked", value: "Draft not available" });
   });
 
   it("isn't checked without the published page", () => {

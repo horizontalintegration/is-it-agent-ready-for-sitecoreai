@@ -7,8 +7,10 @@
 // update (debounced) and on page change. Every capture is sanitised before
 // it's parsed, so no check sees raw editor output.
 //
-// When getPageHTML isn't available (the call rejects or returns nothing), the
-// status is "unavailable" and the panel scores the live page, as before.
+// Right after a page opens, Page Builder may not serve getPageHTML yet, so a
+// page's first read is retried. When it still isn't available (the call
+// rejects or returns nothing), the status is "unavailable" and the panel
+// scores the live page, as before.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,10 +21,12 @@ import type { DraftHtml } from "@/lib/checks/types";
 
 /** Wait after a page change or field update before reading the canvas. */
 const DEBOUNCE_MS = 1500;
+/** Waits before each retry while a page has no draft yet: about 15 s in all. */
+const RETRY_DELAYS_MS = [2000, 4000, 8000];
 
 /**
  * - `idle`: not read yet (no page, or demo mode).
- * - `loading`: a read is pending or running.
+ * - `loading`: a read is pending, running or being retried.
  * - `ready`: `draft` holds the latest capture.
  * - `unavailable`: getPageHTML failed for this page; the body checks use live.
  */
@@ -46,6 +50,40 @@ interface UsePageHtmlResult {
   refresh: () => void;
 }
 
+type ReadResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+interface RetryOptions {
+  /** Wait before each retry; no retries when empty. */
+  delays: number[];
+  /** False once a newer read has started: stop and return null. */
+  isCurrent: () => boolean;
+  onRetry?: (attempt: number, delay: number, error: unknown) => void;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Calls `read` until it succeeds or the delays run out. Returns null when a
+ * newer read took over, so a stale result never sets state.
+ */
+export async function readWithRetry<T>(read: () => Promise<T>, options: RetryOptions): Promise<ReadResult<T> | null> {
+  const { delays, isCurrent, onRetry, sleep = wait } = options;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const value = await read();
+      return isCurrent() ? { ok: true, value } : null;
+    } catch (error) {
+      if (!isCurrent()) return null;
+      const delay = delays[attempt];
+      if (delay === undefined) return { ok: false, error };
+      onRetry?.(attempt + 1, delay, error);
+      await sleep(delay);
+      if (!isCurrent()) return null;
+    }
+  }
+}
+
 export function usePageHtml({ client, pageKey, contentVersion, enabled }: UsePageHtmlInput): UsePageHtmlResult {
   const [draft, setDraft] = useState<DraftHtml | null>(null);
   const [status, setStatus] = useState<DraftStatus>("idle");
@@ -61,10 +99,28 @@ export function usePageHtml({ client, pageKey, contentVersion, enabled }: UsePag
     if (timerRef.current) clearTimeout(timerRef.current);
     const id = ++requestRef.current;
     setStatus("loading");
-    try {
-      const raw = await client.getPageHTML();
-      if (id !== requestRef.current) return;
-      if (typeof raw !== "string" || !raw.trim()) throw new Error("getPageHTML returned no HTML");
+
+    const result = await readWithRetry(
+      async () => {
+        const raw = await client.getPageHTML();
+        if (typeof raw !== "string" || !raw.trim()) throw new Error("getPageHTML returned no HTML");
+        return raw;
+      },
+      {
+        // Without a draft yet, the canvas may still be loading: Page Builder
+        // answers "[CANVAS BUG] Service implementation is not provided" until
+        // it has (seen on 2026-11-02). The status stays "loading" meanwhile,
+        // so the rows and the AI checks wait for the draft.
+        delays: hasDraftRef.current ? [] : RETRY_DELAYS_MS,
+        isCurrent: () => id === requestRef.current,
+        onRetry: (attempt, delay, err) =>
+          console.info(`[draft] getPageHTML not ready (attempt ${attempt}); trying again in ${delay / 1000} s:`, err),
+      },
+    );
+    if (!result) return; // a newer read took over
+
+    if (result.ok) {
+      const raw = result.value;
       const clean = sanitiseDraftHtml(raw);
       const html = extractParsedHtml(clean.html);
       console.info(
@@ -76,16 +132,13 @@ export function usePageHtml({ client, pageKey, contentVersion, enabled }: UsePag
       setDraft({ html, emptyStates: clean.emptyStates });
       setCapturedAt(new Date());
       setStatus("ready");
-    } catch (err) {
-      if (id !== requestRef.current) return;
+    } else if (hasDraftRef.current) {
       // Keep a draft this page already has: one failed refresh shouldn't swap
       // the body checks to live mid-edit.
-      if (hasDraftRef.current) {
-        console.warn("[draft] getPageHTML refresh failed; keeping the previous capture:", err);
-        setStatus("ready");
-        return;
-      }
-      console.warn("[draft] getPageHTML unavailable; the body checks use the live page:", err);
+      console.warn("[draft] getPageHTML refresh failed; keeping the previous capture:", result.error);
+      setStatus("ready");
+    } else {
+      console.warn("[draft] getPageHTML unavailable; the body checks use the live page:", result.error);
       setStatus("unavailable");
     }
   }, [client, enabled, pageKey]);

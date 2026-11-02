@@ -83,7 +83,8 @@
 <li><strong>P10 stays fully live.</strong> Its JSON-LD (only in the <code>&lt;head&gt;</code>, which the draft lacks) and its Q&amp;A pairs come from the same render.</li>
 <li><strong>Source chip.</strong> A check declares <code>sources</code> (body checks declare <code>"draft"</code>). <code>resolveSources</code> (<code>engine.ts</code>) turns <code>"draft"</code> into the body's actual source and adds it to AI checks, and every <code>CheckOutcome</code> carries the result as <code>sources</code>. The panel shows it as chips (Draft / Live / Fields / AI / PageSpeed) at the top of an expanded row.</li>
 <li><strong>Refresh.</strong> <code>usePageHtml</code> reads the draft 1.5 s after a page change (so the canvas can load the new page) and 1.5 s after the last <code>pages.content.fieldsUpdated</code> (<code>usePageFields.contentVersion</code>), and at once on <strong>Re-scan page</strong>. Only the latest read may set state. Each read takes about 30–50 ms. Console: <code>[draft] getPageHTML: N chars …; removed {…}</code>.</li>
-<li><strong>Fallback.</strong> If <code>getPageHTML</code> rejects or returns nothing on the first read for a page, the status is <code>unavailable</code> and the body checks read live, as before (chips say Live, P3 is not checked). A later failed refresh keeps the previous draft, so the score doesn't jump mid-edit.</li>
+<li><strong>Retry while the canvas loads.</strong> Right after a page opens, Page Builder answers <code>getPageHTML</code> with <code>CoreError: [client SDK] [CANVAS BUG] Service implementation is not provided</code> until its canvas has loaded (seen on production on 2026-11-02; a Re-scan a moment later worked). So while a page has no draft yet, a failed read is retried after 2, 4 and 8 s (<code>readWithRetry</code>, about 15 s in all). The status stays <code>loading</code> meanwhile, so rows show "Scanning…" and the AI checks wait for the draft. Console: <code>[draft] getPageHTML not ready (attempt N); trying again in N s</code>. A newer read (page change, field update, Re-scan) stops the retries.</li>
+<li><strong>Fallback.</strong> If every attempt fails, the status is <code>unavailable</code> and the body checks read live, as before: chips say Live, and P3 says "Draft not available … Re-scan to try again" (<code>draftUnavailable</code> in the context; the dashboard's "Page Builder only" is unchanged). A failed refresh of a page that already has a draft isn't retried and keeps that draft, so the score doesn't jump mid-edit.</li>
 <li><strong>Unpublished pages.</strong> If preview-fetch fails (no published page yet), the head checks are not checked and the body checks still score from the draft.</li>
 <li><strong>AI checks.</strong> They judge the body text (<code>useScan.bodyText</code>: the draft's <code>mainText</code>, or live's without a draft). They run once per page load and per Re-scan, on the first ready body, never on every edit. When the text has changed since, the AI rows say "Based on an earlier version of the text" with a <strong>Re-run</strong> link (<code>useScan.aiStale</code>). Results are cached by content hash as before.</li>
 <li><strong>"Draft differs from live" banner</strong> (<code>DraftBanner</code>). <code>draftDiffersFromLive</code> (<code>draft-diff.ts</code>) compares the draft's and live's <code>mainText</code> line by line. It shows when a live line is missing from the draft, or a draft line is an edit of a live one (word overlap ≥ 0.5). Lines only in the draft, with no live counterpart, don't count: they're usually client-rendered, and would otherwise show the banner on every page with a client-fetched listing.</li>
@@ -412,6 +413,10 @@
 <td style="text-align:left">block comparison (client-only, edits, tokens, split blocks) and the "Draft differs" rule</td>
 </tr>
 <tr>
+<td style="text-align:left"><code>src/hooks/usePageHtml.test.ts</code></td>
+<td style="text-align:left"><code>readWithRetry</code>: the first read retried while the canvas loads, giving up, no retry with a draft, a newer read taking over</td>
+</tr>
+<tr>
 <td style="text-align:left"><code>src/lib/html/sanitise-draft.test.ts</code></td>
 <td style="text-align:left">the sanitiser on the BrandX FAQ, Banking article and St. Patrick's Day captures (<code>src/lib/html/fixtures/</code>), plus help text, Fallback hints, <code>[No text in field]</code>, <code>scEmpty*</code> placeholders, empty states, tokens, editor attributes</td>
 </tr>
@@ -468,7 +473,7 @@
 </tr>
 <tr>
 <td style="text-align:left"><code>src/hooks/usePageHtml.ts</code></td>
-<td style="text-align:left">Reads the draft with <code>getPageHTML</code>, debounced on field updates, with the live fallback</td>
+<td style="text-align:left">Reads the draft with <code>getPageHTML</code>, debounced on field updates, retried while the canvas loads, with the live fallback</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/components/DraftBanner.tsx</code></td>
