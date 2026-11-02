@@ -103,11 +103,3 @@ export function aggregateSite(pages: PageMatrixRow[]): SiteAggregate {
     categories,
   };
 }
-
-/** Scored pages sorted by readiness ascending — the "fix these first" list. */
-export function worstPages(pages: PageMatrixRow[], limit: number): PageMatrixRow[] {
-  return pages
-    .filter((p) => pageScore(p) !== null)
-    .sort((a, b) => pageScore(a)! - pageScore(b)!)
-    .slice(0, limit);
-}

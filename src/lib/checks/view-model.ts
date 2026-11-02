@@ -298,6 +298,8 @@ export interface IssueGroup {
   gainEach: number;
   /** For ordering: the points it would add across the site. */
   weight: number;
+  /** The site check's result (site issues only), for its developer note. */
+  row?: CheckRowModel;
 }
 
 /** Page issues grouped by check across pages, biggest total gain first. */
@@ -345,5 +347,27 @@ export function siteIssueGroups(outcomes: CheckOutcome[]): IssueGroup[] {
       pageIds: [],
       gainEach: 0,
       weight: Number.POSITIVE_INFINITY,
+      row: r,
     }));
+}
+
+/** Plain text for a developer about one issue across pages (or the whole site). */
+export function issueNote(group: IssueGroup, pages: Array<{ id: string; name: string; pageUrl: string }>, siteUrl: string): string {
+  if (group.row) return developerNote(group.row, siteUrl);
+  const meta = PAGE_CHECK_META.get(group.id);
+  const affected = pages.filter((p) => group.pageIds.includes(p.id));
+  return [
+    `${group.title} (${meta?.ref ?? group.id}): ${plural(affected.length, "page")}`,
+    meta ? `Why it matters: ${meta.why}` : "",
+    "Pages:",
+    ...affected.map((p) => `- ${p.name}: ${p.pageUrl}`),
+    "\nFrom Is It Agent-Ready? for SitecoreAI",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Every page check's title, by category: the "What's included" list. */
+export function pageCheckTitles(category: Category): string[] {
+  return [...PAGE_CHECK_META.values()].filter((m) => m.category === category).map((m) => m.title);
 }

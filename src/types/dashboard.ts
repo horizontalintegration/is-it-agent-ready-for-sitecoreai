@@ -1,4 +1,5 @@
 import type { PageScoreSummary } from "@/lib/checks/view-model";
+import type { ScoreLabel } from "@/lib/score-thresholds";
 import type { PageFields } from "@/lib/checks/types";
 
 export type RowScanStatus = "idle" | "scanning" | "scanned" | "error";
@@ -27,5 +28,5 @@ export interface PageMatrixRow {
   lastScannedAt?: string;
 }
 
-export type MatrixFilter = "critical" | "warning" | "good" | "all";
+export type MatrixFilter = ScoreLabel | "all";
 export type MatrixSort = "score-asc" | "score-desc" | "modified" | "name";

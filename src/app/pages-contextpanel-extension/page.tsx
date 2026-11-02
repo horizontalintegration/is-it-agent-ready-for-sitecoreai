@@ -191,7 +191,7 @@ export default function PagesContextPanel() {
     ? "Scored from your Page Builder draft, unsaved edits included. Title, canonical, metadata and structured data come from the published page."
     : "Scored from the published page: the Page Builder draft isn't available.";
 
-  const tabContent = "min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden";
+  const tabContent = "min-h-0 flex-1 overflow-y-auto focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=inactive]:hidden";
   const trigger = "h-10 border-b-0 px-2.5 text-sm font-semibold data-[state=active]:border-b-2";
 
   return (

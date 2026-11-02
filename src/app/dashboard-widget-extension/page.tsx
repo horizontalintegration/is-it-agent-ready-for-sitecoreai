@@ -1,27 +1,46 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { mdiChartLine } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { useSiteType } from "@/hooks/useSiteType";
-import { AllPagesView } from "@/components/AllPagesView";
-import { SiteSummary } from "@/components/SiteSummary";
-import { CategoryCards } from "@/components/CategoryCards";
-import { WorstPages } from "@/components/WorstPages";
+import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
+import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
+import { AppMark } from "@/components/shared/AppMark";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { OverviewTab } from "@/components/dashboard/OverviewTab";
+import { PagesTab } from "@/components/dashboard/PagesTab";
+import { AgentAccessTab } from "@/components/dashboard/AgentAccessTab";
+import { FilesTab } from "@/components/dashboard/FilesTab";
 import { CitationView } from "@/components/CitationView";
-import { LlmsTxtGenerator } from "@/components/LlmsTxtGenerator";
-import { RobotsTxtPanel } from "@/components/RobotsTxtPanel";
-import { FooterTrustPanel } from "@/components/FooterTrustPanel";
-import { SiteChecks } from "@/components/SiteChecks";
-import { makeTestSiteContext, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
-import { aggregateSite, pageScore, worstPages } from "@/lib/site-aggregate";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DEMO_SITE_HISTORY_BEFORE,
+  makeTestFooterTrust,
+  makeTestSiteContext,
+  makeTestSitePages,
+} from "@/lib/rule-engine/test-fixture";
+import { aggregateSite } from "@/lib/site-aggregate";
 import { runSiteChecks } from "@/lib/checks/engine";
+import { groupPageIssues, siteIssueGroups, type IssueGroup } from "@/lib/checks/view-model";
+import type { SiteType } from "@/lib/checks/types";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPagesEditorUrl } from "@/lib/pages-editor-url";
-import type { MatrixFilter, MatrixSort, PageMatrixRow } from "@/types/dashboard";
+import { timeAgo } from "@/lib/relative-time";
+import type { PageMatrixRow } from "@/types/dashboard";
 
-const WORST_LIMIT = 10;
+type DashboardTab = "overview" | "pages" | "agent-access" | "citations" | "files";
+
+const TABS: DashboardTab[] = ["overview", "pages", "agent-access", "citations", "files"];
+
+/** The tab named in the URL hash (e.g. #agent-access), if any. */
+function hashTab(): DashboardTab | null {
+  const hash = window.location.hash.slice(1) as DashboardTab;
+  return TABS.includes(hash) ? hash : null;
+}
 
 const DEMO_SITE_CONTEXT = {
   id: "demo",
@@ -41,19 +60,28 @@ export default function DashboardWidgetPage() {
     () => (useFixture ? makeTestSitePages() : []),
     [useFixture],
   );
+  const fixtureSite = useMemo(() => (useFixture ? makeTestSiteContext() : null), [useFixture]);
 
   const pages = useFixture ? fixturePages : live.pages;
   const siteContext = useFixture ? DEMO_SITE_CONTEXT : live.siteContext;
   const isLoading = useFixture ? false : live.isLoading;
   const error = useFixture ? null : live.error;
   const scanningCount = useFixture ? 0 : live.scanningCount;
+  const robotsTxt = fixtureSite ? fixtureSite.robotsTxt : live.siteInputs.robotsTxt;
 
   const [siteType, setSiteType] = useSiteType(siteContext.id);
+  const [tab, setTab] = useState<DashboardTab>("overview");
+  // Read after mount, so the server render and hydration agree.
+  useEffect(() => {
+    const t = hashTab();
+    if (t) setTab(t);
+  }, []);
+  const [issueFilter, setIssueFilter] = useState<IssueGroup | null>(null);
 
   // Site checks (S2, S7): once per site, from robots.txt and the home page.
   const { siteInputs } = live;
   const siteReport = useMemo(() => {
-    if (useFixture) return runSiteChecks({ ...makeTestSiteContext(), siteType });
+    if (fixtureSite) return runSiteChecks({ ...fixtureSite, siteType });
     if (!siteContext.domain || !siteInputs.homeChecked) return null;
     return runSiteChecks({
       siteUrl: siteContext.domain,
@@ -63,54 +91,33 @@ export default function DashboardWidgetPage() {
       home: siteInputs.homeHtml,
       robotsTxt: siteInputs.robotsTxt,
     });
-  }, [useFixture, siteType, siteContext.domain, siteContext.name, siteInputs]);
+  }, [fixtureSite, siteType, siteContext.domain, siteContext.name, siteInputs]);
 
-  const [activeTab, setActiveTab] = useState<"matrix" | "citation" | "llms" | "robots" | "footer">("matrix");
-  const [filter, setFilter] = useState<MatrixFilter>("critical");
-  const [sortBy, setSortBy] = useState<MatrixSort>("score-asc");
-  const [showAllPages, setShowAllPages] = useState(false);
-
-  // Site roll-up + "fix these first" list for the Overview.
   const aggregate = useMemo(() => aggregateSite(pages), [pages]);
-  const worst = useMemo(() => worstPages(pages, WORST_LIMIT), [pages]);
+  const siteScore = aggregate.overallPct === null ? null : Math.round(aggregate.overallPct);
 
-  const filteredSorted = useMemo(() => {
-    let out = pages;
-    if (filter !== "all") {
-      // Unscanned rows are excluded from label filters; visible only under "all".
-      out = out.filter((p) => p.score?.label === filter);
-    }
-    // Unscanned and blocked pages have no score and sort last (score ↓) / first (score ↑).
-    const pctOf = (p: (typeof out)[number]) => pageScore(p) ?? -1;
-    const sorted = [...out];
-    sorted.sort((a, b) => {
-      switch (sortBy) {
-        case "score-asc":
-          return pctOf(a) - pctOf(b);
-        case "score-desc":
-          return pctOf(b) - pctOf(a);
-        case "modified":
-          return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
-        case "name":
-          return a.name.localeCompare(b.name);
-      }
-    });
-    return sorted;
-  }, [pages, filter, sortBy]);
+  // Fix first: site issues (they affect every page), then page issues by total gain.
+  const issues = useMemo(
+    () => [...(siteReport ? siteIssueGroups(siteReport.outcomes) : []), ...groupPageIssues(pages)],
+    [siteReport, pages],
+  );
+
+  const demoHistory = useMemo<SiteSnapshot[] | undefined>(
+    () => (useFixture && siteScore !== null
+      ? [...DEMO_SITE_HISTORY_BEFORE, siteScore].map((score) => ({ at: "", score }))
+      : undefined),
+    [useFixture, siteScore],
+  );
+  const history = useSiteHistory(siteContext.id, siteScore, scanningCount, demoHistory);
+
+  const lastScan = useMemo(() => {
+    const times = pages.map((p) => (p.lastScannedAt ? Date.parse(p.lastScannedAt) : NaN)).filter(Number.isFinite);
+    return times.length > 0 ? new Date(Math.max(...times)) : null;
+  }, [pages]);
 
   const handleScanRow = (row: PageMatrixRow) => {
     if (useFixture) return;
     live.scanRow(row.id);
-  };
-
-  const handleScanAll = () => {
-    if (useFixture) return;
-    live.scanAll();
-  };
-
-  const handleClearAndRefresh = () => {
-    if (useFixture) return;
-    live.clearAndRefresh();
   };
 
   // Hand off to the Pages editor for the chosen item. Falls back to the public
@@ -144,112 +151,135 @@ export default function DashboardWidgetPage() {
     }
   };
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
-      <header className="border-b border-gray-200 bg-white shrink-0">
-        <div className="px-4 py-2 flex items-center gap-3">
-          <h1 className="text-sm font-semibold">Is this site agent-ready?</h1>
-          {siteContext.name && (
-            <span className="text-xs text-gray-500 truncate">{siteContext.name}</span>
-          )}
-        </div>
-        <nav className="px-4 flex gap-1 border-t border-gray-100" role="tablist">
-          {(["matrix", "citation", "llms", "robots", "footer"] as const).map((tab) => {
-            const active = activeTab === tab;
-            const label =
-              tab === "matrix"
-                ? "Overview"
-                : tab === "citation"
-                  ? "AI Citation"
-                  : tab === "llms"
-                    ? "LLMs.txt"
-                    : tab === "robots"
-                      ? "Robots.txt"
-                      : "Footer trust";
-            return (
-              <button
-                key={tab}
-                role="tab"
-                aria-selected={active}
-                onClick={() => setActiveTab(tab)}
-                className={`text-xs px-3 py-2 border-b-2 ${
-                  active
-                    ? "border-blue-600 text-blue-600 font-medium"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </nav>
-      </header>
+  const reviewPages = (issue: IssueGroup) => {
+    setIssueFilter(issue);
+    setTab("pages");
+  };
 
-      <main className="flex-1 overflow-y-auto">
-        {/* The page-enumeration error only blocks the Overview tab. Robots,
-            Footer, and LLMs.txt rely on siteContext.domain (set before the
-            GraphQL call), so they stay usable even when enumeration fails. */}
-        {activeTab === "matrix" ? (
-          error && !useFixture ? (
-            <div className="px-4 py-4">
-              <div className="mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
-                {error}
+  const siteHost = siteContext.domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const tabContent = "min-h-0 flex-1 overflow-y-auto focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=inactive]:hidden";
+  const trigger = "h-11 border-b-0 px-1 text-md font-semibold data-[state=active]:border-b-2";
+
+  // The page list failed to load: Overview and Pages need it; the other tabs
+  // only need the domain (set before the GraphQL call), so they stay usable.
+  const loadError = error && !useFixture ? (
+    <div className="mx-auto flex max-w-[1320px] flex-col items-start gap-3 p-4 sm:p-6">
+      <p role="alert" className="rounded-lg border border-warning-bg-active bg-warning-bg px-3 py-2 text-md text-warning-fg">{error}</p>
+      <Button type="button" size="sm" variant="outline" onClick={live.refresh}>Retry</Button>
+    </div>
+  ) : null;
+
+  return (
+    <div className="flex h-screen flex-col bg-subtle-bg text-body-text">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as DashboardTab)} className="min-h-0 flex-1 gap-0">
+        <header className="shrink-0 border-b bg-body-bg">
+          <div className="mx-auto flex max-w-[1320px] flex-col gap-1.5 px-4 pt-3.5 sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <AppMark size={32} />
+              <div className="flex min-w-0 flex-col">
+                <h1 className="text-lg font-bold">Is It Agent-Ready?</h1>
+                {siteContext.name && (
+                  <span className="truncate text-sm text-subtle-text">
+                    {siteContext.name}
+                    {siteHost && ` · ${siteHost}`}
+                  </span>
+                )}
               </div>
-              <button
-                onClick={live.refresh}
-                className="text-xs px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
-              >
-                Retry
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5 sm:ml-auto">
+                <span id="site-type-label" className="text-sm text-subtle-text">Site type</span>
+                <Select value={siteType} onValueChange={(v) => setSiteType(v as SiteType)}>
+                  <SelectTrigger aria-labelledby="site-type-label" className="h-10 text-sm font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SITE_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-subtle-text">
+                  {useFixture ? "Demo data" : scanningCount > 0 ? "Scanning…" : lastScan ? `Last scan ${timeAgo(lastScan)}` : "Not scanned yet"}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="text-sm"
+                  onClick={live.clearAndRefresh}
+                  disabled={useFixture || scanningCount > 0 || isLoading}
+                  title={useFixture ? "Scanning is off in demo mode" : "Rescan every page"}
+                >
+                  Scan site
+                </Button>
+              </div>
             </div>
-          ) : (
-            <>
-              <div className="px-4 py-3 space-y-4">
-                <SiteSummary aggregate={aggregate} isLoading={isLoading} />
-                <CategoryCards categories={aggregate.categories} />
-                <SiteChecks report={siteReport} siteType={siteType} onSiteTypeChange={setSiteType} />
-                <WorstPages
-                  pages={worst}
-                  scannedCount={aggregate.scannedCount}
-                  totalCount={aggregate.totalCount}
-                  showingAll={showAllPages}
-                  onOpenPage={handleOpenPage}
-                  onToggleAll={() => setShowAllPages((v) => !v)}
-                />
-              </div>
-              {showAllPages && (
-                <div className="border-t border-gray-200">
-                  <AllPagesView
-                    pages={filteredSorted}
-                    allPages={pages}
-                    filter={filter}
-                    sortBy={sortBy}
-                    scanningCount={scanningCount}
-                    onFilterChange={setFilter}
-                    onSortChange={setSortBy}
-                    onScanRow={handleScanRow}
-                    onScanAll={handleScanAll}
-                    onClearAndRefresh={handleClearAndRefresh}
-                    onOpenPage={handleOpenPage}
-                  />
-                </div>
-              )}
-            </>
-          )
-        ) : activeTab === "citation" ? (
-          <CitationView pages={pages} siteDomain={siteContext.domain} />
-        ) : activeTab === "llms" ? (
-          <LlmsTxtGenerator
-            pages={pages}
-            siteDomain={siteContext.domain}
-            siteName={siteContext.name}
+            <TabsList aria-label="Dashboard sections" className="h-auto w-full justify-start gap-6 overflow-x-auto">
+              <TabsTrigger value="overview" className={trigger}>Overview</TabsTrigger>
+              <TabsTrigger value="pages" className={trigger}>Pages</TabsTrigger>
+              <TabsTrigger value="agent-access" className={trigger}>Agent access</TabsTrigger>
+              <TabsTrigger value="citations" className={trigger}>AI citations</TabsTrigger>
+              <TabsTrigger value="files" className={trigger}>Files</TabsTrigger>
+            </TabsList>
+          </div>
+        </header>
+
+        <TabsContent value="overview" className={tabContent}>
+          {loadError ?? (
+            <OverviewTab
+              aggregate={aggregate}
+              pages={pages}
+              siteUrl={siteContext.domain}
+              isLoading={isLoading}
+              issues={issues}
+              history={history.map((h) => h.score)}
+              onReviewPages={reviewPages}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="pages" className={tabContent}>
+          {loadError ?? (
+            <PagesTab
+              pages={pages}
+              issue={issueFilter}
+              onClearIssue={() => setIssueFilter(null)}
+              onOpenPage={handleOpenPage}
+              onScanRow={handleScanRow}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="agent-access" className={tabContent}>
+          <AgentAccessTab
+            siteUrl={siteContext.domain}
+            report={siteReport}
+            robotsTxt={robotsTxt}
+            demoFooter={useFixture ? makeTestFooterTrust() : null}
+            onOpenFiles={() => setTab("files")}
           />
-        ) : activeTab === "robots" ? (
-          <RobotsTxtPanel siteDomain={siteContext.domain} />
-        ) : (
-          <FooterTrustPanel siteDomain={siteContext.domain} />
-        )}
-      </main>
+        </TabsContent>
+
+        <TabsContent value="citations" className={tabContent}>
+          <div className="mx-auto max-w-[1320px] p-2 sm:p-4">
+            {pages.length === 0 && !siteContext.domain ? (
+              <EmptyState icon={mdiChartLine} title="AI citations">
+                Check how often AI answers cite your pages, once your pages have loaded.
+              </EmptyState>
+            ) : (
+              <CitationView pages={pages} siteDomain={siteContext.domain} />
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="files" className={tabContent}>
+          <FilesTab
+            pages={pages}
+            siteUrl={siteContext.domain}
+            siteName={siteContext.name}
+            robotsTxt={robotsTxt}
+            onOpenAgentAccess={() => setTab("agent-access")}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
