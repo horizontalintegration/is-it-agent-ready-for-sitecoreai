@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentSignals, groupsFor, isAllowed, isNamed, parseContentSignal, parseRobots } from "./robots";
+import { contentSignals, groupsFor, isAllowed, isNamed, parseContentSignal, parseRobots, siteSitemap } from "./robots";
 import { buildRobotsLines } from "./robots-helper";
 
 describe("parseRobots", () => {
@@ -73,6 +73,15 @@ Disallow: /
     expect(isAllowed(parseRobots("User-agent: *\nDisallow:\n"), "GPTBot", "/")).toBe(true);
     expect(isAllowed(parseRobots(""), "GPTBot", "/")).toBe(true);
     expect(groupsFor(parseRobots(""), "GPTBot")).toEqual([]);
+  });
+});
+
+describe("siteSitemap", () => {
+  it("prefers a Sitemap line on the site's own origin over an earlier one elsewhere", () => {
+    const robots = parseRobots("Sitemap: https://old.example.com/sitemap.xml\nSitemap: https://copy.example.com/sitemap.xml\n");
+    expect(siteSitemap(robots, "https://copy.example.com")).toBe("https://copy.example.com/sitemap.xml");
+    expect(siteSitemap(robots, "https://other.example.com")).toBe("https://old.example.com/sitemap.xml");
+    expect(siteSitemap(parseRobots(""), "https://copy.example.com")).toBeNull();
   });
 });
 

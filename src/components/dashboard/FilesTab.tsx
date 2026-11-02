@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BOTS, type BotPurpose } from "@/lib/agent-access/bots";
 import { readRobots, robotsVerdict } from "@/lib/agent-access/grid";
 import { buildRobotsLines } from "@/lib/agent-access/robots-helper";
-import { contentSignals } from "@/lib/agent-access/robots";
+import { contentSignals, siteSitemap } from "@/lib/agent-access/robots";
 import type { AgentAccessData } from "@/lib/agent-access/types";
 import { copyText } from "@/lib/clipboard";
 import { buildLlmsTxt } from "@/lib/llms-txt/build";
@@ -160,7 +160,7 @@ function RobotsCard({ siteUrl, access, onOpenAgentAccess }: { siteUrl: string; a
   const [signals, setSignals] = useState(true);
 
   const origin = siteUrl.replace(/\/+$/, "");
-  const sitemapUrl = robots?.parsed?.sitemaps[0] ?? `${origin}/sitemap.xml`;
+  const sitemapUrl = (robots?.parsed && siteSitemap(robots.parsed, origin)) ?? `${origin}/sitemap.xml`;
   const lines = buildRobotsLines({ allow, contentSignal: signals, sitemapUrl });
   const note = `Please add these lines to ${origin}/robots.txt and keep the rules that are already there. If the file already has a group for one of these user agents, replace that group.\n\n${lines}`;
 

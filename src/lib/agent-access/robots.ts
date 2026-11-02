@@ -74,6 +74,25 @@ export function parseRobots(text: string): ParsedRobots {
   return { groups, sitemaps };
 }
 
+/**
+ * The site's own sitemap from robots.txt: the first Sitemap line on the site's
+ * origin, else the first line. A copied site's robots.txt can still list the
+ * original host first.
+ */
+export function siteSitemap(robots: ParsedRobots, siteUrl: string): string | null {
+  const origin = originOf(siteUrl);
+  const sameOrigin = robots.sitemaps.find((s) => originOf(s) === origin);
+  return sameOrigin ?? robots.sitemaps[0] ?? null;
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /** True when a User-agent value names this product token ("GPTBot" or "GPTBot/1.1"). */
 function namesToken(agent: string, token: string): boolean {
   return agent === token || agent.startsWith(`${token}/`);

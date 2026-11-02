@@ -19,7 +19,7 @@
 import { randomBytes } from "node:crypto";
 import { parse, type HTMLElement } from "node-html-parser";
 import { BOTS, BROWSER_USER_AGENT } from "@/lib/agent-access/bots";
-import { isAllowed, parseRobots, type ParsedRobots } from "@/lib/agent-access/robots";
+import { isAllowed, parseRobots, siteSitemap, type ParsedRobots } from "@/lib/agent-access/robots";
 import type {
   AgentAccessData,
   BotAccess,
@@ -283,7 +283,7 @@ export async function collectAgentAccess(domain: string, options: CollectOptions
   );
 
   const sitemapP = (async (): Promise<SitemapEvidence> => {
-    const fromRobots = parsedRobots?.sitemaps[0] ?? null;
+    const fromRobots = parsedRobots ? siteSitemap(parsedRobots, siteUrl) : null;
     const url = fromRobots ?? `${siteUrl}/sitemap.xml`;
     const { probe, text } = await request(2, url, { accept: "application/xml, text/xml, */*;q=0.5", maxBytes: 10 * 1024 * 1024 });
     const evidence: SitemapEvidence = {
