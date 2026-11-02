@@ -284,7 +284,14 @@ Confirmed with a local `next dev` run against the BrandX article *Banking Sector
 
 Plan section 13, item 1. Every `xmc.*` call from the dashboard widget fails with `[HostSDK] … Authentication required but getAccessToken method not provided`. The Page builder panel makes the same calls with built-in authorization and they work. Sitecore support ticket **CS0746928** is open.
 
-Branch: `fix/dashboard-xmc-auth` (from `50fae90`, the Context ID fix). No code changed and nothing was deployed for this section.
+**Status (2026-11-02): Sitecore has identified the root cause on their side** and is targeting a production fix for the middle of the week of 2026-11-02 (7.6). Built-in authorization stays. The custom-authorization contingency (7.4) is shelved unless the fix slips.
+
+App changes made alongside the investigation (built-in authorization kept):
+
+- **PR #8:** the Context ID fix, a clear dashboard message when the host refuses, and demo mode with no Sitecore or paid calls on load.
+- **PR #9:** `host.state` and dashboard-block diagnostics.
+
+Neither PR fixes the refusal itself.
 
 ### 7.1 Where the error comes from
 
@@ -308,12 +315,22 @@ Branch: `fix/dashboard-xmc-auth` (from `50fae90`, the Context ID fix). No code c
   - The dashboard gets an environment Context ID, so a missing Context ID or a missing environment install doesn't explain the refusal.
   - The `xmc:dashboardblocks` top-level `route` is `null` by design: dashboard blocks keep one route per widget in `meta[]`, each entry with a required `route` (core types `ApplicationExtensionPointMetaContext`; core 0.1.6 "support multiple dashboard blocks"). The log now prints those under `blocks`.
   - `tenantName` is empty, which matters for the Pages editor deep-links, not for this error.
-- **Diagnostic still open: which host runs the widget.** The SDK knows three host types (`AppType`: `portal`, `xmc:xmapps`, `xmc:pages-contextview`), but `application.context` doesn't say which one. `host.state` does, going by the SDK types: `null` for `portal`, `{ environment, language }` for `xmc:xmapps`. The dashboard now logs it as `[sitePages] host.state →`, with only its keys, `environment` and `language`. If it's null, the widget now runs in the Cloud Portal host rather than SitecoreAI. That would explain why only the dashboard lost its token, and is a question for Sitecore.
-- So the app can't fix this through built-in authorization. Either Sitecore fixes the cause, or the app stops using the host for SitecoreAI calls (custom authorization, 7.3).
+- **Confirmed (2026-11-01): the dashboard and the panel report the same host type, but only the panel gets a token.** The SDK knows three host types (`AppType`), and `host.state` tells them apart by shape:
+
+  | Host type | `host.state` shape (SDK types) | Dashboard | Panel |
+  |---|---|---|---|
+  | `portal` (Cloud Portal) | `null` | no | no |
+  | `xmc:xmapps` (SitecoreAI apps) | `{ environment, language }` | no | no |
+  | `xmc:pages-contextview` (Pages editor) | `{ organizationId, xmCloudTenantInfo, userInfo }` | **yes** | **yes** |
+
+  - Dashboard: from PR #9's `[sitePages] host.state →` log (`isNull: false`, `environment: undefined`).
+  - Panel: from the DevTools console in the panel iframe: `Object.keys((await window.sitecore_marketplace__clientSdk.query("host.state")).data ?? {})`. Select the iframe first (right-click in the panel, then Inspect), otherwise the console runs in Sitecore's top window, where the global doesn't exist.
+  - One installation, the same host-state shape and the same SDK code, yet only the dashboard's requests lose their token. So the difference is in how Sitecore mounts the dashboard widget: that HostSDK instance appears to be created without `getAccessToken`. The shape match is read from the SDK's types, since the host code isn't public.
+- So the app couldn't fix this through built-in authorization. Sitecore confirmed the cause was on their side (7.6).
 
 ### 7.2 What the docs say about custom authorization
 
-**From docs** (sources in 7.6):
+**From docs** (sources in 7.7):
 
 | Question | Answer | Source |
 |---|---|---|
@@ -364,6 +381,8 @@ Branch: `fix/dashboard-xmc-auth` (from `50fae90`, the Context ID fix). No code c
 The call shape differs: built-in takes `{ params: { path, query, body } }`, the experimental client takes `{ path, query, body }`. Host-only calls stay on the ClientSDK because they don't use a SitecoreAI token: `application.context`, `pages.context`, `site.context`, the `pages.content.fieldsUpdated` subscription, `getPageHTML` and `navigateToExternalUrl`.
 
 ### 7.4 Contingency: custom authorization for the whole app
+
+**Shelved (2026-11-02):** Sitecore is fixing the cause (7.6). Kept for reference in case the fix slips or a later feature needs server-side SitecoreAI calls.
 
 **Cloud Portal** (only once the plan is agreed):
 
@@ -416,7 +435,25 @@ The call shape differs: built-in takes `{ params: { path, query, body } }`, the 
 - Check to run before the Symposium (free, about 5 minutes): open `/pages-contextpanel-extension?demo=1` and `/dashboard-widget-extension?demo=1` in a normal tab. In DevTools > Network, filter by `sitecorecloud` and confirm there are no requests. Then filter by `/api/` and note which calls appear.
 - **Hardening done on this branch:** demo mode no longer initialises the ClientSDK (`useMarketplaceClient` checks `isDemoUrl()`), and the panel no longer auto-scans the fixture URL. Demo mode now makes no Sitecore calls and no paid calls on load, wherever it runs. The browser check above still applies after deploy.
 
-### 7.6 Sources
+### 7.6 Support case CS0746928
+
+| Date | Event |
+|---|---|
+| 2026-11-01 | Raised. The support AI replied: built-in authorization is documented to work in dashboard widgets, and client credentials would switch the whole app to custom authorization. It handed the case to a support engineer. |
+| 2026-11-01 | Diagnostics from 7.1 prepared for the engineer: June machine-token evidence, the same `_fetch` in client 0.3.2 and 0.4.1, the Context ID present, the `host.state` comparison, and the `contextId` question. |
+| 2026-11-02 | Engineer: "We have identified the root cause of the issue and are currently completing the final validation and testing before deploying the fix to production." The production deploy is targeted for the middle of that week. They'll confirm once it's deployed. |
+
+Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, and record it here.
+
+**After Sitecore confirms the deploy** (all **Open**):
+
+- [ ] The dashboard Overview lists pages, with no "Sitecore didn't authorize…" message.
+- [ ] Check the console for `retrieveSite`. In June the Sites API returned a 401 for its scope. If that comes back, the dashboard falls back to the content-tree walk and still loads pages, so it isn't a blocker.
+- [ ] Panel regression: fields load, and Generate → Populate still writes.
+- [ ] Plan section 13, item 2: the parity check between panel and dashboard for the same page.
+- [ ] Record the root cause and these results here, then close plan item 1.
+
+### 7.7 Sources
 
 - [App architecture and authorization options](https://doc.sitecore.com/mp/en/developers/marketplace/app-architecture-and-authorization-options.html)
 - [Choosing the right architecture and authorization](https://doc.sitecore.com/mp/en/developers/marketplace/choosing-the-right-architecture-and-authorization.html)
