@@ -42,7 +42,13 @@ export const noJsContent: CheckDef<PageContext> = {
   owner: "developer",
   fix: "send-to-developer",
   applies: () => true,
-  run({ draft, html }) {
+  run({ draft, draftUnavailable, html }) {
+    if (!draft && draftUnavailable) {
+      return notChecked(
+        "Draft not available",
+        "The editor's draft couldn't be read, so this can't be compared with the published page. Re-scan to try again.",
+      );
+    }
     if (!draft) {
       return notChecked(
         "Page Builder only",

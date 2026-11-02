@@ -67,6 +67,8 @@ export interface PageInput {
   html: ParsedHtml | null;
   /** The panel's Page Builder draft. The dashboard has none and leaves it out. */
   draft?: DraftHtml | null;
+  /** The panel couldn't read the draft (getPageHTML failed). */
+  draftUnavailable?: boolean;
   ai: AiResults | null;
   psi: PsiResult | null;
   organization: OrganizationInfo;
@@ -81,6 +83,7 @@ export function buildPageContext(input: PageInput): PageContext {
     fields: input.fields,
     html: input.html,
     draft,
+    draftUnavailable: !draft && input.draftUnavailable === true,
     body: draft ? draft.html : input.html,
     bodySource: draft ? "draft" : "live",
     ai: input.ai,

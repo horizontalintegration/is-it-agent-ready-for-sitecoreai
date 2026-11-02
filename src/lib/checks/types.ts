@@ -119,6 +119,8 @@ export interface PageContext {
   html: ParsedHtml | null;
   /** The draft. Null on the dashboard, and in the panel when getPageHTML isn't available. */
   draft: DraftHtml | null;
+  /** True in the panel when getPageHTML failed for this page (as opposed to the dashboard, which never has a draft). */
+  draftUnavailable: boolean;
   /** What the body checks read: the draft's HTML when there is one, otherwise `html`. */
   body: ParsedHtml | null;
   bodySource: BodySource;

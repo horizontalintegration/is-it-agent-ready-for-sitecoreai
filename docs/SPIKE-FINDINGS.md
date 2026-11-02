@@ -151,6 +151,13 @@ The Phase 0 captures kept only 1.5 KB excerpts, so the sanitiser was built from 
 - **Related Articles on the published Banking page** is the section heading and a loading spinner (`role="status"`). The draft has both cards (title, summary, date, category, "Read More"). P3: 44 of 522 words need JavaScript (91%), half credit, all flagged under `relatedarticles`. The cards' two "Read More" links also make P20 stricter on the draft (2 of 7 links generic, against 0 of 5 live).
 - **St. Patrick's page-title description.** The published page shows "Celebrate St. Patrick's Day with BrandX…" in the page-title component. In the draft that field is an empty `<div>` with no fallback hint. So either the field was emptied after publishing, or the published component falls back to another field without the editor saying so. The "Draft differs from live" banner shows on this page as a result (plan section 13, item 7).
 
+### 3.2 `getPageHTML` right after a page opens (production, 2026-11-02)
+
+- **Confirmed:** on the first production run of Phase 4, P3 showed "not checked" with a Live chip on the home page, About Us and the Banking article. The console showed `[draft] getPageHTML unavailable; the body checks use the live page: CoreError: [client SDK] [CANVAS BUG] Service implementation is not provided.`
+- **Confirmed:** clicking **Re-scan page** a moment later read the draft on About Us and the Banking article. So the failure is timing: the read 1.5 s after the page opened came before Page Builder's canvas was ready, and the hook gave up on the page after one failure.
+- The error text isn't in the SDK (client 0.4.1, core 0.3.5, the versions the Phase 0 spike used); it comes from the Page Builder host. Sitecore's docs say `getPageHTML` "requires that the SitecoreAI environment where your app is installed supports the page HTML capability. If the host doesn't support it, the request fails", and give no timing rule ([Get the page HTML](https://doc.sitecore.com/mp/en/developers/sdk/0/sitecore-marketplace-sdk/get-the-page-html.html)). The Phase 0 spike called it by hand, well after the page had loaded, so it never hit this.
+- **Fix:** the first read of a page is retried after 2, 4 and 8 s (`readWithRetry` in `usePageHtml.ts`).
+
 ## 4. Blok design system (plan section 6.2, item 9)
 
 **Recommendation: adopt Blok** (this settles open decision 4). Install components from its **shadcn registry** into `src/components/ui`; don't build custom tokens.

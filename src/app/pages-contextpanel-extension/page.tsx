@@ -107,11 +107,12 @@ export default function PagesContextPanel() {
             fields: scoringFields,
             html: scan.parsedHtml,
             draft: pageHtml.draft,
+            draftUnavailable: pageHtml.status === "unavailable",
             ai: scan.ai,
             psi: scan.psi,
             organization,
           },
-    [fixture, fixtureDraft, pageUrl, route, templateName, scoringFields, scan.parsedHtml, pageHtml.draft, scan.ai, scan.psi, organization],
+    [fixture, fixtureDraft, pageUrl, route, templateName, scoringFields, scan.parsedHtml, pageHtml.draft, pageHtml.status, scan.ai, scan.psi, organization],
   );
 
   // "Draft differs from live": compares main text, ignoring client-rendered
