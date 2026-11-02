@@ -21,7 +21,7 @@ export interface CategoryAggregate {
   /** Mean readiness across pages where this category was scored (0–100), or null if none. */
   pct: number | null;
   label: ScoreLabel | null;
-  /** Pages scoring below FAIL_THRESHOLD for this category. */
+  /** Pages scoring below FAIL_THRESHOLD for this category ("N pages need work"). */
   failingCount: number;
   /** Pages where this category was scored at all. */
   applicableCount: number;
@@ -40,7 +40,7 @@ export interface SiteAggregate {
   /** Mean readiness across scored pages (0–100), or null if nothing scored yet. */
   overallPct: number | null;
   overallLabel: ScoreLabel | null;
-  counts: { critical: number; warning: number; good: number };
+  counts: Record<ScoreLabel, number>;
   categories: CategoryAggregate[];
 }
 
@@ -58,7 +58,7 @@ export function aggregateSite(pages: PageMatrixRow[]): SiteAggregate {
   const blockedCount = finished.filter((p) => p.score?.blocked).length;
   const done = finished.length + errorCount;
 
-  const counts = { critical: 0, warning: 0, good: 0 };
+  const counts: Record<ScoreLabel, number> = { "not-ready": 0, "almost-there": 0, "agent-ready": 0 };
   let pctSum = 0;
   for (const row of scoredRows) {
     const pct = pageScore(row)!;
@@ -102,12 +102,4 @@ export function aggregateSite(pages: PageMatrixRow[]): SiteAggregate {
     counts,
     categories,
   };
-}
-
-/** Scored pages sorted by readiness ascending — the "fix these first" list. */
-export function worstPages(pages: PageMatrixRow[], limit: number): PageMatrixRow[] {
-  return pages
-    .filter((p) => pageScore(p) !== null)
-    .sort((a, b) => pageScore(a)! - pageScore(b)!)
-    .slice(0, limit);
 }

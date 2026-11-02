@@ -1,13 +1,14 @@
 # Page Matrix — Technical Reference
 
-Engineering-oriented reference for the **dashboard** ("Is this site agent-ready?"): how it scans pages, how it scores them, how it rolls them up, and the site checks. Since Phase 3 the dashboard uses **the same check engine as the panel** — the old 5-pillar model (`site-score.ts`: Crawlability, Structured, Answerability, Authority, Retrievability) is gone. The checks themselves (IDs, thresholds, credit) are documented once, in `PAGE-CHECKS-TECHNICAL.md`.
+Engineering-oriented reference for the **dashboard**: how it scans pages, how it scores them, how it rolls them up, the site checks, and the Phase 5 UI. Since Phase 3 the dashboard uses **the same check engine as the panel** — the old 5-pillar model (`site-score.ts`: Crawlability, Structured, Answerability, Authority, Retrievability) is gone. The checks themselves (IDs, thresholds, credit) are documented once, in `PAGE-CHECKS-TECHNICAL.md`.
 
 **Source of truth:**
 - `src/hooks/useSitePages.ts` — page enumeration, scanning, the score cache, site-check inputs
 - `src/lib/checks/` — the engine (see `PAGE-CHECKS-TECHNICAL.md`)
-- `src/lib/checks/adapters.ts` — `PageScoreSummary`, `CATEGORY_META`
-- `src/lib/site-aggregate.ts` — site roll-up and "Pages to fix first"
-- `src/components/{SiteSummary,CategoryCards,SiteChecks,WorstPages,AllPagesView,PageScoreRow}.tsx` — Overview UI
+- `src/lib/checks/view-model.ts` — `PageScoreSummary`, `CATEGORY_META`, Fix first grouping, status words
+- `src/lib/site-aggregate.ts` — site roll-up
+- `src/app/dashboard-widget-extension/page.tsx` and `src/components/dashboard/*.tsx` — the UI (one component per tab)
+- `src/hooks/useScoreHistory.ts` — the last 8 site scores
 - `src/hooks/useSiteType.ts` — the Site type setting
 - `src/types/dashboard.ts` — `PageMatrixRow`, `MatrixFilter`
 
@@ -20,21 +21,22 @@ Each page is scored by `runPageChecks` with a context from `buildPageContext` �
 | Field | Meaning |
 |---|---|
 | `score` | 0–100, or `null` when the gate blocks the page or nothing could be scored |
-| `label` | `critical` / `warning` / `good` from `labelForPct` (80 / 60), or `null` |
+| `label` | `not-ready` / `almost-there` / `agent-ready` from `labelForPct` (80 / 60), or `null` |
 | `blocked`, `gateReason` | the gate (P1): Sitecore Robots Meta Tag field, or a rendered noindex / nosnippet / max-snippet:0 |
 | `categories` | earned and max points for `reach`, `read`, `understand`, `trust` (max 0 when nothing in that category was scored) |
+| `issues` | every scored check that isn't passing: `{ id, status, gain }` with `status` "warning" or "fail" and `gain` = `maxPoints − points`. Empty when blocked. Feeds Fix first |
 
 **Pools:** Essential checks share 80 points, Recommended 20, Bonus adds up to 5, capped at 100. N/A and not-checked results are left out of the pools. Full detail in `PAGE-CHECKS-TECHNICAL.md`.
 
 ### Rating bands — `labelForPct`, `src/lib/score-thresholds.ts`
 
-| Label | Range | Shown as |
+| Label | Range | Shown as (`LABEL_TEXT`) |
 |-------|-------|----------|
-| `good` | ≥ 80 | Agent-ready (Healthy in the current UI) |
-| `warning` | 60–79 | Almost there (Needs work) |
-| `critical` | < 60 | Not ready (Critical) |
+| `agent-ready` | ≥ 80 | Agent-ready |
+| `almost-there` | 60–79 | Almost there |
+| `not-ready` | < 60 | Not ready |
 
-The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, every `ScorePill` and the site roll-up.
+The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the score rings, the heatmap cells, the verdicts and the site roll-up.
 
 ---
 
@@ -48,20 +50,30 @@ The same `READY_PCT` (80) and `ALMOST_PCT` (60) drive the panel's `ScoreRing`, e
 
 ### Score cache
 
-Summaries are cached in localStorage under **`aiDiscovery:scores:v4:<siteId>`**, keyed by page URL and reused while the page's `__Updated` is unchanged. **v4** is the unified engine (the shape changed from `SiteScoreResult` to `PageScoreSummary`), so v3 scores from the pillar model are never shown. **Refresh** clears the cache and re-fetches the site-check inputs.
+Summaries are cached in localStorage under **`aiDiscovery:scores:v5:<siteId>`**, keyed by page URL and reused while the page's `__Updated` is unchanged. **v5** (Phase 5) adds `issues` and the new label names; **v4** was the unified engine. A new version makes the dashboard rescan every page once. The AI results have their own content-hash cache, so pages whose text hasn't changed don't call `ai-check` again. **Scan site** clears the cache and re-fetches the site-check inputs.
 
 ---
 
 ## Site roll-up (`site-aggregate.ts`)
 
 - **Overall score:** mean of the page scores. Unscanned and **blocked** pages are left out; blocked pages are counted separately ("N Blocked" in the summary).
-- **Category cards:** for each category, the mean of `earned ÷ max` over pages where that category was scored. A page "fails" a category below 40%. The "What's included" list comes from the check registry, so it always matches what's scored.
-- **Pages to fix first:** scored pages sorted by score, lowest first. Blocked pages show "Blocked (noindex)" and sort with the unscanned ones.
-- **Per-page breakdown:** expanding a row shows the four categories as `earned/max` pills (rounded).
+- **Category cards:** for each category, the mean of `earned ÷ max` over pages where that category was scored. A page "needs work" in a category below 60% (`FAIL_THRESHOLD`, the Almost there line; it was 40% before Phase 5). The "What's included" list comes from the check registry (`pageCheckTitles`), so it always matches what's scored; P3 and P7 are marked "(Page Builder panel only)".
+- **Pages heatmap:** a category cell shows `round(earned ÷ max × 100)`, coloured by `labelForPct`, or N/A when nothing in it was scored. Blocked pages show the gate reason across the cells and sort with the unscanned ones.
+
+## Fix first (`view-model.ts`)
+
+- **Page issues:** `groupPageIssues` groups every page's `issues` by check ID. `gainEach` is the mean gain, rounded ("+N pts each"); groups under 1 point are dropped. The worst status wins (any `fail` → Fix). Sorted by the total gain across pages.
+- **Site issues:** `siteIssueGroups` turns the site checks that need work into groups that sort first ("Affects every page").
+- **Buttons:** site issues and Developer page issues get **Send to developer**, which copies `issueNote` (the issue, why, and each page's URL; for a site issue, `developerNote` with its fix and snippet). Author page issues get **Review pages**, which opens the Pages tab filtered to `pageIds`. Bulk "Generate for all" is Phase 9.
+- The hero sentence comes from the same groups: the number of site issues, or the biggest page issue, and how many issues authors can fix.
+
+## History (`useScoreHistory.ts`)
+
+`useSiteHistory` keeps the last 8 site scores in localStorage (`aiDiscovery:siteHistory:v1:<siteId>`). It adds one when a scan finishes in this session (pages were scanning, now none are), not on every load from cache. The hero shows "▲ N since last scan" (the last two entries) and the trend line from two scans on. Phase 8 decides on shared storage for "What changed".
 
 ---
 
-## Site checks card
+## Agent access tab: site checks
 
 Once per site, the hook fetches `/api/robots-check` and the home page (`/api/preview-fetch` on `<domain>/`), not awaited by enumeration. The page then runs `runSiteChecks` with:
 - the home page HTML (null when it couldn't be fetched → S7 is "Couldn't check", N/A),
@@ -69,9 +81,13 @@ Once per site, the hook fetches `/api/robots-check` and the home page (`/api/pre
 - the organisation for the snippet (`getOrganizationInfo`, `NEXT_PUBLIC_ORG_*` with the site's name and domain as fallbacks) and the configured organisation as the expected value (`getConfiguredOrganization`),
 - the site type.
 
-Site checks get **their own site score** (same pool maths) and never feed page scores. Phase 3 has **S2** `reach.robots-ai-rules` (the old 6-crawler robots.txt signal, moved as is) and **S7** `understand.org-schema` (home page Organization JSON-LD, graded with the four agreed rules). Phase 6 adds the rest and moves them to an Agent access tab.
+Site checks never feed page scores. Phase 3 has **S2** `reach.robots-ai-rules` (the old 6-crawler robots.txt signal, moved as is) and **S7** `understand.org-schema` (home page Organization JSON-LD, graded with the four agreed rules). Phase 6 adds the rest.
 
-**Site type** (Content site / Commerce / App or API) is a select in the card, stored per site in localStorage (`aiDiscovery:siteType:v1:<siteId>`). It decides which Bonus protocol checks apply (S11 App/API, S12 Commerce), which arrive in Phase 6, so it has no visible effect yet.
+`AgentAccessTab.tsx` lists them as a checklist (status word, title, tier, message, and a button when they need work: S2 → **Open robots.txt help** in Files, S7 → **Copy snippet**). A third row, **About, contact and policy pages are linked**, shows `/api/footer-check` (fetched when the tab first opens; 5 or more of the 6 signals is Pass, 3 or more Improve). It's labelled "Not scored yet". The table beside it shows the six crawlers' robots.txt result from `siteInputs.robotsTxt` ("unknown", not mentioned, is allowed by default). Live requests per user agent are Phase 6.
+
+**Files tab** (`FilesTab.tsx`): the llms.txt generator (`buildLlmsTxt`, now with `whenToUse` → `## When to use this site`, and a checkbox for the fixed 60 threshold), and robots.txt help: the `User-agent: … / Allow: /` lines for each blocked crawler. The Content-Signal and bot-group generator is Phase 6.
+
+**Site type** (Content site / Commerce / App or API) is a select in the header, stored per site in localStorage (`aiDiscovery:siteType:v1:<siteId>`). It decides which Bonus protocol checks apply (S11 App/API, S12 Commerce), which arrive in Phase 6, so it has no visible effect yet.
 
 ---
 
@@ -96,15 +112,19 @@ Site checks get **their own site score** (same pool maths) and never feed page s
 | Retrievability: landmarks | P4 `read.landmarks` |
 | Retrievability: image alt | P15 `understand.image-alt` (N/A without images) |
 
-New in the dashboard because it now shares the panel's checks: P11's lang and og:type, P12 FAQ answer quality, P17 author (article templates), P21 follow-up gaps (Bonus). The unused `MatrixView.tsx` table (replaced earlier by `AllPagesView`) was removed with the pillar types.
+New in the dashboard because it now shares the panel's checks: P11's lang and og:type, P12 FAQ answer quality, P17 author (article templates), P21 follow-up gaps (Bonus).
+
+## UI (Phase 5)
+
+Blok tokens and components (`src/components/ui`), `@mdi/js` icons, and the shared components in `src/components/shared` (also used by the panel; see PAGE-CHECKS-TECHNICAL). Tabs are Radix tabs: arrow keys move between them. A URL hash (`#pages`, `#agent-access`, `#citations`, `#files`) opens that tab; it's read after mount so hydration matches. Header: site name and domain, Site type, "Last scan N ago" (the newest `lastScannedAt`), and **Scan site** (`clearAndRefresh`). The page-list error shows on Overview and Pages with **Retry**; the other tabs only need the domain.
 
 ---
 
 ## Demo mode (`?demo=1`)
 
-`makeTestSitePages()` (`src/lib/rule-engine/test-fixture.ts`) builds 12 rows by running the **real engine** on variants of the panel's demo page, so the numbers are consistent: 3 critical, 3 warning, 5 good and 1 blocked (noindex). The row "Blog: content strategy" is the panel's demo page unchanged, scored on live HTML only (89). The panel demo also scores its demo draft (`makeTestDraft`: an edited heading and client-rendered Related Articles cards), so it shows 81, with the "Draft differs" banner and a P3 warning. `makeTestSiteContext()` gives the Site checks card a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).
+`makeTestSitePages()` (`src/lib/rule-engine/test-fixture.ts`) builds 12 rows by running the **real engine** on variants of the panel's demo page, so the numbers are consistent: 3 Not ready, 3 Almost there, 5 Agent-ready and 1 blocked (noindex), a site score of 74. The row "Blog: content strategy" is the panel's demo page unchanged, scored on live HTML only (89). The panel demo also scores its demo draft (`makeTestDraft`: an edited heading and client-rendered Related Articles cards), so it shows 81, with the "Draft differs" banner and a P3 warning. `makeTestSiteContext()` gives the Agent access tab a BrandX-style home page with no JSON-LD (S7: 0, warning, snippet) and a robots.txt that blocks GPTBot (S2: half credit).
 
-Demo mode never starts the Marketplace client (`useMarketplaceClient` checks `isDemoUrl()`), in the dashboard or the panel. So it makes no SitecoreAI calls and can't write to a real page, even if `?demo=1` is opened inside a Sitecore extension point. The panel doesn't auto-scan in demo mode either: the fixture already holds the HTML, the draft and the AI results, so nothing fetches the fixture URL, reads `getPageHTML` or calls `ai-check` on load. The Robots.txt and Footer trust tabs still check `example.com` (free). Generate meta and Citation forecast still call Claude when clicked.
+Demo mode never starts the Marketplace client (`useMarketplaceClient` checks `isDemoUrl()`), in the dashboard or the panel. So it makes no SitecoreAI calls and can't write to a real page, even if `?demo=1` is opened inside a Sitecore extension point. The panel doesn't auto-scan in demo mode either: the fixture already holds the HTML, the draft and the AI results, so nothing fetches the fixture URL, reads `getPageHTML` or calls `ai-check` on load. Agent access and Files use the fixture's robots.txt and `makeTestFooterTrust()`, so the dashboard fetches nothing in demo mode. The trend line uses `DEMO_SITE_HISTORY_BEFORE` plus the current score, and **Scan site** is off. Generate meta and Citation forecast still call Claude when clicked.
 
 ---
 
@@ -116,9 +136,12 @@ Demo mode never starts the Marketplace client (`useMarketplaceClient` checks `is
 | Host authorization refusal | `src/lib/xmc-errors.ts` |
 | Demo mode check (`?demo=1`) | `src/hooks/useDemoMode.ts` |
 | Check engine, registry, scoring | `src/lib/checks/` |
-| Summary shape and category labels | `src/lib/checks/adapters.ts` |
-| Site roll-up and worst pages | `src/lib/site-aggregate.ts` |
-| Overview UI | `src/components/SiteSummary.tsx`, `CategoryCards.tsx`, `SiteChecks.tsx`, `WorstPages.tsx`, `AllPagesView.tsx`, `PageScoreRow.tsx` |
+| Summary shape, category labels, Fix first grouping, developer notes | `src/lib/checks/view-model.ts` |
+| Site roll-up | `src/lib/site-aggregate.ts` |
+| Dashboard UI | `src/app/dashboard-widget-extension/page.tsx`, `src/components/dashboard/{OverviewTab,PagesTab,AgentAccessTab,FilesTab,Sparkline}.tsx` |
+| Shared UI (rings, chips, status icons, buttons) | `src/components/shared/`, Blok in `src/components/ui/` |
+| Score history | `src/hooks/useScoreHistory.ts` |
+| llms.txt builder | `src/lib/llms-txt/build.ts` |
 | Site type setting | `src/hooks/useSiteType.ts` |
 | Dashboard types | `src/types/dashboard.ts` |
 | Demo data | `src/lib/rule-engine/test-fixture.ts` |

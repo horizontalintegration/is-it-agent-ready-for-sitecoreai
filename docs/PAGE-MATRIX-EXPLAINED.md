@@ -1,6 +1,6 @@
 # Page Matrix Explained — A Guide for Marketers
 
-The **dashboard** in **Is It Agent-Ready? for SitecoreAI** ("Is this site agent-ready?") grades every page on your site and shows the results at a glance: one score per page, one card per category, and a short list of the pages to fix first. Where the Page Builder panel is the detailed checklist for one page, the dashboard is the **scorecard for the whole site**.
+The **dashboard** in **Is It Agent-Ready? for SitecoreAI** grades every page on your site and shows the results at a glance: one site score, one card per category, a heatmap of every page, and a **Fix first** list grouped by issue. Where the Page Builder panel is the detailed checklist for one page, the dashboard is the **scorecard for the whole site**.
 
 This guide explains what you see on the dashboard and why it matters. Use it as a demo cheat sheet.
 
@@ -27,13 +27,15 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 
 - Each page gets a **score out of 100**.
 - **Essential** checks carry most of it (80 points between them), **Recommended** checks the rest (20 points), and a **Bonus** check can add up to 5. Fix the Essential ones first.
-- That score becomes a **colour-coded label**:
+- That score becomes a **verdict**, always shown as a word, never by colour alone:
 
-| Label | Score | Meaning |
+| Verdict | Score | Meaning |
 |-------|-------|---------|
-| 🟢 **Agent-ready** (shown as Healthy) | 80–100 | AI can reach, read, understand and trust it |
-| 🟡 **Almost there** (shown as Needs work) | 60–79 | Some gaps holding it back |
-| 🔴 **Not ready** (shown as Critical) | Below 60 | Major issues — likely passed over by AI |
+| 🟢 **Agent-ready** | 80–100 | AI can reach, read, understand and trust it |
+| 🟡 **Almost there** | 60–79 | Some gaps holding it back |
+| 🔴 **Not ready** | Below 60 | Major issues — likely passed over by AI |
+
+- The dashboard doesn't show points. Category scores are out of 100 too, and the only points you'll see are on fixes ("+5 pts each": what fixing it would add to each page's score).
 
 **Fair by design:** a page is only graded on what applies to it. Your home page isn't marked down for missing article labels, and a page without images isn't marked down for image descriptions.
 
@@ -41,24 +43,67 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 
 ---
 
-## What's on the Overview
+## The header
+
+The app name, your site's name and address, the **Site type** setting, when the site was last scanned, and **Scan site**, which rescans every page. **Site type** (Content site, Commerce, or App or API) tells the app which kind of site this is. It will decide which extra agent checks apply in a later release.
+
+The dashboard has five tabs: **Overview · Pages · Agent access · AI citations · Files**.
+
+---
+
+## Overview
 
 ### The site score
-The average score of all scored pages, with how many are Agent-ready, Almost there, Not ready and Blocked. A progress bar shows the scan filling in.
+A ring with the average score of all scored pages, the verdict, and one sentence on what would make the biggest difference. Next to it:
+- **▲ / ▼ N since last scan**: how much the score moved since the previous full scan.
+- **Last 8 scans**: a small trend line, once there are two scans to compare. The history is kept in your browser.
+- How many pages are **Agent-ready**, **Almost there** and **Not ready**, plus any **Blocked** pages.
 
-### Readiness by category
-One card per category (Reach, Read, Understand, Trust) with the site's average and how many pages are failing that category. **What's included** lists the checks behind each card.
+A progress bar shows the scan filling in.
 
-### Site checks
-Some things are about the **whole site**, not one page, so they're checked once and get their own site score (they never change a page's score):
+### The four category cards
+One card per category (Reach, Read, Understand, Trust) with its question, the site's score in that category, and how many pages **need work** in it (they score under 60 there). **What's included** lists the checks behind each card.
 
+### Fix first
+The issues worth fixing, **grouped by issue rather than by page**, biggest gain first:
+- **Site issues** come first because they affect every page, for example robots.txt blocking an AI crawler, or missing organisation details on the home page. Their button is **Send to developer**.
+- **Page issues** say how many pages have them and what fixing them adds to each page ("6 pages · +18 pts each"). Each has a **You can fix** or **Developer** badge.
+  - **Review pages** opens the Pages tab showing only the pages with that issue, so you can open each one in Page Builder.
+  - **Send to developer** copies a ready-to-paste note: the issue, why it matters, and the pages it affects.
+
+Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.
+
+---
+
+## Pages
+
+A heatmap of every page: its score and its score in each of the four categories, each cell coloured by verdict and showing the number. **Search** by name or address, filter by verdict (**Not ready**, **Almost there**, **Agent-ready**), and sort by lowest score, highest score, recently updated or name. **Open in Page Builder** jumps straight to the page. Pages that haven't been scanned yet have a **Scan** button.
+
+---
+
+## Agent access
+
+Things that are about the **whole site**, not one page. They're checked once, every page inherits them, and they never change a page's score.
+
+**Site checklist:**
 - **robots.txt lets AI search in** — whether your site's rulebook (robots.txt) blocks the major AI crawlers (GPTBot, ClaudeBot, Google-Extended, PerplexityBot, and others). Blocking them means those AI tools can't read your site.
-- **Your organisation is described for AI** — whether the home page has Organization schema: your company's name, website, logo, social profiles, description and contact details, in machine-readable form. If it's missing, the dashboard says **"Not added yet"** and gives you the code to paste in; if it's incomplete, it lists what's missing and gives you corrected code. This is how AI knows who runs the site, so it names and cites your brand correctly.
+- **Your organisation is described for AI** — whether the home page has Organization schema: your company's name, website, logo, social profiles, description and contact details, in machine-readable form. If it's missing, the dashboard says **"Not added yet"** and **Copy snippet** gives you the code to paste in; if it's incomplete, it lists what's missing and gives you corrected code. This is how AI knows who runs the site, so it names and cites your brand correctly.
+- **About, contact and policy pages are linked** — whether the home page footer links your About, Contact, Privacy, Terms and Security pages and shows a postal address. It isn't scored yet.
 
-The **Site type** setting (Content site, Commerce, or App or API) tells the app which kind of site this is. It will decide which extra agent checks apply in a later release.
+**Can each AI agent get in?** A table of the AI crawlers, who runs them, what they're for (search or training), and what your robots.txt tells them. A later release adds a live request as each agent, to catch firewalls that block them even when robots.txt allows them.
 
-### Pages to fix first
-The ten lowest-scoring pages, with **Open** to jump straight to the page in Page Builder. Click a page name to see its score in each of the four categories. **View all pages** lists every page, with filters and sorting.
+---
+
+## AI citations
+
+The citation forecast: for a page, how likely AI answers are to cite it. A later release replaces it with measured citation checks.
+
+---
+
+## Files
+
+- **llms.txt:** a short guide to your site for AI tools, built from your pages and their meta descriptions. Write a one-line summary and, in **When should AI tools use this site?**, a sentence or two on what the site is for; it becomes a "When to use this site" section in the file. Tick **Only include pages scoring 60 or more** to leave weak pages out. Then **Copy**, **Download**, or **Send to developer to publish**, which copies the file with a note on where to put it.
+- **robots.txt help:** whether robots.txt blocks any AI crawler and, if it does, the lines that let them back in, ready to copy or send to a developer. Remember that robots.txt is a request, not a lock: firewall rules decide who actually gets in.
 
 ---
 
@@ -79,4 +124,5 @@ The ten lowest-scoring pages, with **Open** to jump straight to the page in Page
 - **"One set of rules in the panel and the dashboard."** The dashboard shows what's live; the panel shows your draft before you publish.
 - **"Fix the essentials first."** They carry most of the score, so a few fixes move the needle.
 - **"It checks the real page."** Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.
-- **"Green / amber / red, at a glance."** Marketers can prioritise instantly: fix the reds first.
+- **"Fix first, grouped by issue."** One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.
+- **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.

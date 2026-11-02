@@ -1,9 +1,9 @@
-import type { BodyBlock, PageData, ParsedHtml } from "./types";
+import type { BodyBlock, FooterTrust, PageData, ParsedHtml } from "./types";
 import type { PageMatrixRow } from "@/types/dashboard";
 import type { DraftHtml, SiteContext } from "@/lib/checks/types";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
-import { summarisePageReport } from "@/lib/checks/adapters";
+import { summarisePageReport } from "@/lib/checks/view-model";
 
 const SITE_DOMAIN = "https://example.com";
 const DAY = 24 * 60 * 60 * 1000;
@@ -417,4 +417,17 @@ export function makeTestSitePages(): PageMatrixRow[] {
       variants: [withArticle, age(60)],
       description: "What answer-engine optimisation is and how it differs from classic SEO." }),
   ];
+}
+
+// ── Demo history and footer (Phase 5 UI) ──────────────────────────────────────
+
+/** The demo page's score at the previous scan, for "▲ N since last scan". */
+export const DEMO_PREVIOUS_PAGE_SCORE = 75;
+
+/** The demo site's earlier scan scores, oldest first; the current score is appended. */
+export const DEMO_SITE_HISTORY_BEFORE = [61, 63, 62, 66, 68, 67, 70];
+
+/** The demo site's footer: no security or trust page, the rest present. */
+export function makeTestFooterTrust(): FooterTrust {
+  return { hasAddress: true, hasContact: true, hasPrivacy: true, hasTerms: true, hasSecurity: false, hasAbout: true };
 }

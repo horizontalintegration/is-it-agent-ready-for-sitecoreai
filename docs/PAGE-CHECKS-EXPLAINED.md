@@ -1,6 +1,6 @@
 # Page Checks Explained — A Guide for Marketers
 
-This guide explains, in plain language, every check that **Is It Agent-Ready? for SitecoreAI** runs in the Page Builder panel ("Is this page agent-ready?") and **why each one matters**. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"
+This guide explains, in plain language, what the **Is It Agent-Ready? for SitecoreAI** panel in Page Builder shows, every check it runs, and **why each one matters**. Use it as a cheat sheet during demos so you can confidently answer "what does this check, and why should I care?"
 
 ---
 
@@ -28,10 +28,32 @@ The panel and the dashboard use the **same four categories and the same scoring*
   - **Bonus** — extra credit, up to **+5 points** (the score still tops out at 100).
 - The points in each group are **shared equally** between the checks that apply to the page. Fixing an Essential check moves the score much more than fixing a Recommended one, and that's on purpose: it's where to start.
 - **Partial credit counts.** A page that's halfway there gets half the points.
-- **Checks that don't apply are skipped, never failed.** A page with no images isn't marked down for image descriptions, and a page with no FAQ isn't marked down for FAQ answers. They're listed under "Doesn't apply here".
-- Some checks need a scan first (the AI originality check, and page speed). Until they've run they show **"not checked"** and don't count either way.
-- The score is **green (Agent-ready) at 80 or more**, **amber (Almost there) from 60 to 79**, and **red (Not ready) below 60**. The dashboard uses the same thresholds.
-- Next to each fix, **"+N pts"** shows how much the score would go up if you fixed it.
+- **Checks that don't apply are skipped, never failed.** A page with no images isn't marked down for image descriptions, and a page with no FAQ isn't marked down for FAQ answers. They're listed as **N/A** under "Doesn't apply to this page".
+- Some checks need a scan first (page speed, and the AI checks if they haven't run). Until they've run they show **Not checked** with a **Run** button, and don't count either way.
+- The verdict is **Agent-ready at 80 or more**, **Almost there from 60 to 79**, and **Not ready below 60**. The dashboard uses the same thresholds.
+- The panel doesn't show points, except on fixes: **"+N pts"** shows how much the score would go up if you fixed it.
+
+---
+
+## What the panel shows
+
+**The header:** the app name, a **Draft** or **Live** label (hover or focus it to see what was scored), and **Re-scan**.
+
+**Three tabs:** **Score**, **Agent View** (coming in a later release: the page as an AI agent receives it) and **AI Assist** (the meta & social generator).
+
+**The Score tab, top to bottom:**
+1. **The verdict:** a score ring out of 100, the verdict (Agent-ready, Almost there or Not ready), **▲ or ▼ N since last scan**, and one sentence, such as "2 fixes would make this page agent-ready."
+2. **Four category bars:** Reach, Read, Understand and Trust, each scored out of 100. Click one to show only that category's checks; click it again to show them all.
+3. **Top fixes:** the three fixes worth the most, each with "+N pts", a **You can fix** or **Developer** badge, and a button:
+   - **Generate** opens AI Assist to write the title or description.
+   - **Copy snippet** copies ready-to-paste code, such as structured data.
+   - **Send to developer** copies a note with the page address, what we found and the fix, to paste into a ticket or a message.
+   - **Show how** opens the check below with the details.
+4. **All checks,** grouped by category, with a **Needs work / All** switch. Every check shows a status icon and word (**✓ Pass**, **! Improve**, **✕ Fix**, **— N/A**, or **Not checked**), its outcome, and where the data came from (**Draft**, **Live**, **Fields**, **AI** or **PageSpeed**). Open one to see **why it matters**, **what we found**, and the fix. Code sits behind **Show code**.
+
+On the home page, a **Site check** group at the bottom shows whether your organisation is described for AI. It isn't part of the page's score.
+
+**"Since last scan"** compares with the score from the previous time the page was scanned (opening it, or Re-scan). Edits you make afterwards show against that, so you can watch a fix move the score.
 
 ---
 
@@ -41,8 +63,8 @@ The panel reads the page **as it is in Page Builder right now**, including edits
 
 - **Content checks** (headings, paragraphs, images, links, FAQ answers, and the AI checks) read **your draft**.
 - **Behind-the-scenes checks** (the title tag, canonical, metadata and structured data) read **the published page**, because they live in a part of the page the editor doesn't show. They catch up when you publish.
-- Open a check to see where it looked: a small **Draft** or **Live** label sits at the top.
-- When your draft's text differs from the published page, a blue **"Draft differs from live"** note appears above the checks.
+- Each check shows where it looked: a small **Draft** or **Live** label next to its name.
+- When your draft's text differs from the published page, a note at the top says **"Scored from your draft. It differs from the live page"**, with how many blocks of text changed.
 - The AI checks don't re-run on every edit. When you've changed the text since they ran, they say so and offer **Re-run**.
 - If the editor can't share the draft, the panel falls back to the published page, as before, and the labels say **Live**.
 
@@ -175,7 +197,7 @@ If something is missing, the check gives you **the code to paste in**.
 ### Your organisation is described for AI
 **What it checks:** Whether the home page has **Organization schema**: your company's name, website, logo, social profiles, description and contact details, in machine-readable form.
 
-This is a **site check**: it's about the whole site, so it isn't part of any page's score. The panel shows it when the **home page** is open, and the dashboard shows it in **Site checks**.
+This is a **site check**: it's about the whole site, so it isn't part of any page's score. The panel shows it when the **home page** is open, and the dashboard shows it on the **Agent access** tab.
 
 | What the home page has | What you see |
 |---|---|
@@ -193,6 +215,7 @@ This is a **site check**: it's about the whole site, so it isn't part of any pag
 | Category | Check | Kind |
 |----------|-------|------|
 | **Reach** | Canonical points to this page | Essential |
+| **Read** | Content is there without JavaScript | Essential (Page Builder panel only) |
 | **Read** | Page structure is machine-readable | Recommended |
 | **Read** | Page loads fast | Recommended |
 | **Understand** | One clear H1 and logical headings | Essential |
@@ -211,13 +234,13 @@ This is a **site check**: it's about the whole site, so it isn't part of any pag
 | **Trust** | Answers the next question too | Bonus |
 | Site | Your organisation is described for AI | Site check (own score) |
 
-More checks arrive in later releases: whether content shows up without JavaScript, and whether AI agents can get the page as Markdown.
+More checks arrive in later releases, starting with whether AI agents can get the page as Markdown.
 
 ---
 
-## Meta & social generator
+## AI Assist: the meta & social generator
 
-Below the checks, the panel can write the **meta title, meta description, Open Graph title and Open Graph description** for you. Click **Generate** on a field, review the suggestion, then click **Populate field** to write it into the page in Sitecore.
+On the **AI Assist** tab, the panel can write the **meta title, meta description, Open Graph title and Open Graph description** for you. **Generate** on a "Title and description" or "Page identity metadata" fix opens it. Click **Generate** on a field, review the suggestion, then click **Populate field** to write it into the page in Sitecore.
 
 - Suggestions are written **from the page's main text, as in your draft**, so they describe what the page actually says, unpublished edits included. The button waits until the page scan has read the text.
 - They follow your **brand voice document**: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.
@@ -229,7 +252,8 @@ Below the checks, the panel can write the **meta title, meta description, Open G
 ## Demo talking points (the big picture)
 
 - **"Four plain questions."** Can AI agents get to it, read it, understand it, and trust it? Every check answers one of them.
-- **"Fix the essentials first."** Essential checks carry most of the score, and "+N pts" shows exactly what each fix is worth.
+- **"Answer first."** One verdict and one sentence: what it would take to make this page agent-ready.
+- **"Fix the essentials first."** Top fixes ranks them by what they're worth, and every fix has a button: Generate, Copy snippet or Send to developer.
 - **"It checks the real page."** Schema checks look at what's actually on the page, and hand you the code when something's missing.
 - **"Fair by design."** Checks that don't apply are skipped, not failed.
 - **"Score as you write."** Edit a heading and the score updates by itself, before you publish.

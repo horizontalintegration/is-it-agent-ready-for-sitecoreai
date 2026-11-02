@@ -17,6 +17,7 @@ import type { PageMatrixRow } from "@/types/dashboard";
 // Spec shape:
 //   # Title
 //   > one-line summary (blockquote)
+//   ## When to use this site (optional, from the dashboard's Files tab)
 //   ## Section
 //   - [label](url): description
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +29,8 @@ export interface LlmsTxtOptions {
   siteName: string;
   /** Blockquote summary line shown under the title. */
   tagline: string;
+  /** "When should AI tools use this site?": becomes a `## When to use this site` section. Empty leaves it out. */
+  whenToUse?: string;
   /**
    * When a finite number, exclude pages whose `score.total` is below it.
    * `null` disables score filtering entirely. Pages with no score (unscanned)
@@ -106,6 +109,13 @@ export function buildLlmsTxt(pages: PageMatrixRow[], opts: LlmsTxtOptions): Llms
   lines.push("");
   if (opts.tagline.trim()) {
     lines.push(`> ${opts.tagline.trim()}`);
+    lines.push("");
+  }
+
+  const whenToUse = opts.whenToUse?.trim();
+  if (whenToUse) {
+    lines.push("## When to use this site");
+    lines.push(whenToUse);
     lines.push("");
   }
 

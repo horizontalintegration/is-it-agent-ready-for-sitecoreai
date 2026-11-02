@@ -162,7 +162,11 @@ The Phase 0 captures kept only 1.5 KB excerpts, so the sanitiser was built from 
 
 **Recommendation: adopt Blok** (this settles open decision 4). Install components from its **shadcn registry** into `src/components/ui`; don't build custom tokens.
 
-The licence check and Next 15 compatibility below need a quick confirmation before Phase 5 depends on them.
+**Confirmed in Phase 5 (2026-11-02):** the licence is Apache-2.0 (LICENSE, "Copyright 2025 Sitecore"), and `next build` passes on next 15.5.18 with the theme and six components (button, tabs, badge, tooltip, checkbox, select) from Sitecore/blok `0a7997e` (2026-10-23), installed with `shadcn@4.23.0`. Notes from the install:
+- The CLI wrote 172 malformed tokens into `globals.css` (`--color-color-…: var(----color-…)`), mapping the theme's already-prefixed `--color-*` keys a second time. They were deleted; nothing references them.
+- Blok's components use **`@mdi/js`** (Material Design Icons) through a small `Icon` component (`src/lib/icon.tsx`), not lucide. The app uses `@mdi/js` too, to keep one icon set (plan section 6.5).
+- The theme has no `@layer base` rules, so `globals.css` adds the border colour, body background and text, the font stack and a focus outline.
+- The components need `cn` (`src/lib/utils.ts`, clsx + tailwind-merge), `radix-ui` and `class-variance-authority`.
 
 - **Distribution** (Confirmed: registry URLs return 200).
   - Blok is a shadcn/ui registry, not an npm component package.

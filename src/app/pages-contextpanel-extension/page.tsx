@@ -1,30 +1,42 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { mdiRefresh, mdiRobotOutline } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { usePageFields } from "@/hooks/usePageFields";
 import { usePageHtml } from "@/hooks/usePageHtml";
 import { useScan } from "@/hooks/useScan";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import { useScanDelta } from "@/hooks/useScoreHistory";
+import { DEMO_PREVIOUS_PAGE_SCORE, makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, isHomeRoute, type PageInput } from "@/lib/checks/context";
 import { draftDiffersFromLive } from "@/lib/checks/draft-diff";
 import { runPageChecks, runSiteChecks } from "@/lib/checks/engine";
-import { rowsByCategory, toCheckRow } from "@/lib/checks/adapters";
-import { CATEGORIES } from "@/lib/checks/types";
-import { ScoreRing } from "@/components/ScoreRing";
-import { GateBanner } from "@/components/GateBanner";
-import { DraftBanner } from "@/components/DraftBanner";
-import { CategorySection } from "@/components/CategorySection";
-import { ScanBar } from "@/components/ScanBar";
+import { rowsByCategory, toCheckRow } from "@/lib/checks/view-model";
+import { Icon } from "@/lib/icon";
+import { cn } from "@/lib/utils";
+import { AppMark } from "@/components/shared/AppMark";
+import { Chip } from "@/components/shared/Chips";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { ScoreTab } from "@/components/panel/ScoreTab";
+import { ScanNote } from "@/components/panel/ScanNote";
 import { MetaGenerator } from "@/components/MetaGenerator";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+type PanelTab = "score" | "agent-view" | "assist";
 
 function SkeletonRows() {
   return (
-    <div className="px-3 py-2 space-y-2">
+    <div className="flex flex-col gap-3 px-4 py-3.5" aria-busy="true" aria-label="Loading the page">
+      <div className="flex items-center gap-3.5">
+        <div className="size-[88px] animate-pulse rounded-full bg-gray-100" />
+        <div className="h-10 flex-1 animate-pulse rounded bg-gray-100" />
+      </div>
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
+        <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />
       ))}
     </div>
   );
@@ -161,55 +173,95 @@ export default function PagesContextPanel() {
   }, [isHomePage, pageInput.html, scan.isScanning, effectiveSiteDomain, organization, fixture]);
 
   const showSkeleton = !fixture && isLoading;
+  const [tab, setTab] = useState<PanelTab>("score");
+
+  // "▲ N since last scan": recorded once the page, its draft and the on-demand
+  // checks have settled, so a half-loaded score never becomes the baseline.
+  const pageKey = fixture ? "demo" : writeContext.pageId ? `${writeContext.pageId}|${writeContext.language}` : "";
+  const settled = !showSkeleton && !isScanning && !scan.isAiScanning && !scan.isPsiScanning;
+  const delta = useScanDelta(
+    pageKey,
+    report.gate.blocked ? null : report.score,
+    settled,
+    fixture ? DEMO_PREVIOUS_PAGE_SCORE : undefined,
+  );
+
+  const fromDraft = Boolean(draft);
+  const sourceHint = fromDraft
+    ? "Scored from your Page Builder draft, unsaved edits included. Title, canonical, metadata and structured data come from the published page."
+    : "Scored from the published page: the Page Builder draft isn't available.";
+
+  const tabContent = "min-h-0 flex-1 overflow-y-auto focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=inactive]:hidden";
+  const trigger = "h-10 border-b-0 px-2.5 text-sm font-semibold data-[state=active]:border-b-2";
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
-      <header className="border-b border-gray-200 bg-white px-3 py-2 flex items-center gap-3 shrink-0">
-        <span
-          className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"
-          aria-hidden
-        />
-        <h1 className="text-sm font-semibold flex-1">Is this page agent-ready?</h1>
-        {!showSkeleton && !report.gate.blocked && report.score !== null && (
-          <div className="flex items-center gap-2">
-            <ScoreRing score={report.score} maxScore={100} size={40} />
-          </div>
-        )}
-      </header>
+    <TooltipProvider>
+      <div className="flex h-screen flex-col bg-body-bg text-body-text">
+        <header className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5">
+          <AppMark />
+          <h1 className="min-w-0 flex-1 truncate text-[15px] font-bold">Is It Agent-Ready?</h1>
+          {!showSkeleton && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help rounded-full" aria-label={`${fromDraft ? "Draft" : "Live"}. ${sourceHint}`}>
+                  <Chip tone={fromDraft ? "warning" : "neutral"}>{fromDraft ? "Draft" : "Live"}</Chip>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-64">{sourceHint}</TooltipContent>
+            </Tooltip>
+          )}
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={rescan}
+            disabled={isScanning || Boolean(fixture)}
+            aria-label={isScanning ? "Scanning the page" : "Re-scan page"}
+            title={fixture ? "Re-scan is off in demo mode" : isScanning ? "Scanning…" : "Re-scan page"}
+          >
+            <Icon path={mdiRefresh} aria-hidden className={cn("size-5", isScanning && "animate-spin")} />
+          </Button>
+        </header>
 
-      <main className="flex-1 overflow-y-auto py-3">
-        {showSkeleton ? (
-          <SkeletonRows />
-        ) : report.gate.blocked ? (
-          <GateBanner reason={report.gate.reason} />
-        ) : (
-          <>
-            {difference?.differs && <DraftBanner changed={difference.changed} removed={difference.removed} />}
-            {CATEGORIES.map((category) => (
-              <CategorySection
-                key={category}
-                category={category}
-                results={rows[category]}
-                score={report.categories[category].earned}
-                maxScore={report.categories[category].max}
-                isScanning={isScanning}
-                isAiScanning={scan.isAiScanning}
-                isPsiScanning={scan.isPsiScanning}
-                aiStale={scan.aiStale}
-                onAiScan={scan.runAiScan}
-                onPsiScan={scan.runPsiScan}
-              />
-            ))}
-            {orgSchemaRow && (
-              <CategorySection
-                category="understand"
-                title="Site check"
-                subtitle="Not in this page's score"
-                results={[orgSchemaRow]}
-                score={orgSchemaRow.points}
-                maxScore={orgSchemaRow.maxPoints}
-              />
+        <Tabs value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="min-h-0 flex-1 gap-0">
+          <TabsList aria-label="Panel sections" className="h-auto w-full shrink-0 justify-start gap-1 border-b px-2">
+            <TabsTrigger value="score" className={trigger}>Score</TabsTrigger>
+            <TabsTrigger value="agent-view" className={trigger}>Agent View</TabsTrigger>
+            <TabsTrigger value="assist" className={trigger}>AI Assist</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="score" forceMount className={tabContent}>
+            {showSkeleton ? (
+              <SkeletonRows />
+            ) : (
+              <>
+                <ScoreTab
+                  report={report}
+                  rows={rows}
+                  siteRow={orgSchemaRow}
+                  pageUrl={effectivePageUrl}
+                  delta={delta}
+                  difference={difference}
+                  isScanning={isScanning}
+                  isAiScanning={scan.isAiScanning}
+                  isPsiScanning={scan.isPsiScanning}
+                  aiStale={scan.aiStale}
+                  onAiScan={scan.runAiScan}
+                  onPsiScan={scan.runPsiScan}
+                  onGenerate={() => setTab("assist")}
+                />
+                <ScanNote isScanning={isScanning} lastScannedAt={scan.lastScannedAt} demo={Boolean(fixture)} />
+              </>
             )}
+          </TabsContent>
+
+          <TabsContent value="agent-view" forceMount className={tabContent}>
+            <EmptyState icon={mdiRobotOutline} title="See your page the way an AI agent does">
+              Coming soon: the Markdown an agent receives from this page, how many tokens it saves, and how to serve it.
+            </EmptyState>
+          </TabsContent>
+
+          <TabsContent value="assist" forceMount className={tabContent}>
             <MetaGenerator
               client={client}
               writeContext={writeContext}
@@ -223,15 +275,9 @@ export default function PagesContextPanel() {
               bodyText={bodyText}
               bodyPending={bodyPending}
             />
-          </>
-        )}
-      </main>
-
-      <ScanBar
-        isScanning={isScanning}
-        lastScannedAt={scan.lastScannedAt}
-        onScan={rescan}
-      />
-    </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </TooltipProvider>
   );
 }
