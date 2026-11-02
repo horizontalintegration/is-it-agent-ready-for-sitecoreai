@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPageContext, pageFieldsFromFieldMap, pageFieldsFromValues, SCORING_FIELD_NAMES } from "./context";
 import { runPageChecks } from "./engine";
-import { summarisePageReport } from "./adapters";
+import { summarisePageReport } from "./view-model";
 import { makeTestDraft, makeTestPageData, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
 import { labelForPct } from "@/lib/score-thresholds";
 
@@ -77,12 +77,12 @@ describe("panel vs dashboard", () => {
 
 describe("labelForPct (shared thresholds: 80 / 60)", () => {
   it.each([
-    [0, "critical"],
-    [59.9, "critical"],
-    [60, "warning"],
-    [79.9, "warning"],
-    [80, "good"],
-    [100, "good"],
+    [0, "not-ready"],
+    [59.9, "not-ready"],
+    [60, "almost-there"],
+    [79.9, "almost-there"],
+    [80, "agent-ready"],
+    [100, "agent-ready"],
   ] as const)("%d%% → %s", (pct, label) => {
     expect(labelForPct(pct)).toBe(label);
   });

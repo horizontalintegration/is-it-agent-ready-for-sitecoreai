@@ -7,7 +7,7 @@ import type { AiResults, ParsedHtml, RobotsTxt } from "@/lib/rule-engine/types";
 import { getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
-import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/adapters";
+import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/view-model";
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 
@@ -19,7 +19,8 @@ import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 // pools, etc.) so cached scores from an older engine don't render stale values.
 // v3: shared 80/60 label thresholds, and the AI check reads the page's main text.
 // v4: the unified check engine (4 categories, tier pools, gate) — PageScoreSummary.
-const CACHE_KEY_PREFIX = "aiDiscovery:scores:v4:";
+// v5: the summary keeps each page's issues for "Fix first"; v2 label names.
+const CACHE_KEY_PREFIX = "aiDiscovery:scores:v5:";
 
 function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;

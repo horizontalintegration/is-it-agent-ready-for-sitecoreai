@@ -1,4 +1,4 @@
-import type { PageScoreSummary } from "@/lib/checks/adapters";
+import type { PageScoreSummary } from "@/lib/checks/view-model";
 import type { PageFields } from "@/lib/checks/types";
 
 export type RowScanStatus = "idle" | "scanning" | "scanned" | "error";

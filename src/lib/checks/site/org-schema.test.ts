@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { orgSchema } from "./org-schema";
 import { runSiteChecks } from "../engine";
-import { toCheckRow } from "../adapters";
+import { toCheckRow } from "../view-model";
 import { extractParsedHtml } from "@/lib/html/extract-html";
 import { makeTestSiteContext } from "@/lib/rule-engine/test-fixture";
 import type { SiteContext } from "../types";
