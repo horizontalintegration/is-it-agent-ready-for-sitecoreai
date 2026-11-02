@@ -204,7 +204,7 @@ describe("safeFetch against a local server", () => {
     other = http.createServer((req, res) => {
       lastOtherToken = req.headers["x-prerender-revalidate"] as string | undefined;
       res.writeHead(200);
-      res.end("other");
+      res.end(`other ua=${req.headers["user-agent"] ?? ""}`);
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     await new Promise<void>((r) => other.listen(0, "127.0.0.1", r));
@@ -236,8 +236,23 @@ describe("safeFetch against a local server", () => {
   it("drops the caller's headers on a cross-origin redirect", async () => {
     lastOtherToken = "unset";
     const res = await safeFetch(`${base}/redirect-other`, { headers: token });
-    expect(await res.text()).toBe("other");
+    expect(await res.text()).toMatch(/^other/);
     expect(lastOtherToken).toBeUndefined();
+  });
+
+  it("keeps the public headers on a cross-origin redirect", async () => {
+    const res = await safeFetch(`${base}/redirect-other`, { headers: token, publicHeaders: { "user-agent": "GPTBot/1.1" } });
+    expect(await res.text()).toBe("other ua=GPTBot/1.1");
+    expect(lastOtherToken).toBeUndefined();
+  });
+
+  it("reports the final URL after redirects", async () => {
+    expect((await safeFetch(`${base}/redirect-other`)).url).toBe(`${otherBase}/token`);
+    expect((await safeFetch(`${base}/ok`)).url).toBe(`${base}/ok`);
+  });
+
+  it("stops when the caller's signal aborts, reported as a timeout", async () => {
+    await expectCode(safeFetch(`${base}/hang`, { timeoutMs: 5_000, signal: AbortSignal.timeout(200) }), "timeout");
   });
 
   it("blocks a redirect to the cloud metadata address", async () => {

@@ -8,12 +8,10 @@ import type {
   AiResults,
   ParsedHtml,
   PsiResult,
-  RobotsTxt,
 } from "@/lib/rule-engine/types";
 
 interface UseScanInput {
   pageUrl: string;
-  siteDomain: string;
   editingToken: string;
   pageTitle: string;
   /** The draft's main text (usePageHtml). Null without a draft. */
@@ -24,7 +22,6 @@ interface UseScanInput {
 interface UseScanResult {
   /** The live page (preview-fetch). */
   parsedHtml: ParsedHtml | null;
-  robotsTxt: RobotsTxt | null;
   psi: PsiResult | null;
   ai: AiResults | null;
   /** The text the AI checks judge: the draft's main text, or the live page's without a draft. */
@@ -57,10 +54,9 @@ async function tryJson<T>(p: Promise<Response>): Promise<T | null> {
 }
 
 export function useScan(input: UseScanInput): UseScanResult {
-  const { pageUrl, siteDomain, editingToken, pageTitle, draftText, draftStatus } = input;
+  const { pageUrl, editingToken, pageTitle, draftText, draftStatus } = input;
 
   const [parsedHtml, setParsedHtml] = useState<ParsedHtml | null>(null);
-  const [robotsTxt, setRobotsTxt] = useState<RobotsTxt | null>(null);
   const [psi, setPsi] = useState<PsiResult | null>(null);
   const [ai, setAi] = useState<AiResults | null>(null);
   /** The body text the current AI result judged. */
@@ -116,16 +112,6 @@ export function useScan(input: UseScanInput): UseScanResult {
     },
     [base],
   );
-
-  // Robots.txt is site-wide — fetch once per domain.
-  const robotsFetchedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!siteDomain || robotsFetchedRef.current === siteDomain) return;
-    robotsFetchedRef.current = siteDomain;
-    tryJson<RobotsTxt>(
-      fetch(`${base}/api/robots-check?domain=${encodeURIComponent(siteDomain)}`)
-    ).then((data) => { if (data) setRobotsTxt(data); });
-  }, [siteDomain, base]);
 
   // Fetch the live page whenever the page URL changes (i.e. the author
   // navigates to a different page in Page Builder), and queue the AI checks.
@@ -208,7 +194,6 @@ export function useScan(input: UseScanInput): UseScanResult {
 
   return {
     parsedHtml,
-    robotsTxt,
     psi,
     ai,
     bodyText,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { mdiChartLine } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
+import { useAgentAccess } from "@/hooks/useAgentAccess";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
 import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
@@ -19,7 +20,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DEMO_SITE_HISTORY_BEFORE,
-  makeTestFooterTrust,
   makeTestSiteContext,
   makeTestSitePages,
 } from "@/lib/rule-engine/test-fixture";
@@ -67,7 +67,9 @@ export default function DashboardWidgetPage() {
   const isLoading = useFixture ? false : live.isLoading;
   const error = useFixture ? null : live.error;
   const scanningCount = useFixture ? 0 : live.scanningCount;
-  const robotsTxt = fixtureSite ? fixtureSite.robotsTxt : live.siteInputs.robotsTxt;
+  // S1–S12's data: once per domain (cached an hour), the fixture in demo mode.
+  const agentAccess = useAgentAccess(useFixture ? "" : siteContext.domain, fixtureSite?.access ?? null);
+  const access = agentAccess.data;
 
   const [siteType, setSiteType] = useSiteType(siteContext.id);
   const [tab, setTab] = useState<DashboardTab>("overview");
@@ -78,20 +80,20 @@ export default function DashboardWidgetPage() {
   }, []);
   const [issueFilter, setIssueFilter] = useState<IssueGroup | null>(null);
 
-  // Site checks (S2, S7): once per site, from robots.txt and the home page.
-  const { siteInputs } = live;
+  // Site checks (S1–S12): once per site, from the agent-access scan. S7 reads
+  // the home page the scan fetched.
   const siteReport = useMemo(() => {
     if (fixtureSite) return runSiteChecks({ ...fixtureSite, siteType });
-    if (!siteContext.domain || !siteInputs.homeChecked) return null;
+    if (!siteContext.domain || !access) return null;
     return runSiteChecks({
       siteUrl: siteContext.domain,
       siteType,
       organization: getOrganizationInfo({ name: siteContext.name, url: siteContext.domain }),
       expectedOrganization: getConfiguredOrganization(),
-      home: siteInputs.homeHtml,
-      robotsTxt: siteInputs.robotsTxt,
+      home: access.home.html,
+      access,
     });
-  }, [fixtureSite, siteType, siteContext.domain, siteContext.name, siteInputs]);
+  }, [fixtureSite, siteType, siteContext.domain, siteContext.name, access]);
 
   const aggregate = useMemo(() => aggregateSite(pages), [pages]);
   const siteScore = aggregate.overallPct === null ? null : Math.round(aggregate.overallPct);
@@ -204,7 +206,10 @@ export default function DashboardWidgetPage() {
                   type="button"
                   size="sm"
                   className="text-sm"
-                  onClick={live.clearAndRefresh}
+                  onClick={() => {
+                    live.clearAndRefresh();
+                    agentAccess.refresh();
+                  }}
                   disabled={useFixture || scanningCount > 0 || isLoading}
                   title={useFixture ? "Scanning is off in demo mode" : "Rescan every page"}
                 >
@@ -252,8 +257,9 @@ export default function DashboardWidgetPage() {
           <AgentAccessTab
             siteUrl={siteContext.domain}
             report={siteReport}
-            robotsTxt={robotsTxt}
-            demoFooter={useFixture ? makeTestFooterTrust() : null}
+            access={access}
+            status={agentAccess.status}
+            onRetry={agentAccess.refresh}
             onOpenFiles={() => setTab("files")}
           />
         </TabsContent>
@@ -275,7 +281,7 @@ export default function DashboardWidgetPage() {
             pages={pages}
             siteUrl={siteContext.domain}
             siteName={siteContext.name}
-            robotsTxt={robotsTxt}
+            access={access}
             onOpenAgentAccess={() => setTab("agent-access")}
           />
         </TabsContent>

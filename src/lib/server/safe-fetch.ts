@@ -10,7 +10,9 @@
 //   are checked up front.
 // - Follows at most `maxRedirects` redirects, re-checking every hop, and
 //   drops the caller's headers (e.g. the editing token) on a cross-origin hop.
+//   `publicHeaders` (User-Agent, Accept: nothing secret) are kept on every hop.
 // - One timeout covers redirects and the body; the body is capped at `maxBytes`.
+// - The returned Response's `url` is the final URL, after redirects.
 //
 // SAFE_FETCH_ALLOW_HOSTS (comma-separated hostnames) skips the address check
 // for those hosts, e.g. `localhost` when scanning a local rendering host in
@@ -156,7 +158,12 @@ function createGuardedLookup(allowHosts: ReadonlySet<string>, baseLookup: Lookup
 }
 
 export interface SafeFetchOptions {
+  /** Sent to the first origin only: dropped on a cross-origin redirect. */
   headers?: Record<string, string>;
+  /** Sent on every hop, cross-origin included. Only for non-secret headers (User-Agent, Accept). */
+  publicHeaders?: Record<string, string>;
+  /** Aborts the request early (e.g. a deadline shared by many requests). Reported as a timeout. */
+  signal?: AbortSignal;
   /** Covers every redirect hop and reading the body. Default 10 s. */
   timeoutMs?: number;
   /** Largest response body accepted. Default 5 MB. */
@@ -223,18 +230,20 @@ export function createSafeFetch(config: SafeFetchConfig = {}) {
   return async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}): Promise<Response> {
     const {
       headers = {},
+      publicHeaders = {},
       timeoutMs = 10_000,
       maxBytes = DEFAULT_MAX_BYTES,
       maxRedirects = 3,
     } = options;
-    const signal = AbortSignal.timeout(timeoutMs);
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
     let url = validateUrl(rawUrl, allowHosts);
     const firstOrigin = url.origin;
 
     try {
       for (let redirects = 0; ; redirects++) {
         const res = await undiciFetch(url.href, {
-          headers: url.origin === firstOrigin ? headers : {},
+          headers: url.origin === firstOrigin ? { ...publicHeaders, ...headers } : publicHeaders,
           redirect: "manual",
           signal,
           dispatcher,
@@ -256,11 +265,14 @@ export function createSafeFetch(config: SafeFetchConfig = {}) {
           throw new SafeFetchError("too_large", `Response is larger than ${maxBytes} bytes`);
         }
         const body = await readCapped(res.body as ReadableStream<Uint8Array> | null, maxBytes);
-        return new Response(NULL_BODY_STATUSES.has(res.status) ? null : body, {
+        const out = new Response(NULL_BODY_STATUSES.has(res.status) ? null : body, {
           status: res.status,
           statusText: res.statusText,
           headers: Array.from(res.headers.entries()),
         });
+        // A constructed Response has an empty url; give it the final one, as fetch does.
+        Object.defineProperty(out, "url", { value: url.href });
+        return out;
       }
     } catch (err) {
       throw toSafeFetchError(err);

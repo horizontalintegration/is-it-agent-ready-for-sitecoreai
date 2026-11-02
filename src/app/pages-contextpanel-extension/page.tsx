@@ -6,9 +6,10 @@ import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { usePageFields } from "@/hooks/usePageFields";
 import { usePageHtml } from "@/hooks/usePageHtml";
 import { useScan } from "@/hooks/useScan";
+import { useAgentAccess } from "@/hooks/useAgentAccess";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { useScanDelta } from "@/hooks/useScoreHistory";
-import { DEMO_PREVIOUS_PAGE_SCORE, makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import { DEMO_PREVIOUS_PAGE_SCORE, makeTestAgentAccess, makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, isHomeRoute, type PageInput } from "@/lib/checks/context";
 import { draftDiffersFromLive } from "@/lib/checks/draft-diff";
@@ -94,7 +95,6 @@ export default function PagesContextPanel() {
   // getPageHTML isn't available.
   const scan = useScan({
     pageUrl: fixture ? "" : pageUrl,
-    siteDomain: fixture ? "" : siteDomain,
     editingToken,
     pageTitle,
     draftText: pageHtml.draft?.html.mainText ?? null,
@@ -153,24 +153,53 @@ export default function PagesContextPanel() {
   }, [pageInput, report.score]);
   const rows = useMemo(() => rowsByCategory(report.outcomes), [report]);
 
-  // S7 is a site check, run on the home page's live HTML: it shows here only
-  // when the home page is open, and isn't part of this page's score.
+  // Site checks, from the same agent-access scan as the dashboard (cached an
+  // hour per domain, so page changes don't rescan the site). None is part of
+  // this page's score.
+  const demoAccess = useMemo(() => (fixture ? makeTestAgentAccess() : null), [fixture]);
+  const siteAccess = useAgentAccess(fixture ? "" : siteDomain, demoAccess);
   const isHomePage = isHomeRoute(pageInput.route);
+  const siteReport = useMemo(
+    () =>
+      runSiteChecks({
+        siteUrl: effectiveSiteDomain,
+        siteType: "content",
+        organization,
+        expectedOrganization: fixture
+          ? { name: fixture.organization.name, url: fixture.organization.url }
+          : getConfiguredOrganization(),
+        // S7 reads the open page when it's the home page, so it follows a re-scan.
+        home: isHomePage ? pageInput.html : siteAccess.data?.home.html ?? null,
+        access: siteAccess.data,
+      }),
+    [effectiveSiteDomain, organization, fixture, isHomePage, pageInput.html, siteAccess.data],
+  );
+
+  // S7 shows here only when the home page is open.
   const orgSchemaRow = useMemo(() => {
     if (!isHomePage || (!pageInput.html && scan.isScanning)) return null;
-    const site = runSiteChecks({
-      siteUrl: effectiveSiteDomain,
-      siteType: "content",
-      organization,
-      expectedOrganization: fixture
-        ? { name: fixture.organization.name, url: fixture.organization.url }
-        : getConfiguredOrganization(),
-      home: pageInput.html,
-      robotsTxt: null,
-    });
-    const outcome = site.outcomes.find((o) => o.check.id === "understand.org-schema");
+    const outcome = siteReport.outcomes.find((o) => o.check.id === "understand.org-schema");
     return outcome ? toCheckRow(outcome) : null;
-  }, [isHomePage, pageInput.html, scan.isScanning, effectiveSiteDomain, organization, fixture]);
+  }, [isHomePage, pageInput.html, scan.isScanning, siteReport]);
+
+  // "Site issues affecting this page": the failing Reach checks that keep
+  // agents out of every page (S1 firewall, S2 robots.txt).
+  const siteIssues = useMemo(
+    () => siteReport.outcomes.map(toCheckRow).filter((r) => r.category === "reach" && r.tier === "essential" && r.display === "fix"),
+    [siteReport],
+  );
+
+  // Opens the dashboard on its Agent access tab (it reads the tab from the hash).
+  const openDashboard = async () => {
+    const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const url = `${base}/dashboard-widget-extension${fixture ? "?demo=1" : ""}#agent-access`;
+    try {
+      if (client && !fixture) await client.navigateToExternalUrl(url, true);
+      else window.open(url, "_blank", "noopener");
+    } catch {
+      window.open(url, "_blank", "noopener");
+    }
+  };
 
   const showSkeleton = !fixture && isLoading;
   const [tab, setTab] = useState<PanelTab>("score");
@@ -239,6 +268,8 @@ export default function PagesContextPanel() {
                   report={report}
                   rows={rows}
                   siteRow={orgSchemaRow}
+                  siteIssues={siteIssues}
+                  onOpenDashboard={openDashboard}
                   pageUrl={effectivePageUrl}
                   delta={delta}
                   difference={difference}

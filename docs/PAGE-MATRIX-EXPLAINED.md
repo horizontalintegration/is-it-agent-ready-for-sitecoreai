@@ -45,7 +45,7 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 
 ## The header
 
-The app name, your site's name and address, the **Site type** setting, when the site was last scanned, and **Scan site**, which rescans every page. **Site type** (Content site, Commerce, or App or API) tells the app which kind of site this is. It will decide which extra agent checks apply in a later release.
+The app name, your site's name and address, the **Site type** setting, when the site was last scanned, and **Scan site**, which rescans every page and re-runs the agent access checks. **Site type** (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.
 
 The dashboard has five tabs: **Overview · Pages · Agent access · AI citations · Files**.
 
@@ -66,7 +66,7 @@ One card per category (Reach, Read, Understand, Trust) with its question, the si
 
 ### Fix first
 The issues worth fixing, **grouped by issue rather than by page**, biggest gain first:
-- **Site issues** come first because they affect every page, for example robots.txt blocking an AI crawler, or missing organisation details on the home page. Their button is **Send to developer**.
+- **Site issues** come first because they affect every page, for example a firewall blocking ChatGPT, robots.txt blocking an AI search engine, or missing organisation details on the home page. Their button is **Send to developer**.
 - **Page issues** say how many pages have them and what fixing them adds to each page ("6 pages · +18 pts each"). Each has a **You can fix** or **Developer** badge.
   - **Review pages** opens the Pages tab showing only the pages with that issue, so you can open each one in Page Builder.
   - **Send to developer** copies a ready-to-paste note: the issue, why it matters, and the pages it affects.
@@ -83,14 +83,31 @@ A heatmap of every page: its score and its score in each of the four categories,
 
 ## Agent access
 
-Things that are about the **whole site**, not one page. They're checked once, every page inherits them, and they never change a page's score.
+Things that are about the **whole site**, not one page. They're checked once, every page inherits them, and they never change a page's score. The check takes up to 20 seconds and is remembered for an hour; **Scan site** runs it again.
 
-**Site checklist:**
-- **robots.txt lets AI search in** — whether your site's rulebook (robots.txt) blocks the major AI crawlers (GPTBot, ClaudeBot, Google-Extended, PerplexityBot, and others). Blocking them means those AI tools can't read your site.
+AI agents come in three kinds, and the checks treat them differently:
+- **Search** agents (OAI-SearchBot, Claude-SearchBot, PerplexityBot, Amazonbot) find and cite your pages in AI search.
+- **User** agents (ChatGPT-User, Claude-User, Perplexity-User) open a page because someone asked the assistant to.
+- **Training** agents (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent) collect content to train models.
+
+Blocking search or user agents keeps you out of AI answers, so it fails. Blocking only training agents is a legitimate business choice: the dashboard notes it and never lowers the score for it.
+
+**Site checklist** (Essential first, then Recommended, then Bonus):
+- **AI agents can open your site** — we request your home page and two pages it links to, once as each AI agent and once as a normal browser, and compare. A firewall or CDN that answers an agent with "403 Forbidden" or a challenge page blocks it, even when robots.txt lets it in. This is the check robots.txt can't do.
+- **robots.txt lets AI search in** — whether robots.txt keeps out any search or user agent.
+- **Your site can serve Markdown to agents** — whether the home page answers with a clean Markdown version when an agent asks for one.
+- **Sitemap is published and linked** — whether the sitemap exists, lists dates of last change, and is named in robots.txt.
+- **llms.txt is published** — whether `/llms.txt` exists and has a title, a summary, links and a "When to use this site" section. **Open generator** takes you to the Files tab.
+- **About, contact and privacy pages exist** — whether the home page links them and each one opens (the privacy page needs real text, 500 characters or more). Terms, a security page and a postal address are noted but not scored.
 - **Your organisation is described for AI** — whether the home page has Organization schema: your company's name, website, logo, social profiles, description and contact details, in machine-readable form. If it's missing, the dashboard says **"Not added yet"** and **Copy snippet** gives you the code to paste in; if it's incomplete, it lists what's missing and gives you corrected code. This is how AI knows who runs the site, so it names and cites your brand correctly.
-- **About, contact and policy pages are linked** — whether the home page footer links your About, Contact, Privacy, Terms and Security pages and shows a postal address. It isn't scored yet.
+- **Missing pages return a real 404** — whether a page that doesn't exist says so, instead of showing a "not found" page with an OK status that agents might store as content.
+- **Bonus:** content-use signals in robots.txt, discovery links in the home page's HTTP headers, agent protocols (App or API sites) and agentic checkout protocols (Commerce sites). Bonus checks only add points; when one isn't set it says **Not set**.
 
-**Can each AI agent get in?** A table of the AI crawlers, who runs them, what they're for (search or training), and what your robots.txt tells them. A later release adds a live request as each agent, to catch firewalls that block them even when robots.txt allows them.
+**Can each AI agent get in?** A table of the twelve agents: who runs them, what they're for (filter by **Search**, **User** or **Training**), what robots.txt says, the live request's result, and the verdict (**Can read**, **Blocked by firewall**, **Opted out (your choice)**, or **No separate crawler** for Google-Extended and Applebot-Extended, which are robots.txt rules only). We don't request your pages as an agent that robots.txt asks to stay out. When the firewall blocks agents, a red box says which, with **Send to developer**.
+
+One honest caveat, shown under the table: we send these requests from our server, not from each AI company's network. A firewall that checks a bot's IP address may treat the real agent differently.
+
+In the **Page Builder panel**, a red strip says when a site issue keeps agents out of every page (a firewall block or a robots.txt block), with **View in dashboard**.
 
 ---
 
@@ -103,7 +120,8 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 ## Files
 
 - **llms.txt:** a short guide to your site for AI tools, built from your pages and their meta descriptions. Write a one-line summary and, in **When should AI tools use this site?**, a sentence or two on what the site is for; it becomes a "When to use this site" section in the file. Tick **Only include pages scoring 60 or more** to leave weak pages out. Then **Copy**, **Download**, or **Send to developer to publish**, which copies the file with a note on where to put it.
-- **robots.txt help:** whether robots.txt blocks any AI crawler and, if it does, the lines that let them back in, ready to copy or send to a developer. Remember that robots.txt is a request, not a lock: firewall rules decide who actually gets in.
+  The card also says whether `/llms.txt` is published today.
+- **robots.txt helper:** tick what AI tools may do with your content: be found and cited by AI search, open pages when a user asks, train models, and add a **Content-Signal** line that states those choices in a machine-readable way. The ticks start from what your robots.txt allows today, and the lines update as you tick, including your sitemap's address. **Copy** them or **Send to developer**. Remember that robots.txt is a request, not a lock: firewall rules decide who actually gets in (see Agent access).
 
 ---
 
@@ -111,7 +129,7 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 
 | Category | The question | What to fix if it's low |
 |----------|--------------|-------------------------|
-| **Reach** | Can AI agents get to it? | Add a canonical tag that points to the page itself (developer) |
+| **Reach** | Can AI agents get to it? | Add a canonical tag that points to the page itself (developer); on Agent access, let AI search and user agents through the firewall and robots.txt |
 | **Read** | Can they read it? | Add the main page landmarks and label icon buttons (developer); improve page speed |
 | **Understand** | Do they understand it? | One H1 and ordered headings; set the title and description; add the schema code the panel gives you; complete the sharing tags; tighten FAQ answers and paragraphs; describe images |
 | **Trust** | Will they trust and cite it? | Add original insight and depth; name and link the author on articles; refresh old pages; make link text descriptive |
@@ -124,5 +142,7 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 - **"One set of rules in the panel and the dashboard."** The dashboard shows what's live; the panel shows your draft before you publish.
 - **"Fix the essentials first."** They carry most of the score, so a few fixes move the needle.
 - **"It checks the real page."** Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.
+- **"robots.txt says yes, the firewall says no."** The demo site's robots.txt welcomes ChatGPT, but its firewall answers ChatGPT-User with 403. Only a live request as each agent shows that.
+- **"Blocking training is your choice."** Opting out of model training never costs points; blocking AI search does.
 - **"Fix first, grouped by issue."** One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.
 - **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.

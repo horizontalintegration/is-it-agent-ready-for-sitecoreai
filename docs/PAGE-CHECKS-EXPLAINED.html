@@ -88,12 +88,13 @@
 <p><strong>The Score tab, top to bottom:</strong></p>
 <p>1. <strong>The verdict:</strong> a score ring out of 100, the verdict (Agent-ready, Almost there or Not ready), <strong>▲ or ▼ N since last scan</strong>, and one sentence, such as "2 fixes would make this page agent-ready."</p>
 <p>2. <strong>Four category bars:</strong> Reach, Read, Understand and Trust, each scored out of 100. Click one to show only that category's checks; click it again to show them all.</p>
-<p>3. <strong>Top fixes:</strong> the three fixes worth the most, each with "+N pts", a <strong>You can fix</strong> or <strong>Developer</strong> badge, and a button:</p>
+<p>3. <strong>Site issues (only when there are any):</strong> a red strip when something about the <strong>whole site</strong> keeps AI agents out of every page, such as a firewall that blocks ChatGPT, or a robots.txt that shuts out AI search. It's not part of this page's score, and it isn't something you fix in the page: <strong>View in dashboard</strong> opens the Agent access tab with the details and a note for your developer.</p>
+<p>4. <strong>Top fixes:</strong> the three fixes worth the most, each with "+N pts", a <strong>You can fix</strong> or <strong>Developer</strong> badge, and a button:</p>
 <p>   - <strong>Generate</strong> opens AI Assist to write the title or description.</p>
 <p>   - <strong>Copy snippet</strong> copies ready-to-paste code, such as structured data.</p>
 <p>   - <strong>Send to developer</strong> copies a note with the page address, what we found and the fix, to paste into a ticket or a message.</p>
 <p>   - <strong>Show how</strong> opens the check below with the details.</p>
-<p>4. <strong>All checks,</strong> grouped by category, with a <strong>Needs work / All</strong> switch. Every check shows a status icon and word (<strong>✓ Pass</strong>, <strong>! Improve</strong>, <strong>✕ Fix</strong>, <strong>— N/A</strong>, or <strong>Not checked</strong>), its outcome, and where the data came from (<strong>Draft</strong>, <strong>Live</strong>, <strong>Fields</strong>, <strong>AI</strong> or <strong>PageSpeed</strong>). Open one to see <strong>why it matters</strong>, <strong>what we found</strong>, and the fix. Code sits behind <strong>Show code</strong>.</p>
+<p>5. <strong>All checks,</strong> grouped by category, with a <strong>Needs work / All</strong> switch. Every check shows a status icon and word (<strong>✓ Pass</strong>, <strong>! Improve</strong>, <strong>✕ Fix</strong>, <strong>— N/A</strong>, or <strong>Not checked</strong>), its outcome, and where the data came from (<strong>Draft</strong>, <strong>Live</strong>, <strong>Fields</strong>, <strong>AI</strong> or <strong>PageSpeed</strong>). Open one to see <strong>why it matters</strong>, <strong>what we found</strong>, and the fix. Code sits behind <strong>Show code</strong>.</p>
 <p>On the home page, a <strong>Site check</strong> group at the bottom shows whether your organisation is described for AI. It isn't part of the page's score.</p>
 <p><strong>"Since last scan"</strong> compares with the score from the previous time the page was scanned (opening it, or Re-scan). Edits you make afterwards show against that, so you can watch a fix move the score.</p>
 <hr/>
@@ -311,7 +312,7 @@
 <td style="text-align:left">Site check (own score)</td>
 </tr>
 </tbody></table>
-<p>More checks arrive in later releases, starting with whether AI agents can get the page as Markdown.</p>
+<p>The dashboard's <strong>Agent access</strong> tab has the other site checks: whether AI agents get past your firewall, robots.txt, Markdown, the sitemap, llms.txt, your about, contact and privacy pages, real 404s, and the Bonus protocol checks. The panel only flags the ones that keep agents out of every page (the red strip above). More page checks arrive in later releases, starting with whether AI agents can get the page as Markdown.</p>
 <hr/>
 <h2>AI Assist: the meta &amp; social generator</h2>
 <p>On the <strong>AI Assist</strong> tab, the panel can write the <strong>meta title, meta description, Open Graph title and Open Graph description</strong> for you. <strong>Generate</strong> on a "Title and description" or "Page identity metadata" fix opens it. Click <strong>Generate</strong> on a field, review the suggestion, then click <strong>Populate field</strong> to write it into the page in Sitecore.</p>
@@ -332,6 +333,7 @@
 <li><strong>"Score as you write."</strong> Edit a heading and the score updates by itself, before you publish.</li>
 <li><strong>"It sees what AI crawlers see."</strong> The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.</li>
 <li><strong>"One set of rules everywhere."</strong> The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.</li>
+<li><strong>"A perfect page can still be invisible."</strong> If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.</li>
 </ul>
 </body>
 </html>

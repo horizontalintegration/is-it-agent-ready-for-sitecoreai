@@ -255,5 +255,3 @@ export const orgSchema: CheckDef<SiteContext> = {
     );
   },
 };
-
-export const UNDERSTAND_SITE_CHECKS = [orgSchema];

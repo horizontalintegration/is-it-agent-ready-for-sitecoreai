@@ -141,20 +141,7 @@ export interface ParsedHtml {
   interactiveElementsMissingLabel: number; // count of buttons/links with no text or aria-label
 }
 
-// ── Robots.txt (fetched once on app load) ────────────────────────────────────
-
-export type CrawlerPermission = "allowed" | "blocked" | "unknown";
-
-export interface RobotsTxt {
-  googleExtended: CrawlerPermission;
-  gptBot: CrawlerPermission;
-  claudeBot: CrawlerPermission;
-  perplexityBot: CrawlerPermission;
-  amazonBot: CrawlerPermission;
-  appleBotExtended: CrawlerPermission;
-}
-
-// ── Footer trust (fetched once per domain — site-level banner, AEO signal) ───
+// ── Footer trust (read from the home page by /api/agent-access, for S6) ──────
 //
 // Rendered-text counterpart to the Organization schema check: visible corporate
 // identity signals in the page footer reduce entity ambiguity for AI systems.
@@ -220,7 +207,6 @@ export interface PageData {
   authoring: AuthoringFields;      // the panel field model (meta generator)
   fields: PageFields;              // the fields the checks read, same as the dashboard
   parsedHtml: ParsedHtml | null;   // null if preview fetch has not run yet
-  robotsTxt: RobotsTxt | null;     // null if not yet fetched
   psi: PsiResult | null;           // null if PSI has not run yet
   ai: AiResults | null;            // null if AI checks have not run yet
 }

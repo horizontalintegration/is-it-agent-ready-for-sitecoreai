@@ -30,19 +30,22 @@ interface StatusIconProps {
   status: DisplayStatus;
   /** Show the word next to the icon. Without it the icon carries the word as its label. */
   withText?: boolean;
+  /** A more precise word than the status's own, e.g. "Not set" for a Bonus check that isn't set. */
+  text?: string;
   className?: string;
 }
 
 /** Status never by colour alone: an icon, a colour and a word (plan section 6.2, item 6). */
-export function StatusIcon({ status, withText = false, className }: StatusIconProps) {
+export function StatusIcon({ status, withText = false, text, className }: StatusIconProps) {
   const color = STATUS_COLOR[status];
+  const word = text ?? STATUS_TEXT[status];
   if (!withText) {
-    return <Icon path={PATH[status]} role="img" aria-label={STATUS_TEXT[status]} className={cn("size-[18px] shrink-0", color, className)} />;
+    return <Icon path={PATH[status]} role="img" aria-label={word} className={cn("size-[18px] shrink-0", color, className)} />;
   }
   return (
     <span className={cn("inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap", color, className)}>
       <Icon path={PATH[status]} aria-hidden className="size-4 shrink-0" />
-      {STATUS_TEXT[status]}
+      {word}
     </span>
   );
 }
