@@ -588,7 +588,13 @@ export function useSitePages(
           installationId?: string;
           organizationId?: string;
           MarketplaceAppTenantId?: string;
-          extensionPoints?: Array<{ extensionPointId?: string; route?: string }>;
+          extensionPoints?: Array<{
+            extensionPointId?: string;
+            route?: string | null;
+            // Dashboard blocks keep one route per widget here; their
+            // top-level route is null.
+            meta?: Array<{ id?: string; route?: string; title?: string }>;
+          }>;
           resourceAccess?: Array<{
             tenantName?: string;
             tenantId?: string;
@@ -620,16 +626,17 @@ export function useSitePages(
         }
         const organization = app?.organizationId ?? "";
         // Named fields only: the raw context can hold the editing secret.
-        // type and extensionPoints show which host the widget runs in, for
-        // the dashboard authorization case (plan section 13, item 1).
+        // For the dashboard authorization case (plan section 13, item 1).
+        // `type` is the Marketplace app type (custom / public), not the host.
         console.log("[sitePages] application.context →", {
           organization,
           tenantName,
-          appType: app?.type,
+          marketplaceAppType: app?.type,
           installationId: app?.installationId,
           extensionPoints: (app?.extensionPoints ?? []).map((e) => ({
             id: e?.extensionPointId,
             route: e?.route,
+            blocks: (e?.meta ?? []).map((m) => ({ id: m?.id, route: m?.route, title: m?.title })),
           })),
           resourceCount: list.length,
           hasContextId: Boolean(sitecoreContextId),
@@ -640,6 +647,24 @@ export function useSitePages(
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
       }
+
+      // host.state tells which Sitecore host runs the widget: null for the
+      // Cloud Portal ("portal"), { environment, language } for SitecoreAI
+      // ("xmc:xmapps"). Diagnostic only; only keys and those two fields are logged.
+      try {
+        const hostRes = await client.query("host.state");
+        const state = (hostRes as { data?: unknown })?.data;
+        const s = state as { environment?: unknown; language?: unknown } | null | undefined;
+        console.log("[sitePages] host.state →", {
+          isNull: state === null,
+          keys: state && typeof state === "object" ? Object.keys(state) : [],
+          environment: s?.environment,
+          language: s?.language,
+        });
+      } catch (err) {
+        console.warn("[sitePages] host.state query failed:", err);
+      }
+
       if (!sitecoreContextId) {
         console.warn(
           "[sitePages] no Context ID in application.context (no resource with context.preview or context.live) — XM Cloud calls go out without one and may be refused",
