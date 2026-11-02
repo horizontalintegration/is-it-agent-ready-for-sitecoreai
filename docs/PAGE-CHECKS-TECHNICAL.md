@@ -2,7 +2,7 @@
 
 An engineering-oriented reference for the checks in **Is It Agent-Ready? for SitecoreAI**: the scoring model, every check with its thresholds and credit, and where each one lives in the code. The Page Builder panel ("Is this page agent-ready?") and the dashboard ("Is this site agent-ready?") use **the same engine**, so the same inputs give the same score in both. The panel also scores the Page Builder **draft**, so its score follows unpublished edits (see "Draft and live" below). Dashboard specifics (roll-up, cache, site checks card) are in `PAGE-MATRIX-TECHNICAL.md`.
 
-**Source of truth:** `src/lib/checks/` — `registry.ts` (the check list), `page/*.ts` and `site/*.ts` (the checks), `scoring.ts` (pool maths), `gate.ts`, `engine.ts` (entry points), `context.ts` (inputs), `draft-diff.ts` (draft vs live comparison), `json-ld.ts` (shared JSON-LD parser), `adapters.ts` (the pre-v2 UI). HTML parsing is in `src/lib/html/`. Plan reference: `docs/IS-IT-AGENT-READY-PLAN.md` sections 5 and 7.
+**Source of truth:** `src/lib/checks/` — `registry.ts` (the check list), `page/*.ts` and `site/*.ts` (the checks), `scoring.ts` (pool maths), `gate.ts`, `engine.ts` (entry points), `context.ts` (inputs), `draft-diff.ts` (draft vs live comparison), `json-ld.ts` (shared JSON-LD parser), `view-model.ts` (what the UI shows). HTML parsing is in `src/lib/html/`. Plan reference: `docs/IS-IT-AGENT-READY-PLAN.md` sections 5 and 7.
 
 ---
 
@@ -39,13 +39,13 @@ An engineering-oriented reference for the checks in **Is It Agent-Ready? for Sit
 
 - **Context.** `PageInput.draft` is optional: the dashboard leaves it out. `buildPageContext` sets `body` to the draft's `ParsedHtml` when there is one, otherwise the live one, and `bodySource` to `"draft"` or `"live"`. Body checks read `ctx.body`; head checks read `ctx.html`.
 - **P10 stays fully live.** Its JSON-LD (only in the `<head>`, which the draft lacks) and its Q&A pairs come from the same render.
-- **Source chip.** A check declares `sources` (body checks declare `"draft"`). `resolveSources` (`engine.ts`) turns `"draft"` into the body's actual source and adds it to AI checks, and every `CheckOutcome` carries the result as `sources`. The panel shows it as chips (Draft / Live / Fields / AI / PageSpeed) at the top of an expanded row.
+- **Source chip.** A check declares `sources` (body checks declare `"draft"`). `resolveSources` (`engine.ts`) turns `"draft"` into the body's actual source and adds it to AI checks, and every `CheckOutcome` carries the result as `sources`. The panel shows it as a chip next to each check's title (Draft / Live / Fields / AI / PageSpeed; "Draft vs Live" for P3), with the full wording when the row is open.
 - **Refresh.** `usePageHtml` reads the draft 1.5 s after a page change (so the canvas can load the new page) and 1.5 s after the last `pages.content.fieldsUpdated` (`usePageFields.contentVersion`), and at once on **Re-scan page**. Only the latest read may set state. Each read takes about 30–50 ms. Console: `[draft] getPageHTML: N chars …; removed {…}`.
 - **Retry while the canvas loads.** Right after a page opens, Page Builder answers `getPageHTML` with `CoreError: [client SDK] [CANVAS BUG] Service implementation is not provided` until its canvas has loaded (seen on production on 2026-11-02; a Re-scan a moment later worked). So while a page has no draft yet, a failed read is retried after 2, 4 and 8 s (`readWithRetry`, about 15 s in all). The status stays `loading` meanwhile, so rows show "Scanning…" and the AI checks wait for the draft. Console: `[draft] getPageHTML not ready (attempt N); trying again in N s`. A newer read (page change, field update, Re-scan) stops the retries.
 - **Fallback.** If every attempt fails, the status is `unavailable` and the body checks read live, as before: chips say Live, and P3 says "Draft not available … Re-scan to try again" (`draftUnavailable` in the context; the dashboard's "Page Builder only" is unchanged). A failed refresh of a page that already has a draft isn't retried and keeps that draft, so the score doesn't jump mid-edit.
 - **Unpublished pages.** If preview-fetch fails (no published page yet), the head checks are not checked and the body checks still score from the draft.
 - **AI checks.** They judge the body text (`useScan.bodyText`: the draft's `mainText`, or live's without a draft). They run once per page load and per Re-scan, on the first ready body, never on every edit. When the text has changed since, the AI rows say "Based on an earlier version of the text" with a **Re-run** link (`useScan.aiStale`). Results are cached by content hash as before.
-- **"Draft differs from live" banner** (`DraftBanner`). `draftDiffersFromLive` (`draft-diff.ts`) compares the draft's and live's `mainText` line by line. It shows when a live line is missing from the draft, or a draft line is an edit of a live one (word overlap ≥ 0.5). Lines only in the draft, with no live counterpart, don't count: they're usually client-rendered, and would otherwise show the banner on every page with a client-fetched listing.
+- **"Draft differs from live" banner** (`src/components/panel/DraftBanner.tsx`: "Scored from your draft. It differs from the live page …"). `draftDiffersFromLive` (`draft-diff.ts`) compares the draft's and live's `mainText` line by line. It shows when a live line is missing from the draft, or a draft line is an edit of a live one (word overlap ≥ 0.5). Lines only in the draft, with no live counterpart, don't count: they're usually client-rendered, and would otherwise show the banner on every page with a client-fetched listing.
 
 ### The sanitiser (`src/lib/html/sanitise-draft.ts`)
 
@@ -147,7 +147,7 @@ The fix snippet contains only the missing or incomplete schemas (`buildBreadcrum
 
 ## Site checks
 
-Run once per site by `runSiteChecks` (`engine.ts`), with their own site score from the same pool maths. The dashboard shows them in the **Site checks** card on the Overview (Phase 6 moves them to the Agent access tab).
+Run once per site by `runSiteChecks` (`engine.ts`), with their own site score from the same pool maths (not shown since Phase 5). The dashboard lists them on the **Agent access** tab, and the ones that need work lead its Fix first list.
 
 | ID | Title | Tier | Credit | Was |
 |---|---|---|---|---|
@@ -181,18 +181,25 @@ Graded on the **home page's live HTML** (the `getPageHTML` draft has no `<head>`
 
 ---
 
-## The adapter to the pre-v2 UI
+## The view model and the panel UI (Phase 5)
 
-`adapters.ts` maps reports onto the current components until the Phase 5 redesign:
-- **Panel:** `rowsByCategory` → one `CategorySection` per category (`src/components/CategorySection.tsx`) with a `RuleRow` per check showing `points / max` (one decimal), "n/a", "not checked" or a **Run scan** button for AI and PageSpeed checks, and "+N pts" next to the fix. An expanded row starts with its source chips; a stale AI row adds a **Re-run** link. N/A checks are listed under "Doesn't apply here". The header ring shows the 0–100 score, and the "Draft differs from live" banner sits above the categories.
-- **Dashboard "What's included":** P3 and P7 are marked "(Page Builder panel only)" (`CategoryCards.tsx`).
-- **Dashboard:** `summarisePageReport` → `PageScoreSummary` (`score`, `label`, `blocked`, `gateReason`, per-category earned/max), which is what the dashboard caches.
+`view-model.ts` turns reports into what the screens show. It never changes a score: everything comes from the points the engine computed.
+
+- **Rows:** `toCheckRow` adds `display` (`pass` / `improve` / `fix` / `na` / `not-checked`, from `state` and `status`), `gain` (`maxPoints − points`) and `gainPts` (rounded, for "+N pts"; 0 hides it), plus the check's `why`, `owner` and `fix`. `STATUS_TEXT`, `OWNER_TEXT` and `SOURCE_TEXT` hold the words.
+- **Top fixes:** `rankedFixes` keeps Improve and Fix rows worth at least 1 point, sorted by gain, then Essential first, then author fixes first. `topFixes` takes three.
+- **Verdict:** `pageVerdict` gives the label from `labelForPct` and one sentence. `fixesToReady` adds the biggest gains to the score until it reaches 80: "N fixes would make this page agent-ready". If even every fix wouldn't, it says how many checks need work; at 80+ it says how many could still improve.
+- **Fix buttons:** `fixButton`: **Generate** for P9 and P11 (the generator's fields; other `generate` fixes wait for Phase 9), **Copy snippet** for a `copy-snippet` fix with a `codePreview`, **Send to developer** for developer-owned fixes (copies `developerNote`: title, page URL, why, what we found, fix, details, code), otherwise **Show how** (opens and scrolls to the row). Copying uses `src/lib/clipboard.ts`, which falls back to `execCommand` because the Marketplace iframe doesn't delegate `clipboard-write`.
+- **Panel** (`src/app/pages-contextpanel-extension/page.tsx`, `src/components/panel/`): header with the Draft/Live chip (Draft when `getPageHTML` gave a draft) and Re-scan; Radix tabs Score / Agent View (placeholder until Phase 7) / AI Assist (`MetaGenerator`). The tabs are force-mounted, so the generator keeps its state. `ScoreTab` holds the banner, `VerdictCard`, `CategoryBars` (toggle buttons that filter the list), `TopFixes` and the check groups (`CheckRow`), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a **Run** button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7.
+- **"▲ N since last scan"** (`useScanDelta`, `src/hooks/useScoreHistory.ts`): when a scan settles (the page, its draft and the AI and PageSpeed checks have loaded), the stored score for the page (`aiDiscovery:pageScore:v1:<pageId>|<language>`) becomes the baseline and the new score is stored. Draft edits afterwards show against that baseline. Demo mode uses a fixed baseline (`DEMO_PREVIOUS_PAGE_SCORE`).
+- **Shared components** (`src/components/shared/`): `StatusIcon` (icon, colour and word; `@mdi/js` paths), `ScoreRing` (fills on first render), `VerdictCard`, `CategoryBars`, `TopFixes`, `CheckRow`, `FixButton`, `Segmented`, `EmptyState`, the chips (`OwnerBadge`, `GainChip`, `SourceChip`, `DeltaChip`), `AppMark`. Blok's components are in `src/components/ui/` and its theme tokens in `globals.css` (Sitecore/blok @ 0a7997e, light theme only).
+- **Accessibility:** every status has an icon and a word; buttons and tabs are keyboard-reachable with a visible focus ring; the tab panels are focusable; the panel works at 320 px (the source chip wraps under the title). Motion is off under `prefers-reduced-motion`.
+- **Dashboard:** `summarisePageReport` → `PageScoreSummary` (adds `issues` for Fix first) and `groupPageIssues` / `siteIssueGroups` / `issueNote`. See PAGE-MATRIX-TECHNICAL.
 
 ---
 
 ## Meta & social generator
 
-`src/components/MetaGenerator.tsx` → `POST /api/generate-meta` (`{ field, pageTitle, bodyText, currentValue }` → `{ value, maxChars, overLimit }`), then `xmc.pages.updateFields` on **Populate field**. The logic is in `src/lib/server/generate-meta.ts`.
+`src/components/MetaGenerator.tsx` (the panel's AI Assist tab) → `POST /api/generate-meta` (`{ field, pageTitle, bodyText, currentValue }` → `{ value, maxChars, overLimit }`), then `xmc.pages.updateFields` on **Populate field**. The logic is in `src/lib/server/generate-meta.ts`.
 
 - **Model:** `ANTHROPIC_MODEL` (default `claude-opus-5-5`), effort `low`, structured output `{ value }`.
 - **Length limits** (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with `overLimit: true`, and the UI shows the count in amber. Values are never cut off.
@@ -229,6 +236,9 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 | `src/lib/checks/brandx-pages.test.ts` | the whole pipeline on real BrandX draft + live pairs: P3 on the Related Articles cards, the footer token, the banner, P15 and P20 |
 | `src/lib/checks/site/org-schema.test.ts` | S7: the four rules, `@graph`, `@type` arrays, subtypes, `WebSite.publisher`, parse errors, config mismatch, duplicates, BrandX |
 | `src/lib/checks/json-ld.test.ts` | the shared parser |
+| `src/lib/checks/view-model.test.ts` | status words, Top fixes ranking, "N fixes would make this page agent-ready", fix buttons, the developer note, page issues in the summary, Fix first grouping |
+| `src/lib/llms-txt/build.test.ts` | the "When to use this site" section and the score filter |
+| `src/lib/relative-time.test.ts` | "N min ago" / "N h ago" / "N days ago" |
 | `src/lib/checks/parity.test.ts` | panel and dashboard read the same fields and give the same score on the same inputs; a draft changes the panel's; the 80 / 60 thresholds |
 | `src/lib/html/extract-html.test.ts` | `mainText` (collapsed answers included), entity decoding, `bodyBlocks`, Q&A pairs (BrandX accordion markup), metadata, JSON-LD blocks |
 
@@ -245,9 +255,11 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 | `src/lib/checks/context.ts` | `buildPageContext` (draft → `body`), the shared field names, article/home detection |
 | `src/lib/checks/draft-diff.ts` | Draft vs live block comparison: P3 and the "Draft differs" banner |
 | `src/hooks/usePageHtml.ts` | Reads the draft with `getPageHTML`, debounced on field updates, retried while the canvas loads, with the live fallback |
-| `src/components/DraftBanner.tsx` | The "Draft differs from live" banner |
+| `src/components/panel/` | Score tab, the draft banner, the gate banner, the scan note |
+| `src/components/shared/` | Status icon, score ring, verdict card, category bars, Top fixes, check row, fix button, chips |
+| `src/hooks/useScoreHistory.ts` | "Since last scan" (panel) and the last 8 site scores (dashboard) |
 | `src/lib/checks/json-ld.ts`, `schema-org-types.ts` | JSON-LD parsing and the schema.org subtype lists |
-| `src/lib/checks/adapters.ts` | Reports → pre-v2 UI rows and dashboard summaries |
+| `src/lib/checks/view-model.ts` | Reports → rows, Top fixes, verdicts, fix buttons, developer notes, dashboard summaries and Fix first |
 | `src/lib/rule-engine/helpers.ts` | ARI, word counts, anchor blocklist, dates, snippet builders |
 | `src/lib/rule-engine/types.ts` | Input types (`ParsedHtml`, `AiResults`, `PageData`, …) |
 | `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1`, including the panel's demo draft (`makeTestDraft`: one edited heading, client-rendered Related Articles cards). Demo mode never starts the Marketplace client and doesn't auto-scan, so it makes no SitecoreAI or paid calls on load (`useDemoMode.ts`, `useMarketplaceClient.ts`) |

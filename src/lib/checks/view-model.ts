@@ -367,7 +367,12 @@ export function issueNote(group: IssueGroup, pages: Array<{ id: string; name: st
     .join("\n");
 }
 
-/** Every page check's title, by category: the "What's included" list. */
+/** Checks the dashboard can't run: P3 needs the draft, P7 (PageSpeed) runs on request in the panel. */
+const PANEL_ONLY = new Set(["read.no-js-content", "read.speed"]);
+
+/** Every page check's title, by category: the dashboard's "What's included" list. */
 export function pageCheckTitles(category: Category): string[] {
-  return [...PAGE_CHECK_META.values()].filter((m) => m.category === category).map((m) => m.title);
+  return [...PAGE_CHECK_META.values()]
+    .filter((m) => m.category === category)
+    .map((m) => (m.tier === "bonus" ? `${m.title} (bonus)` : PANEL_ONLY.has(m.id) ? `${m.title} (Page Builder panel only)` : m.title));
 }
