@@ -44,12 +44,13 @@ The panel and the dashboard use the **same four categories and the same scoring*
 **The Score tab, top to bottom:**
 1. **The verdict:** a score ring out of 100, the verdict (Agent-ready, Almost there or Not ready), **▲ or ▼ N since last scan**, and one sentence, such as "2 fixes would make this page agent-ready."
 2. **Four category bars:** Reach, Read, Understand and Trust, each scored out of 100. Click one to show only that category's checks; click it again to show them all.
-3. **Top fixes:** the three fixes worth the most, each with "+N pts", a **You can fix** or **Developer** badge, and a button:
+3. **Site issues (only when there are any):** a red strip when something about the **whole site** keeps AI agents out of every page, such as a firewall that blocks ChatGPT, or a robots.txt that shuts out AI search. It's not part of this page's score, and it isn't something you fix in the page: **View in dashboard** opens the Agent access tab with the details and a note for your developer.
+4. **Top fixes:** the three fixes worth the most, each with "+N pts", a **You can fix** or **Developer** badge, and a button:
    - **Generate** opens AI Assist to write the title or description.
    - **Copy snippet** copies ready-to-paste code, such as structured data.
    - **Send to developer** copies a note with the page address, what we found and the fix, to paste into a ticket or a message.
    - **Show how** opens the check below with the details.
-4. **All checks,** grouped by category, with a **Needs work / All** switch. Every check shows a status icon and word (**✓ Pass**, **! Improve**, **✕ Fix**, **— N/A**, or **Not checked**), its outcome, and where the data came from (**Draft**, **Live**, **Fields**, **AI** or **PageSpeed**). Open one to see **why it matters**, **what we found**, and the fix. Code sits behind **Show code**.
+5. **All checks,** grouped by category, with a **Needs work / All** switch. Every check shows a status icon and word (**✓ Pass**, **! Improve**, **✕ Fix**, **— N/A**, or **Not checked**), its outcome, and where the data came from (**Draft**, **Live**, **Fields**, **AI** or **PageSpeed**). Open one to see **why it matters**, **what we found**, and the fix. Code sits behind **Show code**.
 
 On the home page, a **Site check** group at the bottom shows whether your organisation is described for AI. It isn't part of the page's score.
 
@@ -234,7 +235,7 @@ This is a **site check**: it's about the whole site, so it isn't part of any pag
 | **Trust** | Answers the next question too | Bonus |
 | Site | Your organisation is described for AI | Site check (own score) |
 
-More checks arrive in later releases, starting with whether AI agents can get the page as Markdown.
+The dashboard's **Agent access** tab has the other site checks: whether AI agents get past your firewall, robots.txt, Markdown, the sitemap, llms.txt, your about, contact and privacy pages, real 404s, and the Bonus protocol checks. The panel only flags the ones that keep agents out of every page (the red strip above). More page checks arrive in later releases, starting with whether AI agents can get the page as Markdown.
 
 ---
 
@@ -259,3 +260,4 @@ On the **AI Assist** tab, the panel can write the **meta title, meta description
 - **"Score as you write."** Edit a heading and the score updates by itself, before you publish.
 - **"It sees what AI crawlers see."** The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.
 - **"One set of rules everywhere."** The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.
+- **"A perfect page can still be invisible."** If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.

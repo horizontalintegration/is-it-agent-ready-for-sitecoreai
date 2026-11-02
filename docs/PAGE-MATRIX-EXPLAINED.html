@@ -101,7 +101,7 @@
 <p><strong>Blocked pages:</strong> a page set to "noindex" in Sitecore (or tagged noindex/nosnippet) can't appear in AI answers at all, so it doesn't get a score. The dashboard shows it as <strong>Blocked</strong> and leaves it out of the site average.</p>
 <hr/>
 <h2>The header</h2>
-<p>The app name, your site's name and address, the <strong>Site type</strong> setting, when the site was last scanned, and <strong>Scan site</strong>, which rescans every page. <strong>Site type</strong> (Content site, Commerce, or App or API) tells the app which kind of site this is. It will decide which extra agent checks apply in a later release.</p>
+<p>The app name, your site's name and address, the <strong>Site type</strong> setting, when the site was last scanned, and <strong>Scan site</strong>, which rescans every page and re-runs the agent access checks. <strong>Site type</strong> (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.</p>
 <p>The dashboard has five tabs: <strong>Overview · Pages · Agent access · AI citations · Files</strong>.</p>
 <hr/>
 <h2>Overview</h2>
@@ -118,7 +118,7 @@
 <h3>Fix first</h3>
 <p>The issues worth fixing, <strong>grouped by issue rather than by page</strong>, biggest gain first:</p>
 <ul>
-<li><strong>Site issues</strong> come first because they affect every page, for example robots.txt blocking an AI crawler, or missing organisation details on the home page. Their button is <strong>Send to developer</strong>.</li>
+<li><strong>Site issues</strong> come first because they affect every page, for example a firewall blocking ChatGPT, robots.txt blocking an AI search engine, or missing organisation details on the home page. Their button is <strong>Send to developer</strong>.</li>
 <li><strong>Page issues</strong> say how many pages have them and what fixing them adds to each page ("6 pages · +18 pts each"). Each has a <strong>You can fix</strong> or <strong>Developer</strong> badge.</li>
 </ul>
 <p>  - <strong>Review pages</strong> opens the Pages tab showing only the pages with that issue, so you can open each one in Page Builder.</p>
@@ -129,14 +129,29 @@
 <p>A heatmap of every page: its score and its score in each of the four categories, each cell coloured by verdict and showing the number. <strong>Search</strong> by name or address, filter by verdict (<strong>Not ready</strong>, <strong>Almost there</strong>, <strong>Agent-ready</strong>), and sort by lowest score, highest score, recently updated or name. <strong>Open in Page Builder</strong> jumps straight to the page. Pages that haven't been scanned yet have a <strong>Scan</strong> button.</p>
 <hr/>
 <h2>Agent access</h2>
-<p>Things that are about the <strong>whole site</strong>, not one page. They're checked once, every page inherits them, and they never change a page's score.</p>
-<p><strong>Site checklist:</strong></p>
+<p>Things that are about the <strong>whole site</strong>, not one page. They're checked once, every page inherits them, and they never change a page's score. The check takes up to 20 seconds and is remembered for an hour; <strong>Scan site</strong> runs it again.</p>
+<p>AI agents come in three kinds, and the checks treat them differently:</p>
 <ul>
-<li><strong>robots.txt lets AI search in</strong> — whether your site's rulebook (robots.txt) blocks the major AI crawlers (GPTBot, ClaudeBot, Google-Extended, PerplexityBot, and others). Blocking them means those AI tools can't read your site.</li>
-<li><strong>Your organisation is described for AI</strong> — whether the home page has Organization schema: your company's name, website, logo, social profiles, description and contact details, in machine-readable form. If it's missing, the dashboard says <strong>"Not added yet"</strong> and <strong>Copy snippet</strong> gives you the code to paste in; if it's incomplete, it lists what's missing and gives you corrected code. This is how AI knows who runs the site, so it names and cites your brand correctly.</li>
-<li><strong>About, contact and policy pages are linked</strong> — whether the home page footer links your About, Contact, Privacy, Terms and Security pages and shows a postal address. It isn't scored yet.</li>
+<li><strong>Search</strong> agents (OAI-SearchBot, Claude-SearchBot, PerplexityBot, Amazonbot) find and cite your pages in AI search.</li>
+<li><strong>User</strong> agents (ChatGPT-User, Claude-User, Perplexity-User) open a page because someone asked the assistant to.</li>
+<li><strong>Training</strong> agents (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent) collect content to train models.</li>
 </ul>
-<p><strong>Can each AI agent get in?</strong> A table of the AI crawlers, who runs them, what they're for (search or training), and what your robots.txt tells them. A later release adds a live request as each agent, to catch firewalls that block them even when robots.txt allows them.</p>
+<p>Blocking search or user agents keeps you out of AI answers, so it fails. Blocking only training agents is a legitimate business choice: the dashboard notes it and never lowers the score for it.</p>
+<p><strong>Site checklist</strong> (Essential first, then Recommended, then Bonus):</p>
+<ul>
+<li><strong>AI agents can open your site</strong> — we request your home page and two pages it links to, once as each AI agent and once as a normal browser, and compare. A firewall or CDN that answers an agent with "403 Forbidden" or a challenge page blocks it, even when robots.txt lets it in. This is the check robots.txt can't do.</li>
+<li><strong>robots.txt lets AI search in</strong> — whether robots.txt keeps out any search or user agent.</li>
+<li><strong>Your site can serve Markdown to agents</strong> — whether the home page answers with a clean Markdown version when an agent asks for one.</li>
+<li><strong>Sitemap is published and linked</strong> — whether the sitemap exists, lists dates of last change, and is named in robots.txt.</li>
+<li><strong>llms.txt is published</strong> — whether <code>/llms.txt</code> exists and has a title, a summary, links and a "When to use this site" section. <strong>Open generator</strong> takes you to the Files tab.</li>
+<li><strong>About, contact and privacy pages exist</strong> — whether the home page links them and each one opens (the privacy page needs real text, 500 characters or more). Terms, a security page and a postal address are noted but not scored.</li>
+<li><strong>Your organisation is described for AI</strong> — whether the home page has Organization schema: your company's name, website, logo, social profiles, description and contact details, in machine-readable form. If it's missing, the dashboard says <strong>"Not added yet"</strong> and <strong>Copy snippet</strong> gives you the code to paste in; if it's incomplete, it lists what's missing and gives you corrected code. This is how AI knows who runs the site, so it names and cites your brand correctly.</li>
+<li><strong>Missing pages return a real 404</strong> — whether a page that doesn't exist says so, instead of showing a "not found" page with an OK status that agents might store as content.</li>
+<li><strong>Bonus:</strong> content-use signals in robots.txt, discovery links in the home page's HTTP headers, agent protocols (App or API sites) and agentic checkout protocols (Commerce sites). Bonus checks only add points; when one isn't set it says <strong>Not set</strong>.</li>
+</ul>
+<p><strong>Can each AI agent get in?</strong> A table of the twelve agents: who runs them, what they're for (filter by <strong>Search</strong>, <strong>User</strong> or <strong>Training</strong>), what robots.txt says, the live request's result, and the verdict (<strong>Can read</strong>, <strong>Blocked by firewall</strong>, <strong>Opted out (your choice)</strong>, or <strong>No separate crawler</strong> for Google-Extended and Applebot-Extended, which are robots.txt rules only). We don't request your pages as an agent that robots.txt asks to stay out. When the firewall blocks agents, a red box says which, with <strong>Send to developer</strong>.</p>
+<p>One honest caveat, shown under the table: we send these requests from our server, not from each AI company's network. A firewall that checks a bot's IP address may treat the real agent differently.</p>
+<p>In the <strong>Page Builder panel</strong>, a red strip says when a site issue keeps agents out of every page (a firewall block or a robots.txt block), with <strong>View in dashboard</strong>.</p>
 <hr/>
 <h2>AI citations</h2>
 <p>The citation forecast: for a page, how likely AI answers are to cite it. A later release replaces it with measured citation checks.</p>
@@ -144,7 +159,10 @@
 <h2>Files</h2>
 <ul>
 <li><strong>llms.txt:</strong> a short guide to your site for AI tools, built from your pages and their meta descriptions. Write a one-line summary and, in <strong>When should AI tools use this site?</strong>, a sentence or two on what the site is for; it becomes a "When to use this site" section in the file. Tick <strong>Only include pages scoring 60 or more</strong> to leave weak pages out. Then <strong>Copy</strong>, <strong>Download</strong>, or <strong>Send to developer to publish</strong>, which copies the file with a note on where to put it.</li>
-<li><strong>robots.txt help:</strong> whether robots.txt blocks any AI crawler and, if it does, the lines that let them back in, ready to copy or send to a developer. Remember that robots.txt is a request, not a lock: firewall rules decide who actually gets in.</li>
+</ul>
+<p>  The card also says whether <code>/llms.txt</code> is published today.</p>
+<ul>
+<li><strong>robots.txt helper:</strong> tick what AI tools may do with your content: be found and cited by AI search, open pages when a user asks, train models, and add a <strong>Content-Signal</strong> line that states those choices in a machine-readable way. The ticks start from what your robots.txt allows today, and the lines update as you tick, including your sitemap's address. <strong>Copy</strong> them or <strong>Send to developer</strong>. Remember that robots.txt is a request, not a lock: firewall rules decide who actually gets in (see Agent access).</li>
 </ul>
 <hr/>
 <h2>Quick reference: what to fix when a category is low</h2>
@@ -156,7 +174,7 @@
 <tr>
 <td style="text-align:left"><strong>Reach</strong></td>
 <td style="text-align:left">Can AI agents get to it?</td>
-<td style="text-align:left">Add a canonical tag that points to the page itself (developer)</td>
+<td style="text-align:left">Add a canonical tag that points to the page itself (developer); on Agent access, let AI search and user agents through the firewall and robots.txt</td>
 </tr>
 <tr>
 <td style="text-align:left"><strong>Read</strong></td>
@@ -181,6 +199,8 @@
 <li><strong>"One set of rules in the panel and the dashboard."</strong> The dashboard shows what's live; the panel shows your draft before you publish.</li>
 <li><strong>"Fix the essentials first."</strong> They carry most of the score, so a few fixes move the needle.</li>
 <li><strong>"It checks the real page."</strong> Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.</li>
+<li><strong>"robots.txt says yes, the firewall says no."</strong> The demo site's robots.txt welcomes ChatGPT, but its firewall answers ChatGPT-User with 403. Only a live request as each agent shows that.</li>
+<li><strong>"Blocking training is your choice."</strong> Opting out of model training never costs points; blocking AI search does.</li>
 <li><strong>"Fix first, grouped by issue."</strong> One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.</li>
 <li><strong>"Every status says what it is."</strong> An icon, a colour and a word, so nobody has to decode a colour.</li>
 </ul>

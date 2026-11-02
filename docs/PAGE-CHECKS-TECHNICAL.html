@@ -47,7 +47,7 @@
 <li>Thresholds are shared by the panel and the dashboard (<code>src/lib/score-thresholds.ts</code>): <strong>Agent-ready ≥ 80</strong>, <strong>Almost there 60–79</strong>, <strong>Not ready &lt; 60</strong>.</li>
 </ul>
 <p><strong>Points.</strong> Five Essential page checks exist (P2, P3, P8, P9, P10). In the panel, when all apply, each is worth 16 points. On the dashboard P3 isn't checked (no draft), so the other four are worth 20 each. On the home page P10 is usually N/A. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phase 7 adds P5 to Essential.</p>
-<p><strong>Scopes.</strong> Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get <strong>their own site score</strong>; they are never part of a page score. There are two site checks so far: S2 and S7.</p>
+<p><strong>Scopes.</strong> Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get <strong>their own site score</strong>; they are never part of a page score. There are twelve, S1–S12 (see "Site checks").</p>
 <p><strong>Same inputs, same score.</strong> Both views build the check context with <code>buildPageContext</code> (<code>context.ts</code>) from the same inputs: the page's live HTML (<code>/api/preview-fetch</code> → <code>ParsedHtml</code>), the AI results (<code>/api/ai-check</code>, cached by content hash), and the same Sitecore fields read by the same names (<code>SCORING_FIELD_NAMES</code>: title, meta description, <code>robotsMetaTag</code>, <code>__Updated</code>). The panel reads them with <code>pageFieldsFromFieldMap</code>, the dashboard with <code>pageFieldsFromValues</code>. <code>src/lib/checks/parity.test.ts</code> covers this.</p>
 <p><strong>Where the panel and the dashboard differ, by design:</strong></p>
 <ul>
@@ -305,20 +305,56 @@
 <p><code>aeo-howto-schema</code> stays off (plan section 5.3); revisit only if HowTo content templates exist.</p>
 <hr/>
 <h2>Site checks</h2>
-<p>Run once per site by <code>runSiteChecks</code> (<code>engine.ts</code>), with their own site score from the same pool maths (not shown since Phase 5). The dashboard lists them on the <strong>Agent access</strong> tab, and the ones that need work lead its Fix first list.</p>
+<p>Run once per site by <code>runSiteChecks</code> (<code>engine.ts</code>), with their own site score from the same pool maths (not shown since Phase 5). The dashboard lists them on the <strong>Agent access</strong> tab, and the ones that need work lead its Fix first list. S7 reads the home page's live HTML; the others grade the <code>/api/agent-access</code> scan (<code>SiteContext.access</code>, <code>AgentAccessData</code>; how it's collected is in PAGE-MATRIX-TECHNICAL, "Agent access tab"). With no scan yet they're not checked ("The site hasn't been scanned yet.").</p>
+<p><strong>Bot groups</strong> (<code>src/lib/agent-access/bots.ts</code>): <strong>Search</strong> OAI-SearchBot, Claude-SearchBot, PerplexityBot, Amazonbot · <strong>User</strong> ChatGPT-User, Claude-User, Perplexity-User · <strong>Training</strong> GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent. S1 and S2 grade only the 7 search and user agents; a blocked training agent is mentioned ("which is your choice and doesn't lower the score") and never costs credit.</p>
 <table><thead><tr>
 <th style="text-align:left">ID</th>
 <th style="text-align:left">Title</th>
 <th style="text-align:left">Tier</th>
 <th style="text-align:left">Credit</th>
-<th style="text-align:left">Was</th>
+<th style="text-align:left">Notes</th>
 </tr></thead><tbody>
+<tr>
+<td style="text-align:left">S1 <code>reach.ai-bot-access</code></td>
+<td style="text-align:left">AI agents can open your site</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">search and user agents that can read ÷ those requested; <strong>fail</strong> if any is blocked</td>
+<td style="text-align:left">live requests, compared with a browser (<code>botGrid</code>: blocked = 4xx/5xx; challenge page = challenge markers or &lt; 20% of the browser's size). Agents robots.txt disallows aren't requested and are left to S2. Not checked when the home page fails for a browser too, or when robots.txt disallows every search and user agent. The details end with the caveat that requests come from our server</td>
+</tr>
 <tr>
 <td style="text-align:left">S2 <code>reach.robots-ai-rules</code></td>
 <td style="text-align:left">robots.txt lets AI search in</td>
 <td style="text-align:left">Essential</td>
-<td style="text-align:left">0 of 6 named AI crawlers blocked → 1 · 1–2 → 0.5 · 3+ → 0</td>
-<td style="text-align:left">the matrix's crawler permissions, moved as is; Phase 6 replaces it with bot groups by purpose</td>
+<td style="text-align:left">search and user agents allowed on <code>/</code> ÷ 7; <strong>fail</strong> if any is disallowed</td>
+<td style="text-align:left">RFC 9309 matching (<code>robots.ts</code>). No robots.txt (4xx) → 1. A 5xx → 0 (crawlers treat it as "keep out"). Unreachable → not checked. Replaces the Phase 3 six-crawler version</td>
+</tr>
+<tr>
+<td style="text-align:left">S3 <code>read.markdown-site</code></td>
+<td style="text-align:left">Your site can serve Markdown to agents</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">no Markdown for <code>Accept: text/markdown</code> → 0; otherwise 0.5 + ⅙ each for HTML for browsers, <code>Vary: Accept</code>, Markdown smaller than the HTML</td>
+<td style="text-align:left"><code>gradeNegotiation</code> (<code>markdown-negotiation.ts</code>), reused by P5 in Phase 7. Markdown = 200 + <code>text/markdown</code> + a body that isn't HTML and has Markdown syntax</td>
+</tr>
+<tr>
+<td style="text-align:left">S4 <code>reach.sitemap</code></td>
+<td style="text-align:left">Sitemap is published and linked</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">0.5 for 200 + <code>&lt;urlset&gt;</code>/<code>&lt;sitemapindex&gt;</code>, +0.25 for <code>&lt;lastmod&gt;</code> on ≥ 80% (+0.125 for some), +0.25 when robots.txt names it</td>
+<td style="text-align:left">for an index, the counts come from its first sitemap</td>
+</tr>
+<tr>
+<td style="text-align:left">S5 <code>read.llms-txt</code></td>
+<td style="text-align:left">llms.txt is published</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">0.5 <code># title</code> on the first line, +0.15 <code>&gt; summary</code>, +0.15 a <code>- <a href="url">link</a></code> list, +0.2 a <code>## When to use…</code> section</td>
+<td style="text-align:left">missing, or a web page served at <code>/llms.txt</code> (soft 404) → 0 as a <strong>warning</strong>, not a fail. Button: <strong>Open generator</strong></td>
+</tr>
+<tr>
+<td style="text-align:left">S6 <code>trust.trust-pages</code></td>
+<td style="text-align:left">About, contact and privacy pages exist</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">⅓ each: linked from the home page (footer first, shortest path) and 200; privacy also ≥ 500 characters of main text</td>
+<td style="text-align:left">replaces the Phase 5 footer-links row; terms, security page and postal address (<code>extractFooterTrust</code>) are in the details, not scored. Owner: author</td>
 </tr>
 <tr>
 <td style="text-align:left">S7 <code>understand.org-schema</code></td>
@@ -327,7 +363,44 @@
 <td style="text-align:left">see below</td>
 <td style="text-align:left"><code>aeo-organization-schema</code></td>
 </tr>
+<tr>
+<td style="text-align:left">S8 <code>reach.not-found</code></td>
+<td style="text-align:left">Missing pages return a real 404</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">404 or 410 → 1, anything else → 0</td>
+<td style="text-align:left">a 200 is a soft 404 ("redirects to the home page" when it ends on <code>/</code>)</td>
+</tr>
+<tr>
+<td style="text-align:left">S9 <code>reach.content-signals</code></td>
+<td style="text-align:left">Content-use signals are declared</td>
+<td style="text-align:left">Bonus</td>
+<td style="text-align:left">a <code>Content-Signal:</code> line → 1; none → 0 shown as <strong>Not set</strong></td>
+<td style="text-align:left">contentsignals.org; the Files helper writes it</td>
+</tr>
+<tr>
+<td style="text-align:left">S10 <code>read.link-headers</code></td>
+<td style="text-align:left">Discovery links in HTTP headers</td>
+<td style="text-align:left">Bonus</td>
+<td style="text-align:left">an RFC 8288 <code>Link</code> header on the home page with <code>rel</code> describedby, sitemap, service-desc, service-doc, api-catalog, agent-skills or llms-txt, an <code>alternate</code> of type <code>text/markdown</code>, or a URL to llms.txt or a sitemap → 1; otherwise 0, <strong>Not set</strong></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:left">S11 <code>read.agent-protocols</code></td>
+<td style="text-align:left">Agent protocols published</td>
+<td style="text-align:left">Bonus</td>
+<td style="text-align:left">found ÷ 2, capped at 1</td>
+<td style="text-align:left"><strong>App or API only</strong>, N/A otherwise. MCP server card (<code>/.well-known/mcp/server-card.json</code> or <code>/.well-known/mcp.json</code>), A2A agent card (<code>agent-card.json</code>, legacy <code>agent.json</code>), agent skills index, API catalog (RFC 9727), OAuth discovery (RFC 9728 / 8414): each must be a JSON object, not an HTML page served with 200. WebMCP: <code>navigator.modelContext</code> in the home page's inline scripts</td>
+</tr>
+<tr>
+<td style="text-align:left">S12 <code>read.commerce-protocols</code></td>
+<td style="text-align:left">Agentic checkout protocols</td>
+<td style="text-align:left">Bonus</td>
+<td style="text-align:left">any found → 1</td>
+<td style="text-align:left"><strong>Commerce only</strong>, N/A otherwise. UCP (<code>/.well-known/ucp</code>), ACP (<code>/.well-known/acp.json</code>), MPP (<code>/openapi.json</code> with <code>x-payment-info</code>). x402 can't be detected from outside (it answers 402 on a paid request), so it's only noted</td>
+</tr>
 </tbody></table>
+<p>Paths for S11 and S12 were checked on 2026-11-02; MCP's server card path is still settling (SEP-2127), so both candidates are tried.</p>
+<p><strong>Real-site check (2026-11-02, BrandX demo site):</strong> robots.txt is <code>User-agent: * / Disallow: /</code>, so S2 fails and S1 isn't checked (no agent was requested); the home page returns HTML for <code>Accept: text/markdown</code> (S3: 0); a 177-URL sitemap with lastmod, listed in robots.txt (S4: 1); <code>/llms.txt</code>, the random path and every well-known path return a 200 HTML page (S5: warning, S8: soft 404, S11/S12: nothing found); about, contact and privacy all 200 (S6: 1); no Content-Signal or Link header. 22 requests in 1–3 s.</p>
 <h3>S7 <code>understand.org-schema</code> (<code>site/org-schema.ts</code>)</h3>
 <p>Graded on the <strong>home page's live HTML</strong> (the <code>getPageHTML</code> draft has no <code>&lt;head&gt;</code> scripts). The four rules agreed on 2026-10-31:</p>
 <table><thead><tr>
@@ -357,7 +430,11 @@
 <li><strong>A block that doesn't parse</strong> is a fail (credit 0) with the parse error shown.</li>
 <li><strong>Config is the expected value:</strong> when <code>NEXT_PUBLIC_ORG_NAME</code> is set and the schema names a different organisation, or there are several Organization entries with conflicting names or URLs, the result is a warning and the credit is capped at 0.9.</li>
 <li><strong>Fix snippet:</strong> starts from the schema already on the site and fills only the gaps (name, url, logo, description, sameAs) from <code>NEXT_PUBLIC_ORG_*</code> (<code>getOrganizationInfo</code>, with the site's name and domain as fallbacks). A <code>url</code> off the site's domain is replaced; other values are kept. With no schema at all it's <code>buildOrganizationJsonLd</code>.</li>
-<li><strong>In the panel</strong> S7 shows only when the home page is open, in a "Site check — not in this page's score" section. The "site issues affecting this page" strip comes in Phase 6.</li>
+<li><strong>In the panel</strong> S7 shows only when the home page is open, in a "Site check — not in this page's score" section, graded on the open page's live HTML (so it follows a re-scan).</li>
+</ul>
+<h3>Site issues in the panel (Phase 6)</h3>
+<p>The panel reads the same scan through <code>useAgentAccess</code> (cached an hour per domain, so moving between pages doesn't rescan the site; the panel's Re-scan doesn't re-run it) and runs <code>runSiteChecks</code> with it. <code>SiteIssues</code> (<code>src/components/panel/SiteIssues.tsx</code>), between the category bars and Top fixes, shows the failing <strong>Essential Reach</strong> site checks, S1 and S2: the ones that keep agents out of every page. It's a red strip, "N site issue(s) affect(s) every page:" with each check's message and <strong>View in dashboard</strong>, which opens <code>/dashboard-widget-extension#agent-access</code> (<code>?demo=1</code> kept in demo mode) through <code>navigateToExternalUrl</code>, or a new tab. Other site checks (Markdown, llms.txt, …) stay on the dashboard, so the panel isn't permanently red for issues an author can't act on; page-level Markdown arrives as P5 in Phase 7. No site check is part of the page score.</p>
+<ul>
 <li><strong>Evidence:</strong> the BrandX home page has no JSON-LD at all (checked 2026-10-31 and 2026-11-01). The old check gave it 5/5; S7 gives it 0 with a warning and a snippet.</li>
 </ul>
 <hr/>
@@ -371,7 +448,7 @@
 <li><strong>Top fixes:</strong> <code>rankedFixes</code> keeps Improve and Fix rows worth at least 1 point, sorted by gain, then Essential first, then author fixes first. <code>topFixes</code> takes three.</li>
 <li><strong>Verdict:</strong> <code>pageVerdict</code> gives the label from <code>labelForPct</code> and one sentence. <code>fixesToReady</code> adds the biggest gains to the score until it reaches 80: "N fixes would make this page agent-ready". If even every fix wouldn't, it says how many checks need work; at 80+ it says how many could still improve.</li>
 <li><strong>Fix buttons:</strong> <code>fixButton</code>: <strong>Generate</strong> for P9 and P11 (the generator's fields; other <code>generate</code> fixes wait for Phase 9), <strong>Copy snippet</strong> for a <code>copy-snippet</code> fix with a <code>codePreview</code>, <strong>Send to developer</strong> for developer-owned fixes (copies <code>developerNote</code>: title, page URL, why, what we found, fix, details, code), otherwise <strong>Show how</strong> (opens and scrolls to the row). Copying uses <code>src/lib/clipboard.ts</code>, which falls back to <code>execCommand</code> because the Marketplace iframe doesn't delegate <code>clipboard-write</code>.</li>
-<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (placeholder until Phase 7) / AI Assist (<code>MetaGenerator</code>). The tabs are force-mounted, so the generator keeps its state. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7.</li>
+<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (placeholder until Phase 7) / AI Assist (<code>MetaGenerator</code>). The tabs are force-mounted, so the generator keeps its state. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.</li>
 <li><strong>"▲ N since last scan"</strong> (<code>useScanDelta</code>, <code>src/hooks/useScoreHistory.ts</code>): when a scan settles (the page, its draft and the AI and PageSpeed checks have loaded), the stored score for the page (<code>aiDiscovery:pageScore:v1:&lt;pageId&gt;|&lt;language&gt;</code>) becomes the baseline and the new score is stored. Draft edits afterwards show against that baseline. Demo mode uses a fixed baseline (<code>DEMO_PREVIOUS_PAGE_SCORE</code>).</li>
 <li><strong>Shared components</strong> (<code>src/components/shared/</code>): <code>StatusIcon</code> (icon, colour and word; <code>@mdi/js</code> paths), <code>ScoreRing</code> (fills on first render), <code>VerdictCard</code>, <code>CategoryBars</code>, <code>TopFixes</code>, <code>CheckRow</code>, <code>FixButton</code>, <code>Segmented</code>, <code>EmptyState</code>, the chips (<code>OwnerBadge</code>, <code>GainChip</code>, <code>SourceChip</code>, <code>DeltaChip</code>), <code>AppMark</code>. Blok's components are in <code>src/components/ui/</code> and its theme tokens in <code>globals.css</code> (Sitecore/blok @ 0a7997e, light theme only).</li>
 <li><strong>Accessibility:</strong> every status has an icon and a word; buttons and tabs are keyboard-reachable with a visible focus ring; the tab panels are focusable; the panel works at 320 px (the source chip wraps under the title). Motion is off under <code>prefers-reduced-motion</code>.</li>
@@ -390,12 +467,13 @@
 </ul>
 <hr/>
 <h2>Server-side fetching (SSRF protection)</h2>
-<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>robots-check</code>, <code>footer-check</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>:</p>
+<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
 <ul>
 <li><code>http</code>/<code>https</code> only; no credentials in the URL.</li>
 <li>Blocks private, loopback, link-local (incl. <code>169.254.169.254</code>), CGNAT, multicast, reserved and documentation ranges, IPv4 and IPv6, including IPv4-mapped and NAT64/6to4/Teredo forms. The check runs in the undici Agent's DNS lookup at connect time, so DNS rebinding can't bypass it. IP-literal hosts (including <code>http://2130706433/</code>-style encodings) are checked before the request.</li>
-<li>Follows at most 3 redirects (re-checked each hop) and drops the caller's headers, such as the editing token, on a cross-origin hop.</li>
-<li>One timeout across redirects and body; bodies capped at 5 MB by default.</li>
+<li>Follows at most 3 redirects (re-checked each hop) and drops the caller's headers, such as the editing token, on a cross-origin hop. <code>publicHeaders</code> (User-Agent, Accept: nothing secret) are sent on every hop, so a bot request stays a bot request after <code>example.com</code> → <code>www.example.com</code>.</li>
+<li>One timeout across redirects and body; bodies capped at 5 MB by default. An optional <code>signal</code> ends it early (the agent-access deadline), reported as a timeout.</li>
+<li>The returned <code>Response.url</code> is the final URL after redirects.</li>
 <li>Blocked input → <code>SafeFetchError</code> with <code>isBadInput</code>, and the route answers <strong>400</strong> <code>{ error: "blocked_url" }</code>. Fetch failures stay <strong>502</strong>, or the route's own fallback.</li>
 <li><code>SAFE_FETCH_ALLOW_HOSTS</code> (comma-separated) skips the address check for named hosts. Use it only for local development.</li>
 <li>Tests: <code>src/lib/server/safe-fetch.test.ts</code>.</li>
@@ -433,6 +511,18 @@
 <tr>
 <td style="text-align:left"><code>src/lib/checks/site/org-schema.test.ts</code></td>
 <td style="text-align:left">S7: the four rules, <code>@graph</code>, <code>@type</code> arrays, subtypes, <code>WebSite.publisher</code>, parse errors, config mismatch, duplicates, BrandX</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/site/agent-access.test.ts</code></td>
+<td style="text-align:left">S1–S12 on the demo scan (ChatGPT-User 403: the Phase 6 accept-when case) and variants: challenge and stub pages, sample-page blocks, training agents, timeouts, robots.txt states, Markdown negotiation, sitemap, llms.txt parts, trust pages, soft 404, Content-Signal, Link headers, S11/S12 by site type</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/agent-access/robots.test.ts</code></td>
+<td style="text-align:left">RFC 9309 groups, <code>*</code> fallback, longest match, <code>*</code> and <code>$</code>, versioned tokens, Content-Signal, the robots.txt helper's lines</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/agent-access.test.ts</code></td>
+<td style="text-align:left">the collector against a local server (a firewall returning 403 to ChatGPT-User, GPTBot never requested, samples, sitemap, trust pages, well-known JSON vs HTML), the deadline, private addresses, the link pickers</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/checks/json-ld.test.ts</code></td>
@@ -474,8 +564,16 @@
 <td style="text-align:left">Page checks P2–P21</td>
 </tr>
 <tr>
-<td style="text-align:left"><code>src/lib/checks/site/reach.ts</code>, <code>site/org-schema.ts</code></td>
-<td style="text-align:left">Site checks S2, S7</td>
+<td style="text-align:left"><code>src/lib/checks/site/{reach,read,trust,org-schema}.ts</code></td>
+<td style="text-align:left">Site checks S1–S12</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/checks/markdown-negotiation.ts</code></td>
+<td style="text-align:left">The accept.md checks (S3; P5 in Phase 7)</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/agent-access/</code>, <code>src/lib/server/agent-access.ts</code>, <code>src/app/api/agent-access/route.ts</code></td>
+<td style="text-align:left">Bots, robots.txt, the bot grid and the scan behind the site checks</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/checks/scoring.ts</code>, <code>gate.ts</code>, <code>engine.ts</code></td>
