@@ -17,7 +17,7 @@ The v2 roadmap is in [docs/IS-IT-AGENT-READY-PLAN.md](docs/IS-IT-AGENT-READY-PLA
 
 Both run inside the Sitecore iframe. Opening their routes directly in a browser only works in demo mode (below).
 
-Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `robots-check`, `footer-check`, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-forecast`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
+Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `agent-access` for the site checks, `markdown-check` for Markdown, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-forecast`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
 
 The panel and the dashboard share one check engine (`src/lib/checks/`), so the same page gets the same score in both. Each page is scored out of 100: Essential checks share 80 points, Recommended checks 20, and Bonus checks add up to 5 (capped at 100). Checks that don't apply are skipped, not failed. Scores use the same thresholds everywhere: 80 and above is good (Agent-ready), 60–79 is a warning (Almost there), and below 60 is critical (Not ready). Details: `docs/PAGE-CHECKS-TECHNICAL.md`.
 
@@ -88,6 +88,8 @@ Add `?demo=1` to either extension URL to use fixture data from `src/lib/rule-eng
 
 - http://localhost:3000/pages-contextpanel-extension?demo=1
 - http://localhost:3000/dashboard-widget-extension?demo=1
+
+By default the demo site doesn't serve Markdown to AI agents (the Agent View shows the local preview and the estimated saving). Add `&md=1` for a site that does (4 of 4 Markdown checks).
 
 Demo mode never turns on by itself. Every new check or screen needs fixture data so the demo keeps working.
 

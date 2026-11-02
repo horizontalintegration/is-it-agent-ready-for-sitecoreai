@@ -476,3 +476,41 @@ Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, 
 - [marketplace-sdk docs/experimental-xmc.md](https://github.com/Sitecore/marketplace-sdk/blob/main/docs/experimental-xmc.md)
 - Templates: [quickstart-with-custom-auth.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-custom-auth.json), [quickstart-with-full-stack-xmc.json](https://blok.sitecore.com/r/marketplace/next/quickstart-with-full-stack-xmc.json)
 - SDK bundles: `node_modules/@sitecore-marketplace-sdk/xmc/dist/index.esm.js` (`experimental_XMC`, `createCustomClients`) and `node_modules/@sitecore-marketplace-sdk/client/dist/index.esm.js` (`_fetch`)
+
+---
+
+## 8. accept-md with the Sitecore Content SDK (Phase 7)
+
+**Question (plan Phase 7):** does `npx accept-md init` coexist with the Sitecore Content SDK middleware for redirects, personalisation and multisite?
+
+**Test bed:** the BrandX replica (hztl-page-health-checker-demo.vercel.app, the Sitecore site's hostname), repo `hztl-xcelerate-blueprint-copy`, app `headapps/nextjs-starter`: Content SDK 1.3.2, Next.js 15 Pages Router, i18n (`en`, `es-MX`, `fr-CA`, `ar-AE`), `src/middleware.ts` = `defineMiddleware(multisiteMiddleware, redirectsMiddleware, personalizeMiddleware, smallCaseMiddleware)` with a matcher that skips `/api/`, `/_next/`, `/sitecore/api/`, `/-/` and `/healthz`. accept-md **5.0.2** (CLI, `@accept-md/core` and `accept-md-runtime`, read from the published packages on 2026-11-02). Branch `feature/accept-md` on the replica.
+
+### 8.1 What accept-md does (Confirmed, from its published code)
+
+- **`init`** adds a rewrite to `next.config` (`beforeFiles`: `/:path*` → `/api/accept-md?path=:path*` when the `accept` header contains `text/markdown`), writes the handler (`src/pages/api/accept-md/index.ts` for the Pages Router), creates `accept-md.config.js` (`include: ['/**']`, `exclude: ['/api/**', '/_next/**']`, `cleanSelectors: ['nav', 'footer', '.no-markdown']`, `cache: true`), adds `accept-md-runtime` (exact version) to `dependencies` and a `postbuild` script `npx accept-md fix-routes`. It doesn't run an install.
+- **The handler** fetches the page's own HTML from the public origin (the request's `host`, else `VERCEL_URL`) with `Accept: text/html` and the request's other headers (cookies included), converts it with Turndown, and answers `Content-Type: text/markdown; charset=utf-8`, **`Vary: Accept`**, `Cache-Control: public, s-maxage=60, stale-while-revalidate`. Results are cached in memory per path (expiry from the page's `s-maxage`/`revalidate`, cleared on a new `BUILD_ID`).
+- **The Markdown** starts with YAML front matter built from the head: `title` (`<title>`), `description` (meta description), `canonical`, `language`, Open Graph, article and Twitter fields, robots, and JSON-LD blocks as code. `nav` and `footer` are removed before conversion; `header` isn't, so a site header outside `<nav>` stays in.
+- **Order of operations in Next.js:** middleware runs before `beforeFiles` rewrites, so the Sitecore middleware (multisite, redirects, personalize) sees a Markdown request first. A redirect therefore answers the agent before accept-md runs. The handler's own HTML fetch goes back through the public URL and the middleware.
+
+### 8.2 `init` on the Content SDK starter (Confirmed, 2026-11-02)
+
+- **`init` breaks `next.config.js`.** Its "has rewrites?" test only matches `rewrites:` or `rewrites =`, not the starter's method form `async rewrites() { return [...] }`. It then looks for the end of `nextConfig` with a brace counter, which loses track in the starter's `webpack()` function (regex literals such as `/src\components\.*\.tsx$/`), and inserts `rewrites: async () => { return { beforeFiles: [...] } }` **inside `webpack()`, after `return config;`**: a syntax error, so the build fails. Even placed correctly, a second `rewrites` key would override Sitecore's method and drop its rewrites (`/sitecore/api/*`, `/-/*` media, `/healthz`, `/sitecore/service/*`).
+- **Fix (by hand):** keep one `rewrites()` and return `{ beforeFiles: [acceptMd], afterFiles: [...Sitecore's rules], fallback: [] }` (a plain array is `afterFiles`, so Sitecore's rules keep their place). The handler and `accept-md.config.js` stay as generated.
+- **`postbuild: npx accept-md fix-routes`** is only needed for `next start` on Next.js 15+ ("routesManifest.dataRoutes is not iterable"). On Vercel it isn't needed, and it would download an unpinned CLI on every build, so it was removed.
+- **`npx` inside the repo** fails on this machine: the repo's `.nvmrc` asks for Node 22 and nvm-windows refuses ("Node.js v22.x.x is not installed"). `init` takes the app's path, so it ran from outside: `npx --yes accept-md@5.0.2 init <path>`. The lockfile was updated with `npm install --package-lock-only` (adds `accept-md-runtime`, Turndown, linkedom; no other versions changed).
+- **Fix card:** the accept-md card says to check `next.config` after `init` on a Content SDK app (see 8.4).
+
+### 8.3 On the deployed replica
+
+**Open:** waiting for the preview deployment of `feature/accept-md`. To check, through `/api/markdown-check` and plain requests:
+
+- [ ] A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4).
+- [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite).
+- [ ] A Sitecore redirect still answers a Markdown request with the redirect.
+- [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default.
+- [ ] A missing page: the Markdown request returns an error, not a 200.
+- [ ] Media (`/-/media/…`) and `/sitecore/api` still work.
+
+### 8.4 Recommendation
+
+**Open** until 8.3 is done. So far: accept-md works for a Content SDK site only with the hand-fixed `next.config.js` (8.2); the fix card and P5's developer note say so.

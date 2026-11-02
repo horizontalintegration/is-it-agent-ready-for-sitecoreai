@@ -52,7 +52,7 @@ export const MARKDOWN_FIXES: MarkdownFix[] = [
   {
     id: "accept-md",
     title: "Next.js site (Sitecore Content SDK)",
-    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. Test it alongside your Sitecore middleware (redirects, personalisation, multisite).",
+    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. On the Content SDK starter, init can't edit next.config.js's rewrites(), so check it afterwards: return { beforeFiles: [the accept-md rule], afterFiles: [Sitecore's rules] }. Test it alongside your Sitecore middleware (redirects, personalisation, multisite).",
     command: "npx accept-md init",
   },
   {
@@ -70,4 +70,4 @@ export const MARKDOWN_FIXES: MarkdownFix[] = [
 
 /** The options in one line, for the developer note. */
 export const MARKDOWN_FIX_SUMMARY =
-  "Options: `npx accept-md init` in the Next.js head app (test it with the Sitecore middleware: redirects, personalisation, multisite), Cloudflare's Markdown for Agents, or your own route that converts the page and answers Accept: text/markdown with Vary: Accept.";
+  "Options: `npx accept-md init` in the Next.js head app (on the Content SDK starter, fix next.config.js afterwards: accept-md's rule in beforeFiles, Sitecore's rewrites in afterFiles; test it with the Sitecore middleware: redirects, personalisation, multisite), Cloudflare's Markdown for Agents, or your own route that converts the page and answers Accept: text/markdown with Vary: Accept.";
