@@ -27,7 +27,7 @@ function ctx(html: string | null, expected: SiteContext["expectedOrganization"] 
     organization: CONFIG_ORG,
     expectedOrganization: expected,
     home: html === null ? null : extractParsedHtml(html),
-    robotsTxt: null,
+    access: null,
   };
 }
 

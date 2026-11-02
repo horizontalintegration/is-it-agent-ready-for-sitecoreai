@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
-import type { AiResults, ParsedHtml, RobotsTxt } from "@/lib/rule-engine/types";
+import type { AiResults, ParsedHtml } from "@/lib/rule-engine/types";
 import { getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, pageFieldsFromValues, SCORING_FIELD_NAMES } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
@@ -396,18 +396,8 @@ async function withConcurrency<T>(
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** What the site checks need, fetched once per site. */
-export interface SiteCheckInputs {
-  /** Home page live HTML. Null when it couldn't be fetched. */
-  homeHtml: ParsedHtml | null;
-  /** True once the home page fetch has finished (successfully or not). */
-  homeChecked: boolean;
-  robotsTxt: RobotsTxt | null;
-}
-
 export interface UseSitePagesResult {
   pages: PageMatrixRow[];
-  siteInputs: SiteCheckInputs;
   siteContext: {
     id: string;
     domain: string;
@@ -447,15 +437,6 @@ export function useSitePages(
   const [error, setError] = useState<string | null>(null);
 
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
-  // Site-wide inputs for the site checks — robots.txt and the home page,
-  // fetched once per domain.
-  const [siteInputs, setSiteInputs] = useState<SiteCheckInputs>({
-    homeHtml: null,
-    homeChecked: false,
-    robotsTxt: null,
-  });
-  const siteFetchedDomainRef = useRef<string | null>(null);
 
   const pagesRef = useRef<PageMatrixRow[]>([]);
   useEffect(() => {
@@ -708,20 +689,8 @@ export function useSitePages(
         return;
       }
 
-      // 3. Fetch robots.txt and the home page once for this domain (site
-      // checks). Not awaited: page enumeration doesn't depend on them.
-      if (siteFetchedDomainRef.current !== domain) {
-        siteFetchedDomainRef.current = domain;
-        setSiteInputs({ homeHtml: null, homeChecked: false, robotsTxt: null });
-        const homeUrl = buildPageUrl(domain, "/");
-        void Promise.all([
-          tryJson<RobotsTxt>(fetch(`${base}/api/robots-check?domain=${encodeURIComponent(domain)}`)),
-          tryJson<ParsedHtml>(fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(homeUrl)}`)),
-        ]).then(([robotsTxt, homeHtml]) => {
-          if (siteFetchedDomainRef.current !== domain) return;
-          setSiteInputs({ robotsTxt, homeHtml, homeChecked: true });
-        });
-      }
+      // 3. The site checks' data (robots.txt, the home page, the bot requests)
+      // comes from /api/agent-access, fetched by useAgentAccess on the domain.
 
       // 4. Resolve site Home reference. Three-tier strategy:
       //   a. homePageId from xmc.sites.retrieveSite (preferred — exact match)
@@ -890,7 +859,7 @@ export function useSitePages(
       setError(isHostAuthError(err) ? HOST_AUTH_ERROR_MESSAGE : `Could not load pages: ${message}`);
       setIsLoading(false);
     }
-  }, [client, base, scanOne]);
+  }, [client, scanOne]);
 
   // ── site.context subscription ────────────────────────────────────────────
   // Pages app updates site.context when the user switches sites in the
@@ -969,7 +938,6 @@ export function useSitePages(
 
   const clearAndRefresh = useCallback(() => {
     clearCache(currentSiteIdRef.current);
-    siteFetchedDomainRef.current = null; // re-fetch robots.txt and the home page too
     void enumerateAndScan();
   }, [enumerateAndScan]);
 
@@ -981,7 +949,6 @@ export function useSitePages(
   return useMemo(
     () => ({
       pages,
-      siteInputs,
       siteContext,
       isLoading,
       error,
@@ -993,7 +960,6 @@ export function useSitePages(
     }),
     [
       pages,
-      siteInputs,
       siteContext,
       isLoading,
       error,

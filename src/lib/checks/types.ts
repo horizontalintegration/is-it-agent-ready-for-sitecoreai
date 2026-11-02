@@ -4,12 +4,12 @@
 // Points come from the tier pools in scoring.ts, never from the check itself.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { AgentAccessData } from "@/lib/agent-access/types";
 import type {
   AiResults,
   OrganizationInfo,
   ParsedHtml,
   PsiResult,
-  RobotsTxt,
 } from "@/lib/rule-engine/types";
 
 export type Category = "reach" | "read" | "understand" | "trust";
@@ -142,9 +142,10 @@ export interface SiteContext {
    * mean "not configured".
    */
   expectedOrganization: { name: string | null; url: string | null };
-  /** Home page live HTML. Null when it couldn't be fetched. */
+  /** Home page live HTML (S7). Null when it couldn't be fetched. */
   home: ParsedHtml | null;
-  robotsTxt: RobotsTxt | null;
+  /** Evidence from /api/agent-access (S1–S6, S8–S12). Null until the site is scanned. */
+  access: AgentAccessData | null;
 }
 
 // ── Engine output ─────────────────────────────────────────────────────────────

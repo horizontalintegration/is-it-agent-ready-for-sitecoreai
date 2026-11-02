@@ -19,6 +19,7 @@ import {
 import { CATEGORIES, type Category, type PageReport } from "@/lib/checks/types";
 import { DraftBanner } from "./DraftBanner";
 import { GateBanner } from "./GateBanner";
+import { SiteIssues } from "./SiteIssues";
 
 type ListFilter = "needs-work" | "all";
 
@@ -27,6 +28,9 @@ interface ScoreTabProps {
   rows: Record<Category, CheckRowModel[]>;
   /** The home page's site check (S7): shown, but not in this page's score. */
   siteRow: CheckRowModel | null;
+  /** Failing site checks that keep agents out of every page (S1, S2). */
+  siteIssues: CheckRowModel[];
+  onOpenDashboard: () => void;
   pageUrl: string;
   delta: number | null;
   difference: { differs: boolean; changed: number; removed: number } | null;
@@ -46,6 +50,8 @@ export function ScoreTab({
   report,
   rows,
   siteRow,
+  siteIssues,
+  onOpenDashboard,
   pageUrl,
   delta,
   difference,
@@ -119,6 +125,8 @@ export function ScoreTab({
       )}
 
       <CategoryBars categories={report.categories} selected={category} onSelect={setCategory} />
+
+      <SiteIssues issues={siteIssues} onOpenDashboard={onOpenDashboard} />
 
       {fixes.length > 0 ? (
         <TopFixes fixes={fixes} pageUrl={pageUrl} onGenerate={onGenerate} onShowHow={showHow} />

@@ -1,6 +1,9 @@
-import type { BodyBlock, FooterTrust, PageData, ParsedHtml } from "./types";
+import type { BodyBlock, PageData, ParsedHtml } from "./types";
 import type { PageMatrixRow } from "@/types/dashboard";
 import type { DraftHtml, SiteContext } from "@/lib/checks/types";
+import { BOTS } from "@/lib/agent-access/bots";
+import type { AgentAccessData, BotAccess, HttpProbe, SamplePage } from "@/lib/agent-access/types";
+import { WELL_KNOWN_PATHS } from "@/lib/agent-access/well-known";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport } from "@/lib/checks/view-model";
@@ -206,14 +209,6 @@ export function makeTestPageData(): PageData {
       hasNav: true,
       hasHeader: true,
     }),
-    robotsTxt: {
-      googleExtended: "allowed",
-      gptBot: "blocked",
-      claudeBot: "allowed",
-      perplexityBot: "allowed",
-      amazonBot: "unknown",
-      appleBotExtended: "unknown",
-    },
     psi: {
       performanceScore: 62,
       isCrawlable: true,
@@ -289,10 +284,22 @@ export function makeTestDraft(): DraftHtml {
   };
 }
 
+/** The demo home page: BrandX-style, with no JSON-LD at all (as the real BrandX home page was on 2026-10-31). */
+function makeTestHomeHtml(): ParsedHtml {
+  return makeParsedHtml({
+    title: "BrandX — Financial planning and wealth management",
+    htmlLang: "en",
+    headings: [{ level: 1, text: "Plan your financial future with BrandX" }],
+    hasMain: true,
+    hasNav: true,
+    hasHeader: true,
+  });
+}
+
 /**
- * Site checks for the demo: a BrandX-style home page with no JSON-LD at all
- * (as the real BrandX home page was on 2026-10-31), so S7 shows "Not added
- * yet" with a snippet, and the fixture robots.txt blocks GPTBot.
+ * Site checks for the demo: S7 shows "Not added yet" with a snippet, and the
+ * agent-access scan is makeTestAgentAccess (ChatGPT-User and Perplexity-User
+ * blocked by the firewall, GPTBot opted out in robots.txt).
  */
 export function makeTestSiteContext(): SiteContext {
   const data = makeTestPageData();
@@ -301,15 +308,89 @@ export function makeTestSiteContext(): SiteContext {
     siteType: "content",
     organization: data.organization,
     expectedOrganization: { name: data.organization.name, url: data.organization.url },
-    home: makeParsedHtml({
-      title: "BrandX — Financial planning and wealth management",
-      htmlLang: "en",
-      headings: [{ level: 1, text: "Plan your financial future with BrandX" }],
-      hasMain: true,
-      hasNav: true,
-      hasHeader: true,
-    }),
-    robotsTxt: data.robotsTxt,
+    home: makeTestHomeHtml(),
+    access: makeTestAgentAccess(),
+  };
+}
+
+// ── Agent access scan (Phase 6, plan section 10: the accept-when fixture) ─────
+//
+// As in the Symposium mockup: the firewall returns 403 to ChatGPT-User and
+// Perplexity-User although robots.txt allows them; robots.txt opts GPTBot
+// out of training; the home page returns HTML for Accept: text/markdown;
+// no llms.txt and no Content-Signal line; a 128-URL sitemap listed in
+// robots.txt; about, contact and privacy pages all published.
+
+export const DEMO_ROBOTS_TXT = `User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Disallow: /
+
+Sitemap: ${SITE_DOMAIN}/sitemap.xml
+`;
+
+const DEMO_FIREWALL_BLOCKED = new Set(["ChatGPT-User", "Perplexity-User"]);
+
+function demoProbe(path: string, status: number, extra: Partial<HttpProbe> = {}): HttpProbe {
+  const url = `${SITE_DOMAIN}${path}`;
+  return { url, finalUrl: url, status, error: null, contentType: "text/html; charset=utf-8", bytes: 0, ...extra };
+}
+
+export function makeTestAgentAccess(): AgentAccessData {
+  const pages: SamplePage[] = [
+    { path: "/", browser: { ...demoProbe("/", 200, { bytes: 182_000 }), challenge: false } },
+    { path: "/insights", browser: { ...demoProbe("/insights", 200, { bytes: 96_000 }), challenge: false } },
+    { path: "/services", browser: { ...demoProbe("/services", 200, { bytes: 88_000 }), challenge: false } },
+  ];
+  const bots: BotAccess[] = BOTS.map((bot) => {
+    if (!bot.userAgent) return { name: bot.name, skipped: "token-only", results: [] };
+    if (bot.name === "GPTBot") return { name: bot.name, skipped: "robots", results: [] };
+    const blocked = DEMO_FIREWALL_BLOCKED.has(bot.name);
+    return {
+      name: bot.name,
+      skipped: null,
+      results: pages.map((p) => ({ ...demoProbe(p.path, blocked ? 403 : 200, { bytes: blocked ? 1_200 : p.browser.bytes }), challenge: false })),
+    };
+  });
+  const notFoundStatus = (path: string) => demoProbe(path, 404, { bytes: 9_000 });
+  return {
+    siteUrl: SITE_DOMAIN,
+    checkedAt: new Date().toISOString(),
+    durationMs: 11_400,
+    requestCount: 49,
+    robots: { probe: demoProbe("/robots.txt", 200, { contentType: "text/plain", bytes: DEMO_ROBOTS_TXT.length }), text: DEMO_ROBOTS_TXT },
+    home: {
+      probe: pages[0].browser,
+      html: makeTestHomeHtml(),
+      linkHeader: null,
+      webMcp: false,
+      footer: { hasAddress: true, hasContact: true, hasPrivacy: true, hasTerms: true, hasSecurity: false, hasAbout: true },
+    },
+    pages,
+    bots,
+    markdown: {
+      probe: demoProbe("/", 200, { bytes: 182_000 }),
+      vary: null,
+      body: "<!doctype html><html lang=\"en\"><head><title>BrandX</title></head><body>…</body></html>",
+    },
+    sitemap: {
+      source: "robots",
+      probe: demoProbe("/sitemap.xml", 200, { contentType: "application/xml", bytes: 21_000 }),
+      kind: "urlset",
+      urlCount: 128,
+      lastmodCount: 128,
+      childCount: 0,
+      child: null,
+    },
+    llmsTxt: { probe: notFoundStatus("/llms.txt"), text: null },
+    trustPages: [
+      { kind: "about", href: `${SITE_DOMAIN}/about-us`, probe: demoProbe("/about-us", 200, { bytes: 64_000 }), textChars: 2_400 },
+      { kind: "contact", href: `${SITE_DOMAIN}/contact-us`, probe: demoProbe("/contact-us", 200, { bytes: 58_000 }), textChars: 900 },
+      { kind: "privacy", href: `${SITE_DOMAIN}/privacy-policy`, probe: demoProbe("/privacy-policy", 200, { bytes: 71_000 }), textChars: 4_100 },
+    ],
+    notFound: notFoundStatus("/agent-ready-check-demo"),
+    wellKnown: WELL_KNOWN_PATHS.map(({ id, path }) => ({ id, path, probe: notFoundStatus(path), json: false, paymentInfo: false })),
   };
 }
 
@@ -419,15 +500,10 @@ export function makeTestSitePages(): PageMatrixRow[] {
   ];
 }
 
-// ── Demo history and footer (Phase 5 UI) ──────────────────────────────────────
+// ── Demo history (Phase 5 UI) ─────────────────────────────────────────────────
 
 /** The demo page's score at the previous scan, for "▲ N since last scan". */
 export const DEMO_PREVIOUS_PAGE_SCORE = 75;
 
 /** The demo site's earlier scan scores, oldest first; the current score is appended. */
 export const DEMO_SITE_HISTORY_BEFORE = [61, 63, 62, 66, 68, 67, 70];
-
-/** The demo site's footer: no security or trust page, the rest present. */
-export function makeTestFooterTrust(): FooterTrust {
-  return { hasAddress: true, hasContact: true, hasPrivacy: true, hasTerms: true, hasSecurity: false, hasAbout: true };
-}

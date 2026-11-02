@@ -48,7 +48,7 @@ export function Chip({
   className,
 }: {
   children: React.ReactNode;
-  tone?: "neutral" | "primary" | "success" | "warning" | "danger";
+  tone?: "neutral" | "primary" | "success" | "warning" | "danger" | "blue";
   className?: string;
 }) {
   return (
