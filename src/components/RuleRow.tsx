@@ -2,13 +2,33 @@
 
 import { useState } from "react";
 import type { CheckRowModel } from "@/lib/checks/adapters";
-import type { CheckStatus } from "@/lib/checks/types";
+import type { CheckStatus, Source } from "@/lib/checks/types";
 
 interface RuleRowProps {
   result: CheckRowModel;
   scanning?: boolean;
+  /** The AI result judged an earlier version of the text: offer a re-run. */
+  stale?: boolean;
   onScan?: () => void;
 }
+
+const SOURCE_LABEL: Record<Source, string> = {
+  draft: "Draft",
+  live: "Live",
+  fields: "Fields",
+  ai: "AI",
+  psi: "PageSpeed",
+  probe: "Probe",
+};
+
+const SOURCE_TITLE: Record<Source, string> = {
+  draft: "Read from the Page Builder draft, unsaved edits included",
+  live: "Read from the published page",
+  fields: "Read from the Sitecore fields",
+  ai: "Judged by Claude",
+  psi: "From PageSpeed Insights",
+  probe: "From a citation probe",
+};
 
 const dotColor: Record<CheckStatus, string> = {
   pass: "bg-green-500",
@@ -55,7 +75,7 @@ function badgeText(result: CheckRowModel): string {
   return `${pts(result.points)} / ${pts(result.maxPoints)}`;
 }
 
-export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
+export function RuleRow({ result, scanning = false, stale = false, onScan }: RuleRowProps) {
   const [open, setOpen] = useState(false);
   // Checks filled by an on-demand scan (PSI or AI) that haven't run yet, or
   // couldn't (e.g. a PSI error): offer the scan, including as a retry.
@@ -116,6 +136,29 @@ export function RuleRow({ result, scanning = false, onScan }: RuleRowProps) {
             <p className="text-sm text-gray-500 mt-1.5">Scanning rendered page…</p>
           ) : (
             <>
+              {result.sources.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {result.sources.map((s) => (
+                    <span
+                      key={s}
+                      title={SOURCE_TITLE[s]}
+                      className={`text-[10px] px-1.5 py-px rounded border ${
+                        s === "draft" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-gray-50 text-gray-600"
+                      }`}
+                    >
+                      {SOURCE_LABEL[s]}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {stale && result.state === "scored" && onScan && (
+                <p className="text-xs text-amber-700 mb-1">
+                  Based on an earlier version of the text.{" "}
+                  <button type="button" onClick={onScan} className="underline hover:text-amber-900">
+                    Re-run
+                  </button>
+                </p>
+              )}
               {result.value && (
                 <p className="text-xs text-gray-500 mb-1">{result.value}</p>
               )}

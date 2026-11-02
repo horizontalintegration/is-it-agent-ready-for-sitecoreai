@@ -20,6 +20,7 @@ import {
   type CheckOutcome,
   type CheckResult,
   type ScoreBreakdown,
+  type Source,
   type Subtotal,
   type Tier,
 } from "./types";
@@ -37,7 +38,9 @@ function emptySubtotals<K extends string>(keys: K[]): Record<K, Subtotal> {
   return Object.fromEntries(keys.map((k) => [k, { earned: 0, max: 0 }])) as Record<K, Subtotal>;
 }
 
-export function scoreResults(items: Array<{ check: CheckMeta; result: CheckResult }>): ScoreBreakdown {
+export function scoreResults(
+  items: Array<{ check: CheckMeta; result: CheckResult; sources?: Source[] }>,
+): ScoreBreakdown {
   const weightOf = (c: CheckMeta) => (c.weight === undefined ? 1 : Math.max(0, c.weight));
   const scored = items.filter((i) => i.result.state === "scored");
 
@@ -60,12 +63,12 @@ export function scoreResults(items: Array<{ check: CheckMeta; result: CheckResul
     return TIER_POOLS[t] * scale;
   };
 
-  const outcomes: CheckOutcome[] = items.map(({ check, result }) => {
+  const outcomes: CheckOutcome[] = items.map(({ check, result, sources = check.sources }) => {
     if (result.state !== "scored" || weights[check.tier] === 0) {
-      return { check, result, points: 0, maxPoints: 0 };
+      return { check, result, sources, points: 0, maxPoints: 0 };
     }
     const maxPoints = (poolFor(check.tier) * weightOf(check)) / weights[check.tier];
-    return { check, result, points: clamp01(result.credit) * maxPoints, maxPoints };
+    return { check, result, sources, points: clamp01(result.credit) * maxPoints, maxPoints };
   });
 
   const categories = emptySubtotals(CATEGORIES);

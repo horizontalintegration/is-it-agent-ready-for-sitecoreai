@@ -12,6 +12,7 @@ import {
   type CheckStatus,
   type PageReport,
   type ResultState,
+  type Source,
   type Subtotal,
   type Tier,
 } from "./types";
@@ -43,6 +44,8 @@ export interface CheckRowModel {
   codePreview?: string;
   /** The on-demand scan that fills this check, if any. */
   runner: "ai" | "psi" | null;
+  /** Where the data came from, for the source chip. */
+  sources: Source[];
 }
 
 export function toCheckRow(o: CheckOutcome): CheckRowModel {
@@ -63,6 +66,7 @@ export function toCheckRow(o: CheckOutcome): CheckRowModel {
     flaggedItems: result.flaggedItems,
     codePreview: result.codePreview,
     runner: check.sources.includes("psi") ? "psi" : check.sources.includes("ai") ? "ai" : null,
+    sources: o.sources,
   };
 }
 

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
+import { normaliseText } from "@/lib/ai/content-key";
+import type { DraftStatus } from "@/hooks/usePageHtml";
 import type {
   AiResults,
   ParsedHtml,
@@ -14,16 +16,26 @@ interface UseScanInput {
   siteDomain: string;
   editingToken: string;
   pageTitle: string;
+  /** The draft's main text (usePageHtml). Null without a draft. */
+  draftText: string | null;
+  draftStatus: DraftStatus;
 }
 
 interface UseScanResult {
+  /** The live page (preview-fetch). */
   parsedHtml: ParsedHtml | null;
   robotsTxt: RobotsTxt | null;
   psi: PsiResult | null;
   ai: AiResults | null;
-  /** True during a full scan (auto on URL change or manual Re-scan page). */
+  /** The text the AI checks judge: the draft's main text, or the live page's without a draft. */
+  bodyText: string;
+  /** False while that body is still loading (the draft read, or the live fetch as the fallback). */
+  bodyReady: boolean;
+  /** True when the body has changed since the AI judged it. Re-run to update. */
+  aiStale: boolean;
+  /** True while the live page is fetched (auto on URL change or manual Re-scan page). */
   isScanning: boolean;
-  /** True only during an individual AI-only scan (row-level button). */
+  /** True while the AI checks run (after a page load, Re-scan, or the row button). */
   isAiScanning: boolean;
   /** True only during an individual PSI-only scan (row-level button). */
   isPsiScanning: boolean;
@@ -45,24 +57,34 @@ async function tryJson<T>(p: Promise<Response>): Promise<T | null> {
 }
 
 export function useScan(input: UseScanInput): UseScanResult {
-  const { pageUrl, siteDomain, editingToken, pageTitle } = input;
+  const { pageUrl, siteDomain, editingToken, pageTitle, draftText, draftStatus } = input;
 
   const [parsedHtml, setParsedHtml] = useState<ParsedHtml | null>(null);
   const [robotsTxt, setRobotsTxt] = useState<RobotsTxt | null>(null);
   const [psi, setPsi] = useState<PsiResult | null>(null);
   const [ai, setAi] = useState<AiResults | null>(null);
+  /** The body text the current AI result judged. */
+  const [aiBody, setAiBody] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+  /** The live fetch for this page has finished (with or without HTML). */
+  const [liveDone, setLiveDone] = useState(false);
   const [isAiScanning, setIsAiScanning] = useState(false);
   const [isPsiScanning, setIsPsiScanning] = useState(false);
   const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped on page change and Re-scan: the AI runs once on the next ready body.
+  const [aiRequest, setAiRequest] = useState(0);
+  const aiHandledRef = useRef(0);
 
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-  // Ref so the auto-scan effect always reads the latest title without
-  // re-triggering on every authoring field keystroke.
+  // Ref so the AI effect always reads the latest title without re-triggering
+  // on every authoring field keystroke.
   const pageTitleRef = useRef(pageTitle);
   useEffect(() => { pageTitleRef.current = pageTitle; }, [pageTitle]);
+  // Results for a page the author has since left are dropped.
+  const pageUrlRef = useRef(pageUrl);
+  useEffect(() => { pageUrlRef.current = pageUrl; }, [pageUrl]);
 
   const fetchHtml = useCallback(() => {
     const tokenParam = editingToken ? `&token=${encodeURIComponent(editingToken)}` : "";
@@ -71,21 +93,26 @@ export function useScan(input: UseScanInput): UseScanResult {
     );
   }, [base, pageUrl, editingToken]);
 
-  // The AI checks read the page's main text from preview-fetch, so they run
-  // after it. With no main text there's nothing to judge, so the call is skipped.
-  // Results are cached by content hash, so unchanged pages don't call Claude again.
-  const fetchAi = useCallback(
-    (title: string, html: ParsedHtml | null, force = false): Promise<AiResults | null> => {
-      const bodyText = html?.mainText ?? "";
-      if (!bodyText) {
-        console.info("[scan] ai-check skipped: preview-fetch returned no main text");
-        return Promise.resolve(null);
+  // With no body text there's nothing to judge, so the call is skipped.
+  // Results are cached by content hash, so unchanged text doesn't call Claude again.
+  const runAi = useCallback(
+    (title: string, body: string, force = false) => {
+      if (!body) {
+        console.info("[scan] ai-check skipped: no body text");
+        return;
       }
-      console.info(
-        `[scan] ai-check body: ${bodyText.length} chars of main text —`,
-        bodyText.slice(0, 200),
-      );
-      return fetchAiResults(base, title, bodyText, { force });
+      console.info(`[scan] ai-check body: ${body.length} chars —`, body.slice(0, 200));
+      const forUrl = pageUrlRef.current;
+      setIsAiScanning(true);
+      fetchAiResults(base, title, body, { force }).then((result) => {
+        if (pageUrlRef.current !== forUrl) return;
+        if (result) {
+          setAi(result);
+          setAiBody(body);
+        }
+        setLastScannedAt(new Date());
+        setIsAiScanning(false);
+      });
     },
     [base],
   );
@@ -100,8 +127,8 @@ export function useScan(input: UseScanInput): UseScanResult {
     ).then((data) => { if (data) setRobotsTxt(data); });
   }, [siteDomain, base]);
 
-  // Auto-scan all page-level checks whenever the page URL changes (i.e. the
-  // author navigates to a different page in Page Builder).
+  // Fetch the live page whenever the page URL changes (i.e. the author
+  // navigates to a different page in Page Builder), and queue the AI checks.
   // Data is cleared first so rows show "Scanning…" while fetching.
   useEffect(() => {
     if (!pageUrl) return;
@@ -109,7 +136,10 @@ export function useScan(input: UseScanInput): UseScanResult {
     setParsedHtml(null);
     setPsi(null);
     setAi(null);
+    setAiBody("");
     setIsScanning(true);
+    setLiveDone(false);
+    setAiRequest((n) => n + 1);
 
     let cancelled = false;
 
@@ -117,18 +147,27 @@ export function useScan(input: UseScanInput): UseScanResult {
       const html = await fetchHtml();
       if (cancelled) return;
       if (html) setParsedHtml(html);
-      const aiResult = await fetchAi(pageTitleRef.current, html);
-      if (cancelled) return;
-      if (aiResult) setAi(aiResult);
       setLastScannedAt(new Date());
       setIsScanning(false);
+      setLiveDone(true);
     })();
 
     return () => { cancelled = true; };
-  }, [pageUrl, fetchHtml, fetchAi]);
+  }, [pageUrl, fetchHtml]);
 
-  // Manual Re-scan page — reruns all page-level checks without clearing
-  // current results, so scores remain visible while refreshing.
+  const bodyText = draftText ?? parsedHtml?.mainText ?? "";
+  const bodyReady = draftStatus === "ready" || (draftStatus === "unavailable" && liveDone && !isScanning);
+
+  // The AI checks run once per request, on the first ready body. Later edits
+  // don't call Claude again: the result is marked stale until it's re-run.
+  useEffect(() => {
+    if (!pageUrl || !bodyReady || aiRequest === aiHandledRef.current) return;
+    aiHandledRef.current = aiRequest;
+    runAi(pageTitleRef.current, bodyText);
+  }, [pageUrl, bodyReady, bodyText, aiRequest, runAi]);
+
+  // Manual Re-scan page — re-fetches the live page and re-runs the AI on the
+  // next ready body, without clearing current results.
   const runScan = useCallback(() => {
     if (!pageUrl) {
       setError("No page URL available yet.");
@@ -136,28 +175,22 @@ export function useScan(input: UseScanInput): UseScanResult {
     }
     setError(null);
     setIsScanning(true);
+    setAiRequest((n) => n + 1);
 
     (async () => {
       const html = await fetchHtml();
       if (html) setParsedHtml(html);
-      const aiResult = await fetchAi(pageTitle, html);
-      if (aiResult) setAi(aiResult);
       setLastScannedAt(new Date());
       setIsScanning(false);
     })();
-  }, [pageUrl, pageTitle, fetchHtml, fetchAi]);
+  }, [pageUrl, fetchHtml]);
 
   // Individual scans — only run their specific check. The AI re-run skips the
   // cache, since the author asked for a fresh answer.
   const runAiScan = useCallback(() => {
     if (!pageUrl) return;
-    setIsAiScanning(true);
-    fetchAi(pageTitle, parsedHtml, true).then((result) => {
-      if (result) setAi(result);
-      setLastScannedAt(new Date());
-      setIsAiScanning(false);
-    });
-  }, [pageUrl, pageTitle, parsedHtml, fetchAi]);
+    runAi(pageTitle, bodyText, true);
+  }, [pageUrl, pageTitle, bodyText, runAi]);
 
   const runPsiScan = useCallback(() => {
     if (!pageUrl) return;
@@ -171,11 +204,16 @@ export function useScan(input: UseScanInput): UseScanResult {
     });
   }, [pageUrl, base]);
 
+  const aiStale = ai !== null && aiBody !== "" && normaliseText(aiBody) !== normaliseText(bodyText);
+
   return {
     parsedHtml,
     robotsTxt,
     psi,
     ai,
+    bodyText,
+    bodyReady,
+    aiStale,
     isScanning,
     isAiScanning,
     isPsiScanning,

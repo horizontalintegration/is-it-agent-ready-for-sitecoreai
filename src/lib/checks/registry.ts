@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Check registry (plan section 5.2). Every check the engine runs, in display
 // order. Checks from later phases are added when they're built:
-//   Phase 4: P3 read.no-js-content
 //   Phase 6: S1, S3–S6, S8–S12 (S2 is upgraded there)
 //   Phase 7: P5 read.markdown-page, P6 read.markdown-quality
 // ─────────────────────────────────────────────────────────────────────────────

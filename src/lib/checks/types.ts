@@ -15,7 +15,10 @@ import type {
 export type Category = "reach" | "read" | "understand" | "trust";
 export type Tier = "essential" | "recommended" | "bonus";
 export type Scope = "site" | "page";
-/** Where a check's data comes from. Shown as a chip in the Phase 5 UI. */
+/**
+ * Where a check's data comes from, shown as a chip on each result. A body
+ * check declares "draft": it reads the draft in the panel, live elsewhere.
+ */
 export type Source = "draft" | "live" | "fields" | "ai" | "psi" | "probe";
 /** Who can fix it: drives the "You can fix" / "Developer" badge. */
 export type Owner = "author" | "developer";
@@ -93,14 +96,32 @@ export interface PageFields {
   updated: string | null;
 }
 
+/** The Page Builder draft (`getPageHTML`), sanitised and parsed. Panel only. */
+export interface DraftHtml {
+  html: ParsedHtml;
+  /** Empty-state messages the sanitiser removed ("No articles found"). */
+  emptyStates: string[];
+}
+
+/** Where the body checks read from: the draft when there is one, otherwise live. */
+export type BodySource = Extract<Source, "draft" | "live">;
+
 export interface PageContext {
   pageUrl: string;
   isHomePage: boolean;
   templateName: string | null;
   /** Null when the Sitecore fields aren't loaded. */
   fields: PageFields | null;
-  /** Live HTML. Null when it hasn't been fetched or the fetch failed. */
+  /**
+   * Live HTML: the head checks (title, canonical, meta, JSON-LD) always read
+   * it. Null when it hasn't been fetched or the fetch failed.
+   */
   html: ParsedHtml | null;
+  /** The draft. Null on the dashboard, and in the panel when getPageHTML isn't available. */
+  draft: DraftHtml | null;
+  /** What the body checks read: the draft's HTML when there is one, otherwise `html`. */
+  body: ParsedHtml | null;
+  bodySource: BodySource;
   ai: AiResults | null;
   psi: PsiResult | null;
   /** For the fix snippets. */
@@ -131,6 +152,8 @@ export type CheckMeta = Omit<CheckDef<unknown>, "applies" | "run">;
 export interface CheckOutcome {
   check: CheckMeta;
   result: CheckResult;
+  /** Where this result's data came from ("draft" resolved to "live" without a draft). For the source chip. */
+  sources: Source[];
   /** Points earned: credit × maxPoints. 0 unless scored. */
   points: number;
   /** This check's share of its tier pool. 0 unless scored. */

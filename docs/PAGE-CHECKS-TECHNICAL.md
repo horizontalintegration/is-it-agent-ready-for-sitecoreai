@@ -1,8 +1,8 @@
 # Page Checks — Technical Reference
 
-An engineering-oriented reference for the checks in **Is It Agent-Ready? for SitecoreAI**: the scoring model, every check with its thresholds and credit, and where each one lives in the code. The Page Builder panel ("Is this page agent-ready?") and the dashboard ("Is this site agent-ready?") use **the same engine**, so a page scores the same in both. Dashboard specifics (roll-up, cache, site checks card) are in `PAGE-MATRIX-TECHNICAL.md`.
+An engineering-oriented reference for the checks in **Is It Agent-Ready? for SitecoreAI**: the scoring model, every check with its thresholds and credit, and where each one lives in the code. The Page Builder panel ("Is this page agent-ready?") and the dashboard ("Is this site agent-ready?") use **the same engine**, so the same inputs give the same score in both. The panel also scores the Page Builder **draft**, so its score follows unpublished edits (see "Draft and live" below). Dashboard specifics (roll-up, cache, site checks card) are in `PAGE-MATRIX-TECHNICAL.md`.
 
-**Source of truth:** `src/lib/checks/` — `registry.ts` (the check list), `page/*.ts` and `site/*.ts` (the checks), `scoring.ts` (pool maths), `gate.ts`, `engine.ts` (entry points), `context.ts` (inputs), `json-ld.ts` (shared JSON-LD parser), `adapters.ts` (the pre-v2 UI). Plan reference: `docs/IS-IT-AGENT-READY-PLAN.md` section 5.
+**Source of truth:** `src/lib/checks/` — `registry.ts` (the check list), `page/*.ts` and `site/*.ts` (the checks), `scoring.ts` (pool maths), `gate.ts`, `engine.ts` (entry points), `context.ts` (inputs), `draft-diff.ts` (draft vs live comparison), `json-ld.ts` (shared JSON-LD parser), `adapters.ts` (the pre-v2 UI). HTML parsing is in `src/lib/html/`. Plan reference: `docs/IS-IT-AGENT-READY-PLAN.md` sections 5 and 7.
 
 ---
 
@@ -16,11 +16,49 @@ An engineering-oriented reference for the checks in **Is It Agent-Ready? for Sit
 - The score is rounded to a whole number. Exact points are kept per check and per category (`ScoreBreakdown` in `types.ts`).
 - Thresholds are shared by the panel and the dashboard (`src/lib/score-thresholds.ts`): **Agent-ready ≥ 80**, **Almost there 60–79**, **Not ready < 60**.
 
-**Points in Phase 3.** Four Essential page checks exist (P2, P8, P9, P10), so when all apply each is worth 20 points; on the home page P10 is usually N/A and the other three are worth 26.7 each. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phases 4 and 7 add P3 and P5 to Essential, which brings each Essential check to about 13 points.
+**Points.** Five Essential page checks exist (P2, P3, P8, P9, P10). In the panel, when all apply, each is worth 16 points. On the dashboard P3 isn't checked (no draft), so the other four are worth 20 each. On the home page P10 is usually N/A. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phase 7 adds P5 to Essential.
 
-**Scopes.** Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get **their own site score**; they are never part of a page score. Phase 3 has two site checks: S2 and S7.
+**Scopes.** Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get **their own site score**; they are never part of a page score. There are two site checks so far: S2 and S7.
 
-**Same score in both views.** Both views build the check context with `buildPageContext` (`context.ts`) from the same inputs: the page's live HTML (`/api/preview-fetch` → `ParsedHtml`), the AI results (`/api/ai-check`, cached by content hash), and the same Sitecore fields read by the same names (`SCORING_FIELD_NAMES`: title, meta description, `robotsMetaTag`, `__Updated`). The panel reads them with `pageFieldsFromFieldMap`, the dashboard with `pageFieldsFromValues`. The one difference is PageSpeed: only the panel can run it, so after you run it there, the panel includes P7 and the dashboard doesn't. `src/lib/checks/parity.test.ts` covers this.
+**Same inputs, same score.** Both views build the check context with `buildPageContext` (`context.ts`) from the same inputs: the page's live HTML (`/api/preview-fetch` → `ParsedHtml`), the AI results (`/api/ai-check`, cached by content hash), and the same Sitecore fields read by the same names (`SCORING_FIELD_NAMES`: title, meta description, `robotsMetaTag`, `__Updated`). The panel reads them with `pageFieldsFromFieldMap`, the dashboard with `pageFieldsFromValues`. `src/lib/checks/parity.test.ts` covers this.
+
+**Where the panel and the dashboard differ, by design:**
+- **The draft.** The panel's body checks and AI checks read the Page Builder draft. It includes unpublished edits and content rendered by JavaScript (e.g. BrandX's Related Articles cards), so the panel's score can differ from the dashboard's even for a page with no edits. Agreed on 2026-11-01 (plan section 7, Phase 4).
+- **P3** needs the draft, so it's only scored in the panel. The dashboard shows it as "Page Builder only" (not checked, left out of the pools).
+- **PageSpeed:** only the panel can run it, so after you run it there, the panel includes P7 and the dashboard doesn't.
+
+---
+
+## Draft and live (plan section 7)
+
+| Data | Source | Read by |
+|---|---|---|
+| **Draft**: `client.getPageHTML()`, sanitised and parsed in the browser | `usePageHtml` (`src/hooks/usePageHtml.ts`), panel only | Body checks: P3, P4, P8, P12, P13, P14, P15, P19, P20. AI body: P16, P21 and the meta generator |
+| **Live**: `/api/preview-fetch` (server HTML, with the editing secret) | `useScan` (panel), `useSitePages` (dashboard) | Head checks: P2, P9 (fallback), P10, P11, P17, P18, the gate, S7. P3's comparison |
+| **Fields**: authoring GraphQL | `usePageFields` | P9, P18, the gate |
+
+- **Context.** `PageInput.draft` is optional: the dashboard leaves it out. `buildPageContext` sets `body` to the draft's `ParsedHtml` when there is one, otherwise the live one, and `bodySource` to `"draft"` or `"live"`. Body checks read `ctx.body`; head checks read `ctx.html`.
+- **P10 stays fully live.** Its JSON-LD (only in the `<head>`, which the draft lacks) and its Q&A pairs come from the same render.
+- **Source chip.** A check declares `sources` (body checks declare `"draft"`). `resolveSources` (`engine.ts`) turns `"draft"` into the body's actual source and adds it to AI checks, and every `CheckOutcome` carries the result as `sources`. The panel shows it as chips (Draft / Live / Fields / AI / PageSpeed) at the top of an expanded row.
+- **Refresh.** `usePageHtml` reads the draft 1.5 s after a page change (so the canvas can load the new page) and 1.5 s after the last `pages.content.fieldsUpdated` (`usePageFields.contentVersion`), and at once on **Re-scan page**. Only the latest read may set state. Each read takes about 30–50 ms. Console: `[draft] getPageHTML: N chars …; removed {…}`.
+- **Fallback.** If `getPageHTML` rejects or returns nothing on the first read for a page, the status is `unavailable` and the body checks read live, as before (chips say Live, P3 is not checked). A later failed refresh keeps the previous draft, so the score doesn't jump mid-edit.
+- **Unpublished pages.** If preview-fetch fails (no published page yet), the head checks are not checked and the body checks still score from the draft.
+- **AI checks.** They judge the body text (`useScan.bodyText`: the draft's `mainText`, or live's without a draft). They run once per page load and per Re-scan, on the first ready body, never on every edit. When the text has changed since, the AI rows say "Based on an earlier version of the text" with a **Re-run** link (`useScan.aiStale`). Results are cached by content hash as before.
+- **"Draft differs from live" banner** (`DraftBanner`). `draftDiffersFromLive` (`draft-diff.ts`) compares the draft's and live's `mainText` line by line. It shows when a live line is missing from the draft, or a draft line is an edit of a live one (word overlap ≥ 0.5). Lines only in the draft, with no live counterpart, don't count: they're usually client-rendered, and would otherwise show the banner on every page with a client-fetched listing.
+
+### The sanitiser (`src/lib/html/sanitise-draft.ts`)
+
+Every capture goes through `sanitiseDraftHtml` before it's parsed, so no check sees raw editor output. It removes (SPIKE-FINDINGS §3, item 5, and §3.1 for the captures it's tested on):
+- **Page Builder help text** (`.ee-help-text-block`, seen in all three BrandX captures):
+  - "Placeholder: custom-headless-hero"-style labels around each placeholder go.
+  - A **`Fallback: …` hint** next to the field's value goes. In the FAQ h1, `<span>Frequently Asked Questions</span><div class="undefined ee-help-text-block">Fallback:<!-- --> <span>Frequently Asked Questions</span></div>` becomes one "Frequently Asked Questions".
+  - When the field is empty, the published page shows the fallback, so the hint is replaced by its value without the label, and the heading keeps its text.
+- **`[No text in field]`** placeholders. Empty headings and paragraphs are then dropped by the extractor.
+- **Empty fields' placeholder elements** (class `scEmpty*`), removed whole. The St. Patrick's Day hero has an empty image field, which the editor shows as a grey picture with `alt=""`; left in, P15 would count an image without alt text that the published page doesn't have. The class is read from the raw attributes, because that `<img>`'s `src` is an inline SVG containing `class=&quot;st3&quot;`, which node-html-parser takes as the element's class.
+- **Empty-state messages** (`isEmptyStateMessage`: "No articles found", "No results", "Nothing to show", "Loading…"). They're returned as `emptyStates` for P3's note.
+- **`contenteditable`** and the editor-only classes `placeholder` and `editing-mode`. `data-component` and `data-icon` are the site's own and stay.
+
+`{{…}}` template tokens (the footer's `© {{year}}`) are kept: the published server HTML has the value (`© 2026`), and the comparison matches a token to any one word.
 
 ---
 
@@ -38,7 +76,7 @@ A blocked page shows the gate message instead of a score (`PageReport.score` is 
 
 ## Page checks
 
-All page checks except P7, P9, P16 and P21 read the page's **live HTML**. "Not yet scanned" (not checked) means the HTML hasn't arrived yet.
+Body checks read the **draft** in the panel and the **live HTML** elsewhere; head checks always read the live HTML (table above). "Not yet scanned" (not checked) means the HTML hasn't arrived yet.
 
 ### Reach
 
@@ -50,10 +88,19 @@ All page checks except P7, P9, P16 and P21 read the page's **live HTML**. "Not y
 
 | ID | Title | Tier | Credit | Was |
 |---|---|---|---|---|
+| P3 `read.no-js-content` | Content is there without JavaScript | Essential | share of the draft's words in the server HTML: ≥ 95% → 1 · ≥ 80% → 0.5 · less → 0. **Not checked** without a draft (dashboard, fallback) or without the live page | new |
 | P4 `read.landmarks` | Page structure is machine-readable | Recommended | landmarks present ÷ 4 (`<main>`, `<article>`, `<nav>`, `<header>`); unlabelled buttons/links are listed | `cq-agentic-readiness` |
 | P7 `read.speed` | Page loads fast | Recommended | PageSpeed ≥ 70 → 1 · 50–69 → 0.6 · < 50 or not crawlable → 0. **Not checked** until PageSpeed runs, or when PSI errors | `cq-page-experience` |
 
-P3 (content without JavaScript), P5 and P6 (Markdown for agents) arrive in Phases 4 and 7.
+P5 and P6 (Markdown for agents) arrive in Phase 7.
+
+**P3 in detail** (`compareBlocks` in `draft-diff.ts`). The draft includes content rendered by JavaScript and the server HTML doesn't (SPIKE-FINDINGS §3, item 4), so the gap is what crawlers that don't run JavaScript miss. Both sides are `ParsedHtml.bodyBlocks`: every text block of `<body>`, header, nav, footer and hidden elements included, each with its nearest `data-component` (field and layout wrappers such as `helpers/fieldwrappers/richtextwrapper` are skipped, so a card's summary belongs to `relatedarticles`), capped at 50,000 chars.
+- Text is compared lower-cased, with curly quotes and dashes normalised. A `{{…}}` token matches any one word. A draft block found anywhere in the joined live text is server-rendered, so blocks split differently on each side still match.
+- A draft block of **4+ words** that isn't found is either an **edit** (word overlap ≥ 0.5 with a live block missing from the draft: counts as server content) or **client-only**. Shorter blocks (dates, "Read more", labels) aren't judged. Empty-state messages aren't counted and are listed as "Couldn't render in the editor".
+- Text on the live page but not in the draft (the St. Patrick's Day paragraph) is never reported by P3.
+- Flagged items group the client-only text by component.
+- **On BrandX** (captures of 2026-11-01): the Banking article scores half credit, "44 of 522 words need JavaScript (91% in the server HTML)", flagged as `relatedarticles: 44 words` (the cards' titles and summaries). The published page's Related Articles section has only its heading and a loading spinner. St. Patrick's Day passes: its article listing is an empty field in the editor and adds no text.
+- **Limitation:** text alone can't tell client-rendered content from new text that isn't published yet, so a brand-new unpublished component shows up as client-only until it's published. The result says so.
 
 ### Understand
 
@@ -75,7 +122,7 @@ P3 (content without JavaScript), P5 and P6 (Markdown for agents) arrive in Phase
 
 The fix snippet contains only the missing or incomplete schemas (`buildBreadcrumbJsonLd`, `buildFaqPageJsonLd`, `buildArticleJsonLd` in `helpers.ts`). The site's Organization schema is S7, not part of P10.
 
-**Q&A pairs (P10, P12).** `extractQaPairs` (`src/lib/server/extract-html.ts`) finds them in **any component**: an accordion toggle (`[aria-controls][aria-expanded]`) whose controlled panel holds the answer (collapsed, `aria-hidden` panels included), or a `<details>` whose `<summary>` is the question. Only toggles that read as a question (end in "?" or start with a question word) count, so menus and "Expand all" are skipped. On BrandX's FAQ page it finds all 8 questions. The AccordionItem datasource fetch in `usePageFields` is no longer used for scoring.
+**Q&A pairs (P10, P12).** `extractQaPairs` (`src/lib/html/extract-html.ts`) finds them in **any component**: an accordion toggle (`[aria-controls][aria-expanded]`) whose controlled panel holds the answer (collapsed, `aria-hidden` panels included), or a `<details>` whose `<summary>` is the question. Only toggles that read as a question (end in "?" or start with a question word) count, so menus and "Expand all" are skipped. On BrandX's FAQ page it finds all 8 questions. The AccordionItem datasource fetch in `usePageFields` is no longer used for scoring.
 
 ### Trust
 
@@ -88,7 +135,7 @@ The fix snippet contains only the missing or incomplete schemas (`buildBreadcrum
 | P20 `trust.anchor-text` | Links say where they go | Recommended | generic anchors ≤ 20% → 1 · ≤ 40% → 0.5 · more → 0. N/A without links | `seo-anchor-text` (was info only) |
 | P21 `trust.follow-up-gaps` | Answers the next question too | **Bonus** | follow-up questions covered ÷ all. Not checked until the AI has run | `cq-followup-gaps` (was off) |
 
-- **P16 body and caching.** The body is `ParsedHtml.mainText` from `/api/preview-fetch`: the text of `<main>` (or `<body>` without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars; `/api/ai-check` sends the first 3,000 to Claude on `ANTHROPIC_MODEL_BULK` (effort `low`, structured output). The panel calls `ai-check` after `preview-fetch` returns and skips it when there's no main text (console: `[scan] ai-check body: …`). Results are keyed by SHA-256 of the normalised title and text (`src/lib/ai/content-key.ts`) and cached in localStorage (`aiDiscovery:ai-results:<AI_CHECK_VERSION>`, shared by the panel and the dashboard) and in memory on the server, so an unchanged page doesn't call Claude again (console: `[ai-cache] hit …`). The AI re-run button skips both caches. A refusal returns `422` and the check stays not checked. Phase 4 switches the body to the sanitised `getPageHTML` draft.
+- **P16 body and caching.** The body is `ParsedHtml.mainText`: the text of `<main>` (or `<body>` without header, nav and footer), one block per line, entities decoded, capped at 20,000 chars. Hidden elements are skipped, except panels that a toggle controls (`aria-controls`), so collapsed FAQ answers are included (open item 3, fixed in Phase 4). In the panel it's the sanitised draft's main text, or live's when there's no draft; on the dashboard it's live's. `/api/ai-check` sends the first 3,000 chars to Claude on `ANTHROPIC_MODEL_BULK` (effort `low`, structured output). The panel calls `ai-check` once the body is ready and skips it when there's no text (console: `[scan] ai-check body: …`); see "Draft and live" for when it re-runs. Results are keyed by SHA-256 of the normalised title and text (`src/lib/ai/content-key.ts`) and cached in localStorage (`aiDiscovery:ai-results:<AI_CHECK_VERSION>`, shared by the panel and the dashboard) and in memory on the server, so an unchanged page doesn't call Claude again (console: `[ai-cache] hit …`). The AI re-run button skips both caches. A refusal returns `422` and the check stays not checked.
 - **P17 author signals**, in order: the `author` of an Article-type JSON-LD node (a string, an inline Person/Organization, or an `@id` reference; linked when it has `url` or `sameAs`), then `<meta name="author">`, then a `rel="author"` link (which counts as the profile link).
 - **P18 date sources**, in order: `<meta property="article:modified_time">`, a JSON-LD `dateModified`, `<meta name="last-modified">`, then Sitecore `__Updated`. `parseDate` (`helpers.ts`) reads ISO dates and Sitecore's compact `yyyyMMddTHHmmssZ` format.
 - **P20 generic anchors.** `isGenericAnchor` (`helpers.ts`) matches the `ANCHOR_BLOCKLIST` exactly, plus a prefix rule limited to phrases that stay generic whatever follows ("click here …", "read more …", "see more …"). Descriptive anchors that start with a blocklisted word ("Download the 2026 report", "Register for the webinar") pass (SPIKE-FINDINGS §2).
@@ -136,7 +183,8 @@ Graded on the **home page's live HTML** (the `getPageHTML` draft has no `<head>`
 ## The adapter to the pre-v2 UI
 
 `adapters.ts` maps reports onto the current components until the Phase 5 redesign:
-- **Panel:** `rowsByCategory` → one `CategorySection` per category (`src/components/CategorySection.tsx`) with a `RuleRow` per check showing `points / max` (one decimal), "n/a", "not checked" or a **Run scan** button for AI and PageSpeed checks, and "+N pts" next to the fix. N/A checks are listed under "Doesn't apply here". The header ring shows the 0–100 score.
+- **Panel:** `rowsByCategory` → one `CategorySection` per category (`src/components/CategorySection.tsx`) with a `RuleRow` per check showing `points / max` (one decimal), "n/a", "not checked" or a **Run scan** button for AI and PageSpeed checks, and "+N pts" next to the fix. An expanded row starts with its source chips; a stale AI row adds a **Re-run** link. N/A checks are listed under "Doesn't apply here". The header ring shows the 0–100 score, and the "Draft differs from live" banner sits above the categories.
+- **Dashboard "What's included":** P3 and P7 are marked "(Page Builder panel only)" (`CategoryCards.tsx`).
 - **Dashboard:** `summarisePageReport` → `PageScoreSummary` (`score`, `label`, `blocked`, `gateReason`, per-category earned/max), which is what the dashboard caches.
 
 ---
@@ -148,7 +196,7 @@ Graded on the **home page's live HTML** (the `getPageHTML` draft has no `<head>`
 - **Model:** `ANTHROPIC_MODEL` (default `claude-opus-5-5`), effort `low`, structured output `{ value }`.
 - **Length limits** (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with `overLimit: true`, and the UI shows the count in amber. Values are never cut off.
 - **Prompt caching:** the brand voice (system prompt) and the page title and text (first user block) carry `cache_control`, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
-- **Body:** `bodyText` is the same `ParsedHtml.mainText` the uniqueness check uses. **Generate** is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.
+- **Body:** `bodyText` is the same text the uniqueness check judges: the draft's `mainText`, so unpublished edits are included, or live's without a draft. **Generate** is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.
 - **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`, server only) reads the Markdown file named by `BRAND_VOICE_FILE` (relative to the project root, read once per server instance) and the name in `BRAND_NAME`. With neither set, or if the file can't be read, it uses a neutral default voice. `brand/brandx.md` is the BrandX demo voice, and `next.config.ts` (`outputFileTracingIncludes`) bundles `brand/` into the Vercel function.
 - **Log:** `[generate-meta] <field>: N chars of body text, brand voice: <source>`.
 
@@ -173,11 +221,14 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 | File | Covers |
 |---|---|
 | `src/lib/checks/scoring.test.ts` | pools, partial credit, weights, N/A and not checked, rescaling, bonus cap, categories, the gate |
-| `src/lib/checks/page/page-checks.test.ts` | P10 real detection (D2), P9, N/A and not-checked cases, P17, P18, the fixture page |
+| `src/lib/checks/page/page-checks.test.ts` | P10 real detection (D2), P9, N/A and not-checked cases, P17, P18, P3 (Related Articles, edits, empty states), body vs head sources, source chips, the fixture page and draft |
+| `src/lib/checks/draft-diff.test.ts` | block comparison (client-only, edits, tokens, split blocks) and the "Draft differs" rule |
+| `src/lib/html/sanitise-draft.test.ts` | the sanitiser on the BrandX FAQ, Banking article and St. Patrick's Day captures (`src/lib/html/fixtures/`), plus help text, Fallback hints, `[No text in field]`, `scEmpty*` placeholders, empty states, tokens, editor attributes |
+| `src/lib/checks/brandx-pages.test.ts` | the whole pipeline on real BrandX draft + live pairs: P3 on the Related Articles cards, the footer token, the banner, P15 and P20 |
 | `src/lib/checks/site/org-schema.test.ts` | S7: the four rules, `@graph`, `@type` arrays, subtypes, `WebSite.publisher`, parse errors, config mismatch, duplicates, BrandX |
 | `src/lib/checks/json-ld.test.ts` | the shared parser |
-| `src/lib/checks/parity.test.ts` | panel and dashboard read the same fields and give the same score; the 80 / 60 thresholds |
-| `src/lib/server/extract-html.test.ts` | `mainText`, Q&A pairs (BrandX accordion markup), metadata, JSON-LD blocks |
+| `src/lib/checks/parity.test.ts` | panel and dashboard read the same fields and give the same score on the same inputs; a draft changes the panel's; the 80 / 60 thresholds |
+| `src/lib/html/extract-html.test.ts` | `mainText` (collapsed answers included), entity decoding, `bodyBlocks`, Q&A pairs (BrandX accordion markup), metadata, JSON-LD blocks |
 
 ---
 
@@ -189,12 +240,16 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `robots-
 | `src/lib/checks/page/{reach,read,understand,trust}.ts` | Page checks P2–P21 |
 | `src/lib/checks/site/reach.ts`, `site/org-schema.ts` | Site checks S2, S7 |
 | `src/lib/checks/scoring.ts`, `gate.ts`, `engine.ts` | Pool maths, the gate, `runPageChecks` / `runSiteChecks` |
-| `src/lib/checks/context.ts` | `buildPageContext`, the shared field names, article/home detection |
+| `src/lib/checks/context.ts` | `buildPageContext` (draft → `body`), the shared field names, article/home detection |
+| `src/lib/checks/draft-diff.ts` | Draft vs live block comparison: P3 and the "Draft differs" banner |
+| `src/hooks/usePageHtml.ts` | Reads the draft with `getPageHTML`, debounced on field updates, with the live fallback |
+| `src/components/DraftBanner.tsx` | The "Draft differs from live" banner |
 | `src/lib/checks/json-ld.ts`, `schema-org-types.ts` | JSON-LD parsing and the schema.org subtype lists |
 | `src/lib/checks/adapters.ts` | Reports → pre-v2 UI rows and dashboard summaries |
 | `src/lib/rule-engine/helpers.ts` | ARI, word counts, anchor blocklist, dates, snippet builders |
 | `src/lib/rule-engine/types.ts` | Input types (`ParsedHtml`, `AiResults`, `PageData`, …) |
-| `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1`. Demo mode never starts the Marketplace client and doesn't auto-scan, so it makes no SitecoreAI or paid calls on load (`useDemoMode.ts`, `useMarketplaceClient.ts`) |
+| `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1`, including the panel's demo draft (`makeTestDraft`: one edited heading, client-rendered Related Articles cards). Demo mode never starts the Marketplace client and doesn't auto-scan, so it makes no SitecoreAI or paid calls on load (`useDemoMode.ts`, `useMarketplaceClient.ts`) |
 | `src/lib/score-thresholds.ts` | Shared 80 / 60 thresholds |
-| `src/lib/server/extract-html.ts` | Parses fetched HTML into `ParsedHtml` |
+| `src/lib/html/extract-html.ts` | Parses HTML into `ParsedHtml` (server for live, browser for the draft) |
+| `src/lib/html/sanitise-draft.ts` | Removes Page Builder artifacts from the draft before parsing |
 | `src/lib/brand/organization.ts`, `brand-voice.ts` | Organization identity and brand voice config |

@@ -1,10 +1,12 @@
 import { parse, NodeType, type HTMLElement, type Node, type TextNode } from "node-html-parser";
 import { parseJsonLdScript } from "@/lib/checks/json-ld";
 import { QUESTION_REGEX } from "@/lib/rule-engine/helpers";
-import type { FooterTrust, ParsedHtml, QaPair } from "@/lib/rule-engine/types";
+import type { BodyBlock, FooterTrust, ParsedHtml, QaPair } from "@/lib/rule-engine/types";
 
 /** Upper bound on `mainText`, so a very long page doesn't bloat the JSON response. */
 export const MAIN_TEXT_MAX_CHARS = 20_000;
+/** Upper bound on the total text in `bodyBlocks`. Higher than `mainText`: it includes the chrome. */
+export const BODY_TEXT_MAX_CHARS = 50_000;
 
 // Never content, wherever they appear.
 const NON_CONTENT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "iframe", "nav"]);
@@ -13,12 +15,33 @@ const NON_CONTENT_TAGS = new Set(["script", "style", "noscript", "template", "sv
 const CHROME_TAGS = new Set(["header", "footer"]);
 // Elements that start a new line, so adjacent blocks don't run together.
 const BLOCK_TAGS = new Set([
-  "address", "article", "aside", "blockquote", "br", "dd", "details", "div", "dl", "dt",
+  "address", "article", "aside", "blockquote", "br", "button", "dd", "details", "div", "dl", "dt",
   "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "li", "main", "ol",
   "p", "pre", "section", "summary", "table", "td", "th", "tr", "ul",
 ]);
 
-function collectText(node: Node, skip: Set<string>, out: string[]): void {
+/**
+ * Decoded text of an element, whitespace collapsed. `innerText` leaves
+ * entities like `&nbsp;` encoded; `.text` decodes them. Includes collapsed
+ * (aria-hidden) panels.
+ */
+function plainText(el: HTMLElement): string {
+  return el.text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Ids of panels that a toggle controls (`aria-controls`). They're hidden until
+ * opened (collapsed FAQ answers), but they're content, so the text keeps them.
+ */
+function controlledPanelIds(root: HTMLElement): Set<string> {
+  const ids = new Set<string>();
+  for (const toggle of root.querySelectorAll("[aria-controls]")) {
+    for (const id of (toggle.getAttribute("aria-controls") ?? "").split(/\s+/)) if (id) ids.add(id);
+  }
+  return ids;
+}
+
+function collectText(node: Node, skip: Set<string>, panels: Set<string>, out: string[]): void {
   if (node.nodeType === NodeType.TEXT_NODE) {
     out.push((node as TextNode).text); // .text decodes entities (&nbsp;, &amp;, …)
     return;
@@ -27,24 +50,26 @@ function collectText(node: Node, skip: Set<string>, out: string[]): void {
   const el = node as HTMLElement;
   const tag = el.rawTagName?.toLowerCase() ?? "";
   if (skip.has(tag)) return;
-  if (el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true") return;
+  const hidden = el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true";
+  if (hidden && !panels.has(el.id)) return;
   const block = BLOCK_TAGS.has(tag);
   if (block) out.push("\n");
-  for (const child of el.childNodes) collectText(child, skip, out);
+  for (const child of el.childNodes) collectText(child, skip, panels, out);
   if (block) out.push("\n");
 }
 
 /**
  * The page's main readable text: `<main>` when present, otherwise `<body>`
  * without header, nav and footer. Entities are decoded, whitespace is
- * collapsed, and each block element sits on its own line.
+ * collapsed, and each block element sits on its own line. Hidden elements are
+ * skipped, except panels a toggle controls (collapsed FAQ answers).
  */
 export function extractMainText(root: HTMLElement): string {
   const main = root.querySelector("main");
   const scope = main ?? root.querySelector("body") ?? root;
   const skip = main ? NON_CONTENT_TAGS : new Set([...NON_CONTENT_TAGS, ...CHROME_TAGS]);
   const out: string[] = [];
-  collectText(scope, skip, out);
+  collectText(scope, skip, controlledPanelIds(root), out);
   return out
     .join("")
     .split("\n")
@@ -54,9 +79,55 @@ export function extractMainText(root: HTMLElement): string {
     .slice(0, MAIN_TEXT_MAX_CHARS);
 }
 
-/** Decoded text of an element, whitespace collapsed. Includes collapsed (aria-hidden) panels. */
-function plainText(el: HTMLElement): string {
-  return el.text.replace(/\s+/g, " ").trim();
+// Never text, wherever they appear. Unlike mainText, the body blocks keep nav,
+// header, footer and hidden elements: P3 only asks whether text is in the HTML.
+const NON_TEXT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "iframe"]);
+
+/**
+ * Every text block in `<body>`, each with its nearest `data-component`, so P3
+ * can say which component renders content only in the browser.
+ */
+export function extractBodyBlocks(root: HTMLElement): BodyBlock[] {
+  const blocks: BodyBlock[] = [];
+  let buffer = "";
+  let bufferComponent: string | null = null;
+  let total = 0;
+
+  const flush = () => {
+    const text = buffer.replace(/\s+/g, " ").trim();
+    if (text && total < BODY_TEXT_MAX_CHARS) {
+      blocks.push({ text, component: bufferComponent });
+      total += text.length;
+    }
+    buffer = "";
+    bufferComponent = null;
+  };
+
+  const walk = (node: Node, component: string | null) => {
+    if (node.nodeType === NodeType.TEXT_NODE) {
+      const text = (node as TextNode).text;
+      if (!buffer.trim() && text.trim()) bufferComponent = component;
+      buffer += text;
+      return;
+    }
+    if (node.nodeType !== NodeType.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    const tag = el.rawTagName?.toLowerCase() ?? "";
+    if (NON_TEXT_TAGS.has(tag)) return;
+    // Field and layout wrappers ("helpers/fieldwrappers/richtextwrapper",
+    // "generic-wrappers/section-wrapper") sit inside every component, so the
+    // block keeps the component around them.
+    const marked = el.getAttribute("data-component");
+    const own = marked && !/wrapper/i.test(marked) ? marked : component;
+    const block = BLOCK_TAGS.has(tag);
+    if (block) flush();
+    for (const child of el.childNodes) walk(child, own);
+    if (block) flush();
+  };
+
+  walk(root.querySelector("body") ?? root, null);
+  flush();
+  return blocks;
 }
 
 const looksLikeQuestion = (s: string) => s.endsWith("?") || QUESTION_REGEX.test(s);
@@ -111,10 +182,10 @@ export function extractParsedHtml(html: string): ParsedHtml {
   const root = parse(html);
 
   const headingNodes = root.querySelectorAll("h1,h2,h3,h4");
-  const headings = headingNodes.map((h) => ({
-    level: parseInt(h.tagName.substring(1), 10),
-    text: h.innerText.trim(),
-  }));
+  // Empty headings (`<h3>&nbsp;</h3>`) aren't headings to a reader or an agent.
+  const headings = headingNodes
+    .map((h) => ({ level: parseInt(h.tagName.substring(1), 10), text: plainText(h) }))
+    .filter((h) => h.text.length > 0);
 
   const images = root.querySelectorAll("img").map((img) => ({
     src: resolveImgSrc(img.getAttribute("src") ?? ""),
@@ -126,18 +197,20 @@ export function extractParsedHtml(html: string): ParsedHtml {
   // there is no <main>.
   const contentScope = root.querySelector("main") ?? root;
   const links = contentScope.querySelectorAll("a").map((a) => ({
-    anchorText: a.innerText.replace(/\s+/g, " ").trim() || null,
+    anchorText: plainText(a) || null,
     href: a.getAttribute("href") ?? null,
   }));
 
   const paragraphs = contentScope
     .querySelectorAll("p")
-    .map((p) => p.innerText.replace(/\s+/g, " ").trim())
+    .map(plainText)
     .filter((t) => t.length > 0);
 
   const mainText = extractMainText(root);
+  const bodyBlocks = extractBodyBlocks(root);
 
-  const title = root.querySelector("title")?.innerText.trim() || null;
+  const titleEl = root.querySelector("title");
+  const title = (titleEl && plainText(titleEl)) || null;
   const metaDescription = root.querySelector('meta[name="description"]')?.getAttribute("content") ?? null;
 
   const lastModifiedMeta = root.querySelector('meta[name="last-modified"]')?.getAttribute("content") ?? null;
@@ -171,7 +244,7 @@ export function extractParsedHtml(html: string): ParsedHtml {
 
   let interactiveElementsMissingLabel = 0;
   for (const el of root.querySelectorAll("button,a")) {
-    const text = el.innerText.trim();
+    const text = plainText(el);
     const ariaLabel = el.getAttribute("aria-label");
     if (!text && !ariaLabel) {
       interactiveElementsMissingLabel++;
@@ -188,6 +261,7 @@ export function extractParsedHtml(html: string): ParsedHtml {
     links,
     paragraphs,
     mainText,
+    bodyBlocks,
     htmlLang,
     canonicalHref,
     robotsMeta,

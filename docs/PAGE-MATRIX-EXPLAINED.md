@@ -19,7 +19,7 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 
 **The order makes sense:** an AI agent has to get to the page, read it, understand it, and trust it before it quotes you.
 
-**The dashboard and the panel use exactly the same checks and scoring**, so a page shows the same score in both places. The full list of checks is in the Page Checks guide.
+**The dashboard and the panel use exactly the same checks and scoring.** The dashboard scores **the published page**; the panel scores **the draft you're editing**. So a page with unpublished changes can score differently in the two places. Two checks only run in the Page Builder panel: "Content is there without JavaScript" (it needs the editor's view of the page) and "Page loads fast" (it runs when you ask). The dashboard marks them "Page Builder panel only" and leaves them out of its scores. The full list of checks is in the Page Checks guide.
 
 ---
 
@@ -76,7 +76,7 @@ The ten lowest-scoring pages, with **Open** to jump straight to the page in Page
 ## Demo talking points
 
 - **"Four questions, one scorecard."** Reach, Read, Understand, Trust — anyone can scan it and know which pages need help.
-- **"The same score in the panel and the dashboard."** One engine, one set of rules, no surprises.
+- **"One set of rules in the panel and the dashboard."** The dashboard shows what's live; the panel shows your draft before you publish.
 - **"Fix the essentials first."** They carry most of the score, so a few fixes move the needle.
 - **"It checks the real page."** Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.
 - **"Green / amber / red, at a glance."** Marketers can prioritise instantly: fix the reds first.

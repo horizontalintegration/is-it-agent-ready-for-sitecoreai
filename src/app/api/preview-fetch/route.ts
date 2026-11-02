@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractParsedHtml } from "@/lib/server/extract-html";
+import { extractParsedHtml } from "@/lib/html/extract-html";
 import { safeFetch, SafeFetchError } from "@/lib/server/safe-fetch";
 
 const CORS_HEADERS = {

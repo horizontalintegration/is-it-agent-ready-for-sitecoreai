@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { jsonLd, titleMeta } from "./understand";
-import { runPageChecks } from "../engine";
+import { resolveSources, runPageChecks } from "../engine";
 import { buildPageContext } from "../context";
-import { makeParsedHtml, makeTestPageData } from "@/lib/rule-engine/test-fixture";
-import type { ParsedHtml } from "@/lib/rule-engine/types";
-import type { PageContext, PageFields } from "../types";
+import { makeParsedHtml, makeTestDraft, makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import type { BodyBlock, ParsedHtml } from "@/lib/rule-engine/types";
+import type { DraftHtml, PageContext, PageFields } from "../types";
 
 const FIELDS: PageFields = { metaTitle: null, metaDescription: null, robotsMetaTag: null, updated: null };
 
 function ctx(html: Partial<ParsedHtml> | null, over: Partial<PageContext> = {}): PageContext {
+  const live = html === null ? null : makeParsedHtml(html);
   return {
     pageUrl: "https://example.com/blog/post",
     isHomePage: false,
     templateName: null,
     fields: FIELDS,
-    html: html === null ? null : makeParsedHtml(html),
+    html: live,
+    draft: null,
+    body: live,
+    bodySource: "live",
     ai: null,
     psi: null,
     organization: { name: "BrandX", url: null, logo: null, description: null, sameAs: [] },
@@ -154,10 +158,111 @@ describe("demo fixture page", () => {
     expect(report.score).toBeGreaterThan(0);
     expect(report.score).toBeLessThanOrEqual(100);
     expect(report.outcomes.map((o) => o.check.ref)).toEqual([
-      "P2", "P4", "P7", "P8", "P9", "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20", "P21",
+      "P2", "P3", "P4", "P7", "P8", "P9", "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20", "P21",
     ]);
     for (const o of report.outcomes) {
       expect(o.points, o.check.id).toBeLessThanOrEqual(o.maxPoints + 1e-9);
     }
+  });
+});
+
+// ── Phase 4: draft vs live ────────────────────────────────────────────────────
+
+const withDraft = (live: Partial<ParsedHtml> | null, draft: Partial<ParsedHtml>, emptyStates: string[] = []): PageContext => {
+  const d: DraftHtml = { html: makeParsedHtml(draft), emptyStates };
+  return ctx(live, { draft: d, body: d.html, bodySource: "draft" });
+};
+const blocks = (...texts: string[]): BodyBlock[] => texts.map((text) => ({ text, component: null }));
+const RELATED = "authorable/articles/relatedarticles";
+const ARTICLE = blocks(
+  "Banking Sector Earnings Point to Resilience",
+  "Major banks reported steady earnings this quarter as lending held up across regions and deposits stayed stable.",
+  "Analysts expect the trend to continue into next year, with credit quality holding firm across most loan books.",
+);
+
+describe("P3 read.no-js-content", () => {
+  it("isn't checked without a draft (the dashboard)", () => {
+    const r = outcome(ctx({ bodyBlocks: ARTICLE }), "read.no-js-content");
+    expect(r.state).toBe("not-checked");
+    expect(r.value).toBe("Page Builder only");
+  });
+
+  it("isn't checked without the published page", () => {
+    expect(outcome(withDraft(null, { bodyBlocks: ARTICLE }), "read.no-js-content").state).toBe("not-checked");
+  });
+
+  it("passes when all the draft's text is in the server HTML", () => {
+    const r = outcome(withDraft({ bodyBlocks: ARTICLE }, { bodyBlocks: ARTICLE }), "read.no-js-content");
+    expect(r).toMatchObject({ state: "scored", credit: 1, status: "pass" });
+  });
+
+  it("flags client-rendered Related Articles cards by component (BrandX Banking article)", () => {
+    const cards: BodyBlock[] = [
+      { text: "Retail Investor Participation Hits Record High", component: RELATED },
+      { text: "Retail investors made up a record share of trading volume in March, led by younger savers.", component: RELATED },
+      { text: "Read More", component: RELATED },
+    ];
+    const r = outcome(withDraft({ bodyBlocks: ARTICLE }, { bodyBlocks: [...ARTICLE, ...cards] }), "read.no-js-content");
+    // 38 server words, 22 client-only → 63% → 0
+    expect(r).toMatchObject({ state: "scored", credit: 0, status: "fail" });
+    expect(r.flaggedItems).toEqual(['relatedarticles: 22 words, e.g. "Retail Investor Participation Hits Record High"']);
+  });
+
+  it("gives half credit at 80–95% in the server HTML", () => {
+    const card = [{ text: "Retail Investor Participation Hits Record High", component: RELATED }];
+    const r = outcome(withDraft({ bodyBlocks: ARTICLE }, { bodyBlocks: [...ARTICLE, ...card] }), "read.no-js-content");
+    expect(r).toMatchObject({ credit: 0.5, status: "warning" });
+  });
+
+  it("doesn't count an edited heading or an editor empty state against the page", () => {
+    const draft = [...blocks("Banking Sector Earnings Point to Real Resilience"), ...ARTICLE.slice(1)];
+    const r = outcome(withDraft({ bodyBlocks: ARTICLE }, { bodyBlocks: draft }, ["No articles found"]), "read.no-js-content");
+    expect(r).toMatchObject({ credit: 1, status: "pass" });
+    expect(r.details.join(" ")).toContain('Couldn\'t render in the editor, not counted: "No articles found"');
+    expect(r.details.join(" ")).toContain("1 block edited in the draft");
+  });
+});
+
+describe("body checks read the draft; head checks read live", () => {
+  it("scores headings from the draft and the canonical from live", () => {
+    const c = withDraft(
+      { canonicalHref: "https://example.com/blog/post", headings: [{ level: 1, text: "Live" }, { level: 1, text: "Two" }] },
+      { canonicalHref: null, headings: [{ level: 1, text: "Draft" }] },
+    );
+    expect(outcome(c, "understand.headings").credit).toBe(1);
+    expect(outcome(c, "reach.canonical").credit).toBe(1);
+  });
+
+  it("an unpublished page (no live HTML) still scores its body checks from the draft", () => {
+    const c = withDraft(null, { headings: [{ level: 1, text: "New page" }], paragraphs: ["word ".repeat(900)] });
+    const report = runPageChecks(c);
+    expect(report.score).not.toBeNull();
+    expect(outcome(c, "trust.depth").state).toBe("scored");
+    expect(outcome(c, "reach.canonical").state).toBe("not-checked");
+  });
+
+  it("resolves the source chips", () => {
+    expect(resolveSources(["draft"], "draft")).toEqual(["draft"]);
+    expect(resolveSources(["draft"], "live")).toEqual(["live"]);
+    expect(resolveSources(["draft", "live"], "live")).toEqual(["live"]);
+    expect(resolveSources(["ai"], "draft")).toEqual(["ai", "draft"]);
+    expect(resolveSources(["fields", "live"], "draft")).toEqual(["fields", "live"]);
+  });
+});
+
+describe("demo draft (makeTestDraft)", () => {
+  const data = makeTestPageData();
+  const report = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml, draft: makeTestDraft() }));
+  const find = (id: string) => report.outcomes.find((o) => o.check.id === id)!;
+
+  it("shows a P3 warning for the client-rendered Related Articles cards", () => {
+    expect(find("read.no-js-content").result).toMatchObject({ state: "scored", status: "warning" });
+    expect(find("read.no-js-content").result.flaggedItems?.[0]).toMatch(/^relatedarticles: /);
+  });
+
+  it("marks body checks Draft and head checks Live", () => {
+    expect(find("understand.headings").sources).toEqual(["draft"]);
+    expect(find("reach.canonical").sources).toEqual(["live"]);
+    expect(find("trust.uniqueness").sources).toEqual(["ai", "draft"]);
   });
 });

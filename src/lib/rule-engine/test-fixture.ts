@@ -1,6 +1,6 @@
-import type { PageData, ParsedHtml } from "./types";
+import type { BodyBlock, PageData, ParsedHtml } from "./types";
 import type { PageMatrixRow } from "@/types/dashboard";
-import type { SiteContext } from "@/lib/checks/types";
+import type { DraftHtml, SiteContext } from "@/lib/checks/types";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport } from "@/lib/checks/adapters";
@@ -45,6 +45,7 @@ export function makeParsedHtml(overrides: Partial<ParsedHtml> = {}): ParsedHtml 
     links: [],
     paragraphs: [],
     mainText: "",
+    bodyBlocks: [],
     htmlLang: null,
     canonicalHref: null,
     robotsMeta: null,
@@ -79,6 +80,27 @@ const FAQ = [
   },
 ];
 
+// data-component values, BrandX style, so P3 can name the component.
+const COMPONENT = {
+  header: "authorable/shared/header",
+  content: "authorable/page-content/richtext",
+  accordion: "authorable/shared/lists/accordion",
+  related: "authorable/articles/relatedarticles",
+  footer: "authorable/shared/footer",
+};
+
+const block = (component: string) => (text: string): BodyBlock => ({ text, component });
+
+/** Every text block of the demo page's <body>, header and footer included. */
+function bodyBlocksFor(mainText: string): BodyBlock[] {
+  return [
+    ...["BrandX", "Services", "Insights", "About", "Contact"].map(block(COMPONENT.header)),
+    ...mainText.split("\n").map(block(COMPONENT.content)),
+    ...FAQ.flatMap((f) => [f.question, f.answer]).map(block(COMPONENT.accordion)),
+    ...["© BrandX. All rights reserved.", "Privacy policy", "Terms of use"].map(block(COMPONENT.footer)),
+  ];
+}
+
 export function makeTestPageData(): PageData {
   const pageUrl = `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`;
   const title = "How to build an effective content strategy in 2026";
@@ -97,6 +119,8 @@ export function makeTestPageData(): PageData {
     { level: 3, text: "Step 1: Map your existing pages" },
     { level: 3, text: "Step 2: Score for relevance" },
   ];
+  const mainText = [title, "What is a content strategy?", paragraphs[0], "Why does it matter?", paragraphs[1],
+    "Building your audit framework", "Step 1: Map your existing pages", "Step 2: Score for relevance", paragraphs[2]].join("\n");
 
   return {
     pageUrl,
@@ -145,8 +169,8 @@ export function makeTestPageData(): PageData {
         { anchorText: "our 2026 SEO playbook", href: "/blog/seo-playbook-2026" },
       ],
       paragraphs,
-      mainText: [title, "What is a content strategy?", paragraphs[0], "Why does it matter?", paragraphs[1],
-        "Building your audit framework", "Step 1: Map your existing pages", "Step 2: Score for relevance", paragraphs[2]].join("\n"),
+      mainText,
+      bodyBlocks: bodyBlocksFor(mainText),
       htmlLang: "en",
       canonicalHref: pageUrl,
       robotsMeta: "index, follow",
@@ -215,6 +239,56 @@ export function makeTestPageData(): PageData {
   };
 }
 
+// The draft edits one heading. Related-article cards are fetched in the
+// browser, as on BrandX: they're in the draft but not in the server HTML.
+const LIVE_H2 = "Why does it matter?";
+const DRAFT_H2 = "Why does a content strategy matter?";
+const RELATED = [
+  {
+    title: "Measuring content ROI without guesswork",
+    summary: "Three metrics that tie content to pipeline.",
+    href: "/blog/content-roi",
+  },
+  {
+    title: "Refreshing old articles for AI search",
+    summary: "When to update a page instead of writing a new one.",
+    href: "/blog/refresh-for-ai",
+  },
+];
+
+/**
+ * The panel's demo draft (Page Builder `getPageHTML`, sanitised): the demo
+ * page with one heading edited and client-rendered Related Articles cards,
+ * so demo mode shows the source chips, the "Draft differs" banner and a P3
+ * warning. The dashboard demo has no draft, as in Sitecore.
+ */
+export function makeTestDraft(): DraftHtml {
+  const live = makeTestPageData().parsedHtml!;
+  const edit = (s: string) => (s === LIVE_H2 ? DRAFT_H2 : s);
+  const relatedText = ["Related articles", ...RELATED.flatMap((r) => [r.title, r.summary, "Read more"])];
+  const footerAt = live.bodyBlocks.findIndex((b) => b.component === COMPONENT.footer);
+
+  return {
+    html: {
+      ...live,
+      headings: [
+        ...live.headings.map((h) => ({ ...h, text: edit(h.text) })),
+        { level: 2, text: "Related articles" },
+        ...RELATED.map((r) => ({ level: 3, text: r.title })),
+      ],
+      links: [...live.links, ...RELATED.map((r) => ({ anchorText: "Read more", href: r.href }))],
+      paragraphs: [...live.paragraphs, ...RELATED.map((r) => r.summary)],
+      mainText: [...live.mainText.split("\n").map(edit), ...relatedText].join("\n"),
+      bodyBlocks: [
+        ...live.bodyBlocks.slice(0, footerAt).map((b) => ({ ...b, text: edit(b.text) })),
+        ...relatedText.map(block(COMPONENT.related)),
+        ...live.bodyBlocks.slice(footerAt),
+      ],
+    },
+    emptyStates: [],
+  };
+}
+
 /**
  * Site checks for the demo: a BrandX-style home page with no JSON-LD at all
  * (as the real BrandX home page was on 2026-10-31), so S7 shows "Not added
@@ -242,8 +316,9 @@ export function makeTestSiteContext(): SiteContext {
 // ── Dashboard demo rows ───────────────────────────────────────────────────────
 //
 // Each row is the fixture page above with a few changes, scored by the real
-// engine. "Blog: content strategy" is the panel's demo page unchanged, so the
-// panel and the dashboard show the same score for it.
+// engine on live HTML only, as the dashboard does. "Blog: content strategy" is
+// the panel's demo page unchanged; the panel also scores its draft
+// (makeTestDraft), so its score there can differ.
 
 type Variant = (d: PageData) => void;
 

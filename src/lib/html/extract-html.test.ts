@@ -35,6 +35,16 @@ describe("extractParsedHtml mainText", () => {
     expect(mainText).toBe("Title\nBody text.");
   });
 
+  it("includes collapsed accordion answers (aria-hidden panels a toggle controls) — open item 3", () => {
+    const { mainText } = extractParsedHtml(
+      page(`<main><h1>FAQs</h1>
+        <button aria-expanded="false" aria-controls="a1"><h3>Is the first meeting free?</h3></button>
+        <div id="a1" role="region" aria-hidden="true"><p>Yes, there's no cost.</p></div>
+        <div id="a2" aria-hidden="true"><p>Not controlled by anything, so skipped.</p></div></main>`),
+    );
+    expect(mainText).toBe(["FAQs", "Is the first meeting free?", "Yes, there's no cost."].join("\n"));
+  });
+
   it("is empty for a page with no readable text", () => {
     expect(extractParsedHtml(page("<main><script>1</script></main>")).mainText).toBe("");
   });
@@ -42,6 +52,41 @@ describe("extractParsedHtml mainText", () => {
   it("is capped", () => {
     const { mainText } = extractParsedHtml(page(`<main><p>${"word ".repeat(10_000)}</p></main>`));
     expect(mainText.length).toBe(MAIN_TEXT_MAX_CHARS);
+  });
+});
+
+describe("extractParsedHtml entity decoding", () => {
+  it("decodes entities in headings, paragraphs, links and the title, and drops empty ones", () => {
+    const html = `<html><head><title>Fish &amp; chips</title></head><body><main>
+      <h2>Q&amp;A</h2><h3>&nbsp;</h3>
+      <p>Rock&nbsp;&amp;&nbsp;roll</p><p>&nbsp;</p>
+      <a href="/x">Terms &amp; conditions</a></main></body></html>`;
+    const parsed = extractParsedHtml(html);
+    expect(parsed.title).toBe("Fish & chips");
+    expect(parsed.headings).toEqual([{ level: 2, text: "Q&A" }]);
+    expect(parsed.paragraphs).toEqual(["Rock & roll"]);
+    expect(parsed.links).toEqual([{ anchorText: "Terms & conditions", href: "/x" }]);
+  });
+});
+
+describe("extractParsedHtml bodyBlocks", () => {
+  it("lists every text block in <body>, chrome included, with its nearest data-component", () => {
+    const { bodyBlocks } = extractParsedHtml(
+      page(`<header data-component="authorable/shared/header"><nav><a href="/">Home</a></nav></header>
+        <main><h1>Title</h1>
+          <section data-component="authorable/articles/relatedarticles"><h2>Related</h2>
+            <div><h3>Card title</h3><p>Card <b>summary</b>.</p></div></section></main>
+        <script>var x = 1;</script>
+        <footer data-component="authorable/shared/footer">© BrandX</footer>`),
+    );
+    expect(bodyBlocks).toEqual([
+      { text: "Home", component: "authorable/shared/header" },
+      { text: "Title", component: null },
+      { text: "Related", component: "authorable/articles/relatedarticles" },
+      { text: "Card title", component: "authorable/articles/relatedarticles" },
+      { text: "Card summary.", component: "authorable/articles/relatedarticles" },
+      { text: "© BrandX", component: "authorable/shared/footer" },
+    ]);
   });
 });
 

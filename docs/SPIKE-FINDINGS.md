@@ -67,7 +67,7 @@ Other setup notes:
    - **empty-placeholder:** a page with an empty placeholder or datasource.
 3. Click **Copy N reports** (or copy the JSON from the textarea if clipboard access is blocked) and paste it here or into the session. Each capture is also logged with `console.groupCollapsed("[spike:getPageHTML] …")`, including the full HTML.
 
-Implementation: `src/components/spike/PageHtmlSpike.tsx` (temporary; remove in Phase 4).
+Implementation: `src/components/spike/PageHtmlSpike.tsx` (temporary; removed in Phase 4, replaced by `src/hooks/usePageHtml.ts` and the sanitiser in `src/lib/html/sanitise-draft.ts`).
 
 | # | Question | Answer | Status |
 |---|---|---|---|
@@ -123,6 +123,33 @@ The call takes about 30–50 ms, so it's cheap enough to re-run on every `fields
 - `preview-fetch` doesn't decode `&nbsp;` in headings and paragraphs (the article's server side shows `h3: &nbsp;` and 10 `&nbsp;` paragraphs). The draft side decodes it. Fix this before P3 compares the two.
 - On the St. Patrick's Day page, the published paragraph "Celebrate St. Patrick's Day with BrandX…" isn't in the draft. Either the draft has changed since publishing or that component renders differently in editing mode. P3 must not report this as "content missing without JavaScript".
 - The footer contains a literal `© {{year}}` token in the draft. On the published page, JavaScript replaces it in the browser ("© 2026"), so the sanitiser should ignore `{{…}}` tokens.
+
+### 3.1 Phase 4 captures (2026-11-01)
+
+The Phase 0 captures kept only 1.5 KB excerpts, so the sanitiser was built from the notes above and then checked on new full captures of three BrandX pages, each next to the published server HTML. Trimmed copies are the test fixtures in `src/lib/html/fixtures/` (each file's header says what was trimmed; trimming was checked to give the same parse result as the full capture).
+
+| Page | Draft | What it showed |
+|---|---|---|
+| /Contact-and-Support/FAQs | first 50,000 chars (the paste was cut off) | Help text is an `.ee-help-text-block` element |
+| …/Banking-Sector-Earnings-Point-to-Resilience | 93 KB | h1 is an empty field with a fallback; Related Articles cards are client-rendered |
+| /st-patricks-day-2026 | 83 KB | Two fallback forms; an empty image field; the article listing is an empty field |
+
+**Confirmed (real captures):**
+
+- **Help text is one element type.** `<div class="undefined ee-help-text-block">` holds both kinds:
+  - "Placeholder: custom-headless-hero"-style labels: 6 on the FAQ excerpt, 12 on each of the other two.
+  - "Fallback:" hints.
+  
+  The notes' "`Frequently Asked QuestionsFallback: …`" was the joined text of `<span>value</span><div class="… ee-help-text-block">Fallback:<!-- --> <span>value</span></div>`.
+- **Two fallback forms.**
+  - **The field has a value** (FAQ h1, St. Patrick's hero h1 "Luck looks good on you."): the hint sits next to the value. The published page shows the value.
+  - **The field is empty** (the Banking h1, St. Patrick's page-title h1): the h1 holds only the hint block. The published page shows the fallback value.
+- **Empty image fields** render as `<img class="scEmptyImage …" alt="" src="data:image/svg+xml,…">` (the St. Patrick's hero). The published page has no image there.
+- **node-html-parser quirk:** that `src` contains `class=&quot;st3&quot;`, and the parser reports it as the element's class. The sanitiser reads `scEmpty*` from the raw attributes.
+- **No "No articles found" this time.** The St. Patrick's article listing renders only `[No text in field]` in the editor. The empty-state handling stays for listings that do show one.
+- **The footer token is server-rendered on the published page.** The server HTML already says "© 2026", so the comparison treats `{{…}}` as matching any one word, rather than the sanitiser dropping it.
+- **Related Articles on the published Banking page** is the section heading and a loading spinner (`role="status"`). The draft has both cards (title, summary, date, category, "Read More"). P3: 44 of 522 words need JavaScript (91%), half credit, all flagged under `relatedarticles`. The cards' two "Read More" links also make P20 stricter on the draft (2 of 7 links generic, against 0 of 5 live).
+- **St. Patrick's page-title description.** The published page shows "Celebrate St. Patrick's Day with BrandX…" in the page-title component. In the draft that field is an empty `<div>` with no fallback hint. So either the field was emptied after publishing, or the published component falls back to another field without the editor saying so. The "Draft differs from live" banner shows on this page as a result (plan section 13, item 7).
 
 ## 4. Blok design system (plan section 6.2, item 9)
 

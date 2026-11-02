@@ -38,10 +38,10 @@ export const headings: CheckDef<PageContext> = {
   category: "understand",
   tier: "essential",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
 
     const all = html.headings;
@@ -344,10 +344,10 @@ export const faqQuality: CheckDef<PageContext> = {
   category: "understand",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     const pairs = html.qaPairs;
     if (pairs.length === 0) {
@@ -388,11 +388,11 @@ export const questionHeadings: CheckDef<PageContext> = {
   category: "understand",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   fix: "generate",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     const h2s = html.headings.filter((h) => h.level === 2);
     if (h2s.length === 0) return notApplicable("No H2 headings", "No H2 headings on the page to analyse.");
@@ -425,10 +425,10 @@ export const readability: CheckDef<PageContext> = {
   category: "understand",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     const paragraphs = html.paragraphs;
     if (paragraphs.length === 0) return notApplicable("No paragraphs", "No paragraphs in the page content to grade.");
@@ -475,11 +475,11 @@ export const imageAlt: CheckDef<PageContext> = {
   category: "understand",
   tier: "recommended",
   scope: "page",
-  sources: ["live"],
+  sources: ["draft"],
   owner: "author",
   fix: "generate",
   applies: () => true,
-  run({ html }) {
+  run({ body: html }) {
     if (!html) return htmlNotScanned();
     const images = html.images;
     if (images.length === 0) return notApplicable("No images on page", "No images found — nothing to check.");
