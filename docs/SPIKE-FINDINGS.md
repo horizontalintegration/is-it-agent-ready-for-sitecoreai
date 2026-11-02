@@ -506,8 +506,8 @@ Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, 
 
 - [ ] A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4).
 - [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite).
-- [ ] A Sitecore redirect still answers a Markdown request with the redirect.
-- [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default.
+- [ ] A Sitecore redirect still answers a Markdown request with the redirect. **Not configured on the replica's site** (user, 2026-11-02): the redirects middleware passes every request through, so this stays untested unless a test redirect is added.
+- [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default. **Not configured on the replica's site** (user, 2026-11-02): untested here. Customers who personalise pages should check it.
 - [ ] A missing page: the Markdown request returns an error, not a 200.
 - [ ] Media (`/-/media/…`) and `/sitecore/api` still work.
 
