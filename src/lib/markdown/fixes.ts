@@ -52,7 +52,7 @@ export const MARKDOWN_FIXES: MarkdownFix[] = [
   {
     id: "accept-md",
     title: "Next.js site (Sitecore Content SDK)",
-    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. On the Content SDK starter, init breaks next.config.js: undo its edit and add the accept-md rewrite after the next-config plugins, in beforeFiles, keeping the plugins' array as afterFiles. Test it alongside your Sitecore middleware (redirects, personalisation, multisite).",
+    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. On the Content SDK starter, init breaks next.config.js: undo its edit and add the accept-md rewrite after the next-config plugins, in beforeFiles, keeping the plugins' array as afterFiles; then run your lint on the generated handler. Test it alongside your Sitecore middleware (redirects, personalisation, multisite).",
     command: "npx accept-md init",
   },
   {
