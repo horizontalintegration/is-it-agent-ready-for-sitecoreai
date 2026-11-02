@@ -495,16 +495,17 @@ Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, 
 ### 8.2 `init` on the Content SDK starter (Confirmed, 2026-11-02)
 
 - **`init` breaks `next.config.js`.** Its "has rewrites?" test only matches `rewrites:` or `rewrites =`, not the starter's method form `async rewrites() { return [...] }`. It then looks for the end of `nextConfig` with a brace counter, which loses track in the starter's `webpack()` function (regex literals such as `/src\components\.*\.tsx$/`), and inserts `rewrites: async () => { return { beforeFiles: [...] } }` **inside `webpack()`, after `return config;`**: a syntax error, so the build fails. Even placed correctly, a second `rewrites` key would override Sitecore's method and drop its rewrites (`/sitecore/api/*`, `/-/*` media, `/healthz`, `/sitecore/service/*`).
-- **Fix (by hand):** keep one `rewrites()` and return `{ beforeFiles: [acceptMd], afterFiles: [...Sitecore's rules], fallback: [] }` (a plain array is `afterFiles`, so Sitecore's rules keep their place). The handler and `accept-md.config.js` stay as generated.
+- **First hand fix, failed on Vercel:** returning `{ beforeFiles: [acceptMd], afterFiles: [...Sitecore's rules] }` from `rewrites()`. The starter's next-config plugins `feaas`, `robots` and `sitemap` (`src/lib/next-config/plugins/`) each wrap `rewrites()` with `return [...(await nextConfig.rewrites()), …]`, so an object fails the build: `TypeError: (intermediate value) is not iterable at Object.rewrites (src/lib/next-config/plugins/feaas.js:8:13)`.
+- **Fix (by hand, `5a124fb`):** `rewrites()` stays as it was. `withAcceptMd` wraps the final config in `module.exports`, after the plugins, and returns `{ beforeFiles: [acceptMd], afterFiles: <the plugins' array>, fallback: [] }` (a plain array is `afterFiles`, so nothing moves). Checked by loading `next.config.js` with its plugins (uninstalled modules stubbed) and calling `rewrites()`: the accept-md rule in `beforeFiles`, the seven Sitecore and plugin rewrites in `afterFiles` in their original order (`/sitecore/api`, `/-/`, `/healthz`, `/sitecore/service`, `/feaas-render`, `/robots.txt`, the sitemap). The handler and `accept-md.config.js` stay as generated.
 - **`postbuild: npx accept-md fix-routes`** is only needed for `next start` on Next.js 15+ ("routesManifest.dataRoutes is not iterable"). On Vercel it isn't needed, and it would download an unpinned CLI on every build, so it was removed.
 - **`npx` inside the repo** fails on this machine: the repo's `.nvmrc` asks for Node 22 and nvm-windows refuses ("Node.js v22.x.x is not installed"). `init` takes the app's path, so it ran from outside: `npx --yes accept-md@5.0.2 init <path>`. The lockfile was updated with `npm install --package-lock-only` (adds `accept-md-runtime`, Turndown, linkedom; no other versions changed).
 - **Fix card:** the accept-md card says to check `next.config` after `init` on a Content SDK app (see 8.4).
 
 ### 8.3 On the deployed replica
 
-**Open:** waiting for the preview deployment of `feature/accept-md`. To check, through `/api/markdown-check` and plain requests:
+**Open:** waiting for `feature/accept-md` (PR ksorthiya/hztl-xcelerate-blueprint-copy#4) on the replica's production URL. To check, through `/api/markdown-check` and plain requests:
 
-- [ ] A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4).
+- [ ] A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4). Tested on the replica's production URL once PR #4 is deployed.
 - [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite).
 - [ ] A Sitecore redirect still answers a Markdown request with the redirect. **Not configured on the replica's site** (user, 2026-11-02): the redirects middleware passes every request through, so this stays untested unless a test redirect is added.
 - [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default. **Not configured on the replica's site** (user, 2026-11-02): untested here. Customers who personalise pages should check it.
