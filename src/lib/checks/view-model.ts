@@ -259,6 +259,8 @@ export interface PageScoreSummary {
   gateReason: string;
   categories: Record<Category, Subtotal>;
   issues: PageIssue[];
+  /** P5: true when the page serves Markdown (any credit), false when it doesn't; null when it wasn't checked. */
+  servesMarkdown: boolean | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -272,6 +274,7 @@ export function summarisePageReport(report: PageReport): PageScoreSummary {
     : report.outcomes
         .filter((o) => o.result.state === "scored" && (o.result.status === "warning" || o.result.status === "fail"))
         .map((o) => ({ id: o.check.id, status: o.result.status as PageIssue["status"], gain: round2(Math.max(0, o.maxPoints - o.points)) }));
+  const p5 = report.outcomes.find((o) => o.check.id === "read.markdown-page")?.result;
   return {
     score: report.gate.blocked ? null : report.score,
     label: report.gate.blocked || report.score === null ? null : labelForPct(report.score),
@@ -279,6 +282,7 @@ export function summarisePageReport(report: PageReport): PageScoreSummary {
     gateReason: report.gate.reason,
     categories,
     issues,
+    servesMarkdown: p5?.state === "scored" ? p5.credit > 0 : null,
   };
 }
 
@@ -349,6 +353,20 @@ export function siteIssueGroups(outcomes: CheckOutcome[]): IssueGroup[] {
       weight: Number.POSITIVE_INFINITY,
       row: r,
     }));
+}
+
+/**
+ * "Fix first": site issues, then page issues by total gain. Markdown shows
+ * once: when pages have been checked, P5's row (with its page count and
+ * "+N pts each") stands in for S3's and comes right after the site issues,
+ * since it's one developer fix for every page.
+ */
+export function fixFirstGroups(siteOutcomes: CheckOutcome[] | null, pages: Array<{ id: string; score: PageScoreSummary | null }>): IssueGroup[] {
+  const site = siteOutcomes ? siteIssueGroups(siteOutcomes) : [];
+  const page = groupPageIssues(pages);
+  const p5 = page.find((g) => g.id === "read.markdown-page");
+  if (!p5) return [...site, ...page];
+  return [...site.filter((g) => g.id !== "read.markdown-site"), p5, ...page.filter((g) => g !== p5)];
 }
 
 /** Plain text for a developer about one issue across pages (or the whole site). */

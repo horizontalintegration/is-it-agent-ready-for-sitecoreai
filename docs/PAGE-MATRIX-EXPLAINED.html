@@ -51,7 +51,7 @@
 <tr>
 <td style="text-align:left"><strong>Read</strong></td>
 <td style="text-align:left">Can they read it?</td>
-<td style="text-align:left">Clear page structure; page speed (checked in the panel)</td>
+<td style="text-align:left">Markdown for AI agents; clear page structure; page speed (checked in the panel)</td>
 </tr>
 <tr>
 <td style="text-align:left"><strong>Understand</strong></td>
@@ -115,6 +115,7 @@
 <p>A progress bar shows the scan filling in.</p>
 <h3>The four category cards</h3>
 <p>One card per category (Reach, Read, Understand, Trust) with its question, the site's score in that category, and how many pages <strong>need work</strong> in it (they score under 60 there). <strong>What's included</strong> lists the checks behind each card.</p>
+<p>When pages don't serve Markdown to AI agents, the <strong>Read</strong> card says so instead: <strong>"11 of 11 pages not served as Markdown"</strong>. It's usually one site-wide setting, so it's often the biggest single gain on the dashboard.</p>
 <h3>Fix first</h3>
 <p>The issues worth fixing, <strong>grouped by issue rather than by page</strong>, biggest gain first:</p>
 <ul>
@@ -123,6 +124,9 @@
 </ul>
 <p>  - <strong>Review pages</strong> opens the Pages tab showing only the pages with that issue, so you can open each one in Page Builder.</p>
 <p>  - <strong>Send to developer</strong> copies a ready-to-paste note: the issue, why it matters, and the pages it affects.</p>
+<ul>
+<li><strong>Markdown for agents</strong> shows once: as <strong>Agents can get this page as Markdown</strong>, with how many pages it affects and what it adds to each, right after the site issues. Your developer fixes it once for the whole site.</li>
+</ul>
 <p>Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.</p>
 <hr/>
 <h2>Pages</h2>
@@ -141,7 +145,7 @@
 <ul>
 <li><strong>AI agents can open your site</strong> — we request your home page and two pages it links to, once as each AI agent and once as a normal browser, and compare. A firewall or CDN that answers an agent with "403 Forbidden" or a challenge page blocks it, even when robots.txt lets it in. This is the check robots.txt can't do.</li>
 <li><strong>robots.txt lets AI search in</strong> — whether robots.txt keeps out any search or user agent.</li>
-<li><strong>Your site can serve Markdown to agents</strong> — whether the home page answers with a clean Markdown version when an agent asks for one.</li>
+<li><strong>Your site can serve Markdown to agents</strong> — whether the home page answers with a clean Markdown version when an agent asks for one, and how many of the scanned pages do. <strong>See fixes</strong> shows the options for your developer (accept-md for Next.js sites, Cloudflare's Markdown for Agents, or a route of their own), with <strong>Send to developer</strong>. Each page is checked too, in the panel's <strong>Agent View</strong> tab and in every page's Read score.</li>
 <li><strong>Sitemap is published and linked</strong> — whether the sitemap exists, lists dates of last change, and is named in robots.txt.</li>
 <li><strong>llms.txt is published</strong> — whether <code>/llms.txt</code> exists and has a title, a summary, links and a "When to use this site" section. <strong>Open generator</strong> takes you to the Files tab.</li>
 <li><strong>About, contact and privacy pages exist</strong> — whether the home page links them and each one opens (the privacy page needs real text, 500 characters or more). Terms, a security page and a postal address are noted but not scored.</li>
@@ -179,7 +183,7 @@
 <tr>
 <td style="text-align:left"><strong>Read</strong></td>
 <td style="text-align:left">Can they read it?</td>
-<td style="text-align:left">Add the main page landmarks and label icon buttons (developer); improve page speed</td>
+<td style="text-align:left">Serve Markdown to AI agents (developer, once for the whole site); add the main page landmarks and label icon buttons (developer); improve page speed</td>
 </tr>
 <tr>
 <td style="text-align:left"><strong>Understand</strong></td>
@@ -201,6 +205,7 @@
 <li><strong>"It checks the real page."</strong> Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.</li>
 <li><strong>"robots.txt says yes, the firewall says no."</strong> The demo site's robots.txt welcomes ChatGPT, but its firewall answers ChatGPT-User with 403. Only a live request as each agent shows that.</li>
 <li><strong>"Blocking training is your choice."</strong> Opting out of model training never costs points; blocking AI search does.</li>
+<li><strong>"One switch for every page."</strong> Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX demo site the home page is about 54,000 tokens as HTML and about 1,500 as the Markdown it now serves.</li>
 <li><strong>"Fix first, grouped by issue."</strong> One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.</li>
 <li><strong>"Every status says what it is."</strong> An icon, a colour and a word, so nobody has to decode a colour.</li>
 </ul>

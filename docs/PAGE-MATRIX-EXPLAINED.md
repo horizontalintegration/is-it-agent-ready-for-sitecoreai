@@ -13,7 +13,7 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 | Category | The question | What feeds into it |
 |----------|-------------|--------------------|
 | **Reach** | Can AI agents get to it? | The page points search and AI at its official address |
-| **Read** | Can they read it? | Clear page structure; page speed (checked in the panel) |
+| **Read** | Can they read it? | Markdown for AI agents; clear page structure; page speed (checked in the panel) |
 | **Understand** | Do they understand it? | Headings, title and description, schema labels, sharing tags, FAQ answers, question headings, readability, image descriptions |
 | **Trust** | Will they trust and cite it? | Original content (AI-judged), named author on articles, freshness, depth, descriptive links |
 
@@ -64,12 +64,15 @@ A progress bar shows the scan filling in.
 ### The four category cards
 One card per category (Reach, Read, Understand, Trust) with its question, the site's score in that category, and how many pages **need work** in it (they score under 60 there). **What's included** lists the checks behind each card.
 
+When pages don't serve Markdown to AI agents, the **Read** card says so instead: **"11 of 11 pages not served as Markdown"**. It's usually one site-wide setting, so it's often the biggest single gain on the dashboard.
+
 ### Fix first
 The issues worth fixing, **grouped by issue rather than by page**, biggest gain first:
 - **Site issues** come first because they affect every page, for example a firewall blocking ChatGPT, robots.txt blocking an AI search engine, or missing organisation details on the home page. Their button is **Send to developer**.
 - **Page issues** say how many pages have them and what fixing them adds to each page ("6 pages · +18 pts each"). Each has a **You can fix** or **Developer** badge.
   - **Review pages** opens the Pages tab showing only the pages with that issue, so you can open each one in Page Builder.
   - **Send to developer** copies a ready-to-paste note: the issue, why it matters, and the pages it affects.
+- **Markdown for agents** shows once: as **Agents can get this page as Markdown**, with how many pages it affects and what it adds to each, right after the site issues. Your developer fixes it once for the whole site.
 
 Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.
 
@@ -95,7 +98,7 @@ Blocking search or user agents keeps you out of AI answers, so it fails. Blockin
 **Site checklist** (Essential first, then Recommended, then Bonus):
 - **AI agents can open your site** — we request your home page and two pages it links to, once as each AI agent and once as a normal browser, and compare. A firewall or CDN that answers an agent with "403 Forbidden" or a challenge page blocks it, even when robots.txt lets it in. This is the check robots.txt can't do.
 - **robots.txt lets AI search in** — whether robots.txt keeps out any search or user agent.
-- **Your site can serve Markdown to agents** — whether the home page answers with a clean Markdown version when an agent asks for one.
+- **Your site can serve Markdown to agents** — whether the home page answers with a clean Markdown version when an agent asks for one, and how many of the scanned pages do. **See fixes** shows the options for your developer (accept-md for Next.js sites, Cloudflare's Markdown for Agents, or a route of their own), with **Send to developer**. Each page is checked too, in the panel's **Agent View** tab and in every page's Read score.
 - **Sitemap is published and linked** — whether the sitemap exists, lists dates of last change, and is named in robots.txt.
 - **llms.txt is published** — whether `/llms.txt` exists and has a title, a summary, links and a "When to use this site" section. **Open generator** takes you to the Files tab.
 - **About, contact and privacy pages exist** — whether the home page links them and each one opens (the privacy page needs real text, 500 characters or more). Terms, a security page and a postal address are noted but not scored.
@@ -130,7 +133,7 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 | Category | The question | What to fix if it's low |
 |----------|--------------|-------------------------|
 | **Reach** | Can AI agents get to it? | Add a canonical tag that points to the page itself (developer); on Agent access, let AI search and user agents through the firewall and robots.txt |
-| **Read** | Can they read it? | Add the main page landmarks and label icon buttons (developer); improve page speed |
+| **Read** | Can they read it? | Serve Markdown to AI agents (developer, once for the whole site); add the main page landmarks and label icon buttons (developer); improve page speed |
 | **Understand** | Do they understand it? | One H1 and ordered headings; set the title and description; add the schema code the panel gives you; complete the sharing tags; tighten FAQ answers and paragraphs; describe images |
 | **Trust** | Will they trust and cite it? | Add original insight and depth; name and link the author on articles; refresh old pages; make link text descriptive |
 
@@ -144,5 +147,6 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 - **"It checks the real page."** Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.
 - **"robots.txt says yes, the firewall says no."** The demo site's robots.txt welcomes ChatGPT, but its firewall answers ChatGPT-User with 403. Only a live request as each agent shows that.
 - **"Blocking training is your choice."** Opting out of model training never costs points; blocking AI search does.
+- **"One switch for every page."** Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX demo site the home page is about 54,000 tokens as HTML and about 1,500 as the Markdown it now serves.
 - **"Fix first, grouped by issue."** One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.
 - **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.

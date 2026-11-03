@@ -39,7 +39,7 @@ The panel and the dashboard use the **same four categories and the same scoring*
 
 **The header:** the app name, a **Draft** or **Live** label (hover or focus it to see what was scored), and **Re-scan**.
 
-**Three tabs:** **Score**, **Agent View** (coming in a later release: the page as an AI agent receives it) and **AI Assist** (the meta & social generator).
+**Three tabs:** **Score**, **Agent View** (the page as an AI agent receives it, below) and **AI Assist** (the meta & social generator).
 
 **The Score tab, top to bottom:**
 1. **The verdict:** a score ring out of 100, the verdict (Agent-ready, Almost there or Not ready), **▲ or ▼ N since last scan**, and one sentence, such as "2 fixes would make this page agent-ready."
@@ -55,6 +55,24 @@ The panel and the dashboard use the **same four categories and the same scoring*
 On the home page, a **Site check** group at the bottom shows whether your organisation is described for AI. It isn't part of the page's score.
 
 **"Since last scan"** compares with the score from the previous time the page was scanned (opening it, or Re-scan). Edits you make afterwards show against that, so you can watch a fix move the score.
+
+### The Agent View tab: what an AI agent receives
+
+AI agents increasingly ask a website for a page **in Markdown**: plain text with simple marks for headings, lists and links, and none of the page's code. When a site answers with Markdown, the agent reads the whole page for a fraction of the effort. When it doesn't, the agent gets the full web page: menus, footer, scripts, styles and tracking, often 30 to 50 times more to read than the content itself.
+
+The tab asks the published page for Markdown, the way an agent does, and shows:
+
+1. **Four checks** (green when they pass):
+   - **Markdown response:** the page answers with Markdown.
+   - **HTML fallback:** people's browsers still get the normal page.
+   - **Vary: Accept:** a technical label that stops caches from handing a browser the Markdown, or an agent the web page.
+   - **Distinct versions:** the Markdown really is smaller than the web page. This one waits until Markdown is served.
+2. **The saving:** how many "tokens" (the units AI reads in, about 4 characters each) the web page costs, against the Markdown. If your site doesn't serve Markdown yet, it shows the saving you'd get: **"If you served Markdown: about 92% fewer tokens"**.
+3. **A preview** with a **Human / Agent** switch. **Agent** shows the Markdown itself. If your site doesn't serve it yet, the app converts your draft so you can see what agents would get, labelled **"Preview: your site doesn't serve this yet"**. **Human** shows the page as a person sees it, with its full size.
+4. **Is the Markdown complete?** Once your site serves Markdown: does it start with the page's title and meta description, does it include your content (headings, paragraphs, FAQ answers), and does it leave out the menus and footer?
+5. **How to fix** (for your developer), with **Send to developer**: the options are under **Agents can get this page as Markdown**, below.
+
+The score counts the four checks as one Essential check (**Agents can get this page as Markdown**) and the completeness as a Recommended one (**The Markdown version is complete**).
 
 ---
 
@@ -102,6 +120,20 @@ The panel reads the page **as it is in Page Builder right now**, including edits
 **What it checks:** Whether the page uses the standard structural labels in its code (`main`, `article`, `nav`, `header`) that mark out the key regions, and whether buttons and icon links have a text label.
 
 **Why it matters:** These labels are like room signs in a building: they help AI agents go straight to the real content and skip menus and footers.
+
+### Agents can get this page as Markdown — Essential
+**What it checks:** We ask the published page for Markdown, as an AI agent does, and for the normal web page, as a browser does. Full marks need all four checks on the Agent View tab: Markdown comes back, browsers still get the web page, the "Vary: Accept" label is set, and the Markdown is smaller than the web page. Markdown without the other three gets half marks or more.
+
+**Why it matters:** Markdown gives agents your content without the page's code, so they read more of it, faster, and are less likely to give up on a heavy page. On a typical Sitecore page the Markdown is over 90% smaller.
+
+**Good to know:** this is a setting for the whole site, so your developer fixes it once for every page. Until then every page shows it as a fix. The options: **accept-md** for Next.js sites (`npx accept-md init`; on Sitecore's Content SDK starter it needs three small changes by hand, which the fix card lists; the BrandX demo site serves Markdown this way), **Markdown for Agents** if the site is behind Cloudflare, or a route your developer writes. A page that isn't published yet shows **Not checked**.
+
+### The Markdown version is complete — Recommended, once Markdown is served
+**What it checks:** In the Markdown your site serves: the title and description at the top match the page's **Title** and **Meta description** fields; at least 90% of the page's headings, paragraphs and FAQ answers are included; and menus, header and footer make up less than a quarter of it.
+
+**Why it matters:** An agent answers from the Markdown alone. If it leaves out the FAQ answers, or is mostly menu links, the agent misses what the page is for. An empty Meta description field is something you can fix in Page Builder.
+
+**Good to know:** until the site serves Markdown this shows **N/A**, so it doesn't count either way.
 
 ### Page loads fast — Recommended, runs when you ask
 **What it checks:** Google's PageSpeed score for the page. Click **Run scan** on the row to check it.
@@ -218,6 +250,8 @@ This is a **site check**: it's about the whole site, so it isn't part of any pag
 | **Reach** | Canonical points to this page | Essential |
 | **Read** | Content is there without JavaScript | Essential (Page Builder panel only) |
 | **Read** | Page structure is machine-readable | Recommended |
+| **Read** | Agents can get this page as Markdown | Essential |
+| **Read** | The Markdown version is complete | Recommended (once Markdown is served) |
 | **Read** | Page loads fast | Recommended |
 | **Understand** | One clear H1 and logical headings | Essential |
 | **Understand** | Title and description are set | Essential |
@@ -235,7 +269,7 @@ This is a **site check**: it's about the whole site, so it isn't part of any pag
 | **Trust** | Answers the next question too | Bonus |
 | Site | Your organisation is described for AI | Site check (own score) |
 
-The dashboard's **Agent access** tab has the other site checks: whether AI agents get past your firewall, robots.txt, Markdown, the sitemap, llms.txt, your about, contact and privacy pages, real 404s, and the Bonus protocol checks. The panel only flags the ones that keep agents out of every page (the red strip above). More page checks arrive in later releases, starting with whether AI agents can get the page as Markdown.
+The dashboard's **Agent access** tab has the other site checks: whether AI agents get past your firewall, robots.txt, Markdown, the sitemap, llms.txt, your about, contact and privacy pages, real 404s, and the Bonus protocol checks. The panel only flags the ones that keep agents out of every page (the red strip above). Markdown is checked on each page too, as **Agents can get this page as Markdown**, and shown on the Agent View tab.
 
 ---
 
@@ -261,3 +295,4 @@ On the **AI Assist** tab, the panel can write the **meta title, meta description
 - **"It sees what AI crawlers see."** The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.
 - **"One set of rules everywhere."** The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.
 - **"A perfect page can still be invisible."** If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.
+- **"See what the agent gets."** The Agent View shows the page as Markdown, and the saving: on the BrandX demo site, which now serves Markdown, the home page is about 1,500 tokens instead of 54,000.

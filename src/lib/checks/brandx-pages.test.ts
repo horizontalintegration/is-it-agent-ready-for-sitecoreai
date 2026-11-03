@@ -27,7 +27,7 @@ function load(page: string) {
     organization: { name: null, url: null, logo: null, description: null, sameAs: [] },
     html: live,
   };
-  const withDraft = runPageChecks(buildPageContext({ ...input, draft: { html: draft, emptyStates: clean.emptyStates } }));
+  const withDraft = runPageChecks(buildPageContext({ ...input, draft: { html: draft, source: clean.html, emptyStates: clean.emptyStates } }));
   const liveOnly = runPageChecks(buildPageContext(input));
   const result = (id: string, report = withDraft) => report.outcomes.find((o) => o.check.id === id)!.result;
   return { draft, live, withDraft, liveOnly, result };

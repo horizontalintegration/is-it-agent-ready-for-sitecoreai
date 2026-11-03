@@ -42,6 +42,8 @@ export interface SiteAggregate {
   overallLabel: ScoreLabel | null;
   counts: Record<ScoreLabel, number>;
   categories: CategoryAggregate[];
+  /** P5 across scored pages: how many serve Markdown, of those it was checked on. */
+  markdown: { served: number; checked: number };
 }
 
 /** The page's 0–100 score, or null when unscanned, blocked or unscorable. */
@@ -101,5 +103,9 @@ export function aggregateSite(pages: PageMatrixRow[]): SiteAggregate {
     overallLabel: overallPct === null ? null : labelForPct(overallPct),
     counts,
     categories,
+    markdown: {
+      served: scoredRows.filter((r) => r.score!.servesMarkdown === true).length,
+      checked: scoredRows.filter((r) => r.score!.servesMarkdown !== null && r.score!.servesMarkdown !== undefined).length,
+    },
   };
 }

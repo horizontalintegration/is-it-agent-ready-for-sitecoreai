@@ -46,7 +46,7 @@
 <li>The score is rounded to a whole number. Exact points are kept per check and per category (<code>ScoreBreakdown</code> in <code>types.ts</code>).</li>
 <li>Thresholds are shared by the panel and the dashboard (<code>src/lib/score-thresholds.ts</code>): <strong>Agent-ready ≥ 80</strong>, <strong>Almost there 60–79</strong>, <strong>Not ready &lt; 60</strong>.</li>
 </ul>
-<p><strong>Points.</strong> Five Essential page checks exist (P2, P3, P8, P9, P10). In the panel, when all apply, each is worth 16 points. On the dashboard P3 isn't checked (no draft), so the other four are worth 20 each. On the home page P10 is usually N/A. The Recommended checks share 20 points (about 1.7 each when all twelve apply). Phase 7 adds P5 to Essential.</p>
+<p><strong>Points.</strong> Six Essential page checks exist (P2, P3, P5, P8, P9, P10). In the panel, when all apply, each is worth about 13.3 points. On the dashboard P3 isn't checked (no draft), so the other five are worth 16 each. On the home page P10 is usually N/A. The Recommended checks share 20 points (about 1.5 each when all thirteen apply; P6 is N/A until the page serves Markdown). So a site that doesn't serve Markdown loses about 13 points per page in the panel and 16 on the dashboard (the demo page: 91 → 74 on live HTML).</p>
 <p><strong>Scopes.</strong> Page checks run per page in the panel and in dashboard scans. Site checks run once per site and get <strong>their own site score</strong>; they are never part of a page score. There are twelve, S1–S12 (see "Site checks").</p>
 <p><strong>Same inputs, same score.</strong> Both views build the check context with <code>buildPageContext</code> (<code>context.ts</code>) from the same inputs: the page's live HTML (<code>/api/preview-fetch</code> → <code>ParsedHtml</code>), the AI results (<code>/api/ai-check</code>, cached by content hash), and the same Sitecore fields read by the same names (<code>SCORING_FIELD_NAMES</code>: title, meta description, <code>robotsMetaTag</code>, <code>__Updated</code>). The panel reads them with <code>pageFieldsFromFieldMap</code>, the dashboard with <code>pageFieldsFromValues</code>. <code>src/lib/checks/parity.test.ts</code> covers this.</p>
 <p><strong>Where the panel and the dashboard differ, by design:</strong></p>
@@ -75,7 +75,12 @@
 <tr>
 <td style="text-align:left"><strong>Fields</strong>: authoring GraphQL</td>
 <td style="text-align:left"><code>usePageFields</code></td>
-<td style="text-align:left">P9, P18, the gate</td>
+<td style="text-align:left">P9, P18, P6, the gate</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Markdown</strong>: <code>/api/markdown-check</code> (the published page as an agent and as a browser)</td>
+<td style="text-align:left"><code>useMarkdownCheck</code> (panel), <code>useSitePages</code> (dashboard)</td>
+<td style="text-align:left">P5, P6. The Agent View's preview is converted from the draft (<code>DraftHtml.source</code>, the sanitised HTML)</td>
 </tr>
 </tbody></table>
 <ul>
@@ -155,6 +160,21 @@
 <td style="text-align:left"><code>cq-agentic-readiness</code></td>
 </tr>
 <tr>
+<td style="text-align:left">P5 <code>read.markdown-page</code></td>
+<td style="text-align:left">Agents can get this page as Markdown</td>
+<td style="text-align:left">Essential</td>
+<td style="text-align:left">the accept.md checks, graded like S3: no Markdown for <code>Accept: text/markdown</code> → 0; otherwise 0.5 + ⅙ each for HTML for browsers, <code>Vary: Accept</code>, Markdown smaller than the HTML. <strong>Not checked</strong> until <code>/api/markdown-check</code> is in, when neither request answered, or when the HTML request isn't 200 (unpublished page)</td>
+<td style="text-align:left">new</td>
+</tr>
+<tr>
+<td style="text-align:left">P6 <code>read.markdown-quality</code></td>
+<td style="text-align:left">The Markdown version is complete</td>
+<td style="text-align:left">Recommended</td>
+<td style="text-align:left">⅙ front matter title matches the title field (or <code>&lt;title&gt;</code>; containment either way, so "Pricing \</td>
+<td style="text-align:left">BrandX" matches "Pricing") · ⅙ front matter description matches the Meta description field (an empty field is a miss) · ⅓ coverage ≥ 90% (½ at 75%) · ⅓ chrome &lt; 25% (½ under 40%). <strong>N/A</strong> until P5 finds Markdown</td>
+<td style="text-align:left">new</td>
+</tr>
+<tr>
 <td style="text-align:left">P7 <code>read.speed</code></td>
 <td style="text-align:left">Page loads fast</td>
 <td style="text-align:left">Recommended</td>
@@ -162,7 +182,15 @@
 <td style="text-align:left"><code>cq-page-experience</code></td>
 </tr>
 </tbody></table>
-<p>P5 and P6 (Markdown for agents) arrive in Phase 7.</p>
+<p><strong>P5 and P6 in detail.</strong></p>
+<ul>
+<li><strong><code>/api/markdown-check?url=</code></strong> (<code>src/lib/server/markdown-check.ts</code>, <code>collectMarkdownCheck</code>) requests the page twice in parallel through <code>safeFetch</code>: with <code>Accept: text/markdown, text/html;q=0.5</code> (<code>MARKDOWN_ACCEPT</code>, the header S3 sends) and with <code>Accept: text/html</code>. 10 s each, 5 MB cap, redirects followed (so a Sitecore redirect shows as the final URL). It returns, per request, the status, final URL, <code>Content-Type</code>, <code>Vary</code>, bytes and estimated tokens (characters ÷ 4, <code>estimateTokens</code>: free and deterministic, so the dashboard can run it on every page), plus the Markdown body (the first 50,000 characters when it's <code>text/markdown</code>, otherwise 2,000, enough to tell Markdown from HTML). It never returns the HTML body. Raw evidence only; the engine grades it.</li>
+<li><strong>The preview.</strong> When no Markdown comes back, the route converts the published HTML (<code>toAgentMarkdown</code>, <code>src/lib/markdown/convert.ts</code>, <code>node-html-markdown</code> 2.0.0, pinned) and returns it with its token count. The conversion keeps <code>&lt;main&gt;</code> (or the body without header, nav and footer), drops scripts, styles, SVG, iframes and hidden elements (collapsed FAQ panels that a toggle controls stay, as in <code>extractMainText</code>), makes links and images absolute, and starts with front matter: <code>title</code>, <code>description</code> (from the head, or the Sitecore fields in the panel) and <code>url</code>. The panel converts the sanitised draft instead when it has one, so the preview includes unpublished edits.</li>
+<li><strong>P5</strong> grades the two responses with <code>gradeNegotiation</code> (<code>markdown-negotiation.ts</code>), the grader S3 uses. Its message gives the estimated saving when the page doesn't serve Markdown ("Converted, it would be about 93% fewer tokens"), and its fix lists the options (<code>MARKDOWN_FIX_SUMMARY</code>, <code>src/lib/markdown/fixes.ts</code>).</li>
+<li><strong>P6</strong> (<code>gradeMarkdownQuality</code>, <code>src/lib/markdown/quality.ts</code>) compares the served Markdown with the same page's live HTML. Text is compared normalised (lower case, accents and punctuation removed), Markdown link and image syntax reduced to its text. <strong>Coverage</strong> counts the live page's headings (only those in the main text, so a footer's "Legal" doesn't count), paragraphs and FAQ answers by words: an item is covered when its text appears in the Markdown, or (6+ words) when 90% of its words do. <strong>Chrome</strong> is the share of Markdown lines that are body text from outside the main content (body blocks that aren't in <code>mainText</code>, the headings, paragraphs or Q&amp;A). Front matter is read from a leading <code>---</code> block (<code>key: value</code> lines, quoted values unquoted).</li>
+<li><strong>On the BrandX replica</strong> (2026-11-02, before accept-md): every page returns <code>text/html</code> for <code>Accept: text/markdown</code>, no <code>Vary</code>; the home page and <code>/services</code> are about 214 KB of HTML (≈ 53,700 tokens), <code>/contact-and-support</code> 171 KB; the preview is 600–1,370 tokens, so 97–99% fewer. The preview keeps the breadcrumb (it's inside <code>&lt;main&gt;</code>), and some card text runs together where the site's inline elements have no space between them.</li>
+<li><strong>On the BrandX replica with accept-md</strong> (2026-11-02, after three hand fixes, SPIKE-FINDINGS §8): <code>/</code>, <code>/services</code> and <code>/contact-and-support</code> serve <code>text/markdown</code> with <code>Vary: Accept</code> and HTML for browsers, 97–98% smaller (home: 214,718 → 6,045 bytes), so P5 is 4 of 4 and S3 passes. P6 on the home page gets full credit: front matter matches, 100% of the main content, 5% menus, header and footer. accept-md keeps the site header (logo, menu, country selector) and relative links.</li>
+</ul>
 <p><strong>P3 in detail</strong> (<code>compareBlocks</code> in <code>draft-diff.ts</code>). The draft includes content rendered by JavaScript and the server HTML doesn't (SPIKE-FINDINGS §3, item 4), so the gap is what crawlers that don't run JavaScript miss. Both sides are <code>ParsedHtml.bodyBlocks</code>: every text block of <code>&lt;body&gt;</code>, header, nav, footer and hidden elements included, each with its nearest <code>data-component</code> (field and layout wrappers such as <code>helpers/fieldwrappers/richtextwrapper</code> are skipped, so a card's summary belongs to <code>relatedarticles</code>), capped at 50,000 chars.</p>
 <ul>
 <li>Text is compared lower-cased, with curly quotes and dashes normalised. A <code>{{…}}</code> token matches any one word. A draft block found anywhere in the joined live text is server-rendered, so blocks split differently on each side still match.</li>
@@ -333,7 +361,7 @@
 <td style="text-align:left">Your site can serve Markdown to agents</td>
 <td style="text-align:left">Essential</td>
 <td style="text-align:left">no Markdown for <code>Accept: text/markdown</code> → 0; otherwise 0.5 + ⅙ each for HTML for browsers, <code>Vary: Accept</code>, Markdown smaller than the HTML</td>
-<td style="text-align:left"><code>gradeNegotiation</code> (<code>markdown-negotiation.ts</code>), reused by P5 in Phase 7. Markdown = 200 + <code>text/markdown</code> + a body that isn't HTML and has Markdown syntax</td>
+<td style="text-align:left"><code>gradeNegotiation</code> (<code>markdown-negotiation.ts</code>), shared with P5. Markdown = 200 + <code>text/markdown</code> + a body that isn't HTML and has Markdown syntax. On the dashboard the message adds "Markdown on N of M scanned pages" (P5 across the scanned pages, <code>SiteContext.markdownPages</code>); the credit stays the home page's</td>
 </tr>
 <tr>
 <td style="text-align:left">S4 <code>reach.sitemap</code></td>
@@ -434,7 +462,7 @@
 <li><strong>In the panel</strong> S7 shows only when the home page is open, in a "Site check — not in this page's score" section, graded on the open page's live HTML (so it follows a re-scan).</li>
 </ul>
 <h3>Site issues in the panel (Phase 6)</h3>
-<p>The panel reads the same scan through <code>useAgentAccess</code> (cached an hour per domain, so moving between pages doesn't rescan the site; the panel's Re-scan doesn't re-run it) and runs <code>runSiteChecks</code> with it. <code>SiteIssues</code> (<code>src/components/panel/SiteIssues.tsx</code>), between the category bars and Top fixes, shows the failing <strong>Essential Reach</strong> site checks, S1 and S2: the ones that keep agents out of every page. It's a red strip, "N site issue(s) affect(s) every page:" with each check's message and <strong>View in dashboard</strong>, which opens <code>/dashboard-widget-extension#agent-access</code> (<code>?demo=1</code> kept in demo mode) through <code>navigateToExternalUrl</code>, or a new tab. Other site checks (Markdown, llms.txt, …) stay on the dashboard, so the panel isn't permanently red for issues an author can't act on; page-level Markdown arrives as P5 in Phase 7. No site check is part of the page score.</p>
+<p>The panel reads the same scan through <code>useAgentAccess</code> (cached an hour per domain, so moving between pages doesn't rescan the site; the panel's Re-scan doesn't re-run it) and runs <code>runSiteChecks</code> with it. <code>SiteIssues</code> (<code>src/components/panel/SiteIssues.tsx</code>), between the category bars and Top fixes, shows the failing <strong>Essential Reach</strong> site checks, S1 and S2: the ones that keep agents out of every page. It's a red strip, "N site issue(s) affect(s) every page:" with each check's message and <strong>View in dashboard</strong>, which opens <code>/dashboard-widget-extension#agent-access</code> (<code>?demo=1</code> kept in demo mode) through <code>navigateToExternalUrl</code>, or a new tab. Other site checks (Markdown, llms.txt, …) stay on the dashboard, so the panel isn't permanently red for issues an author can't act on; Markdown is scored per page as P5 instead. No site check is part of the page score.</p>
 <ul>
 <li><strong>Evidence:</strong> the BrandX home page has no JSON-LD at all (checked 2026-10-31 and 2026-11-01). The old check gave it 5/5; S7 gives it 0 with a warning and a snippet.</li>
 </ul>
@@ -449,7 +477,17 @@
 <li><strong>Top fixes:</strong> <code>rankedFixes</code> keeps Improve and Fix rows worth at least 1 point, sorted by gain, then Essential first, then author fixes first. <code>topFixes</code> takes three.</li>
 <li><strong>Verdict:</strong> <code>pageVerdict</code> gives the label from <code>labelForPct</code> and one sentence. <code>fixesToReady</code> adds the biggest gains to the score until it reaches 80: "N fixes would make this page agent-ready". If even every fix wouldn't, it says how many checks need work; at 80+ it says how many could still improve.</li>
 <li><strong>Fix buttons:</strong> <code>fixButton</code>: <strong>Generate</strong> for P9 and P11 (the generator's fields; other <code>generate</code> fixes wait for Phase 9), <strong>Copy snippet</strong> for a <code>copy-snippet</code> fix with a <code>codePreview</code>, <strong>Send to developer</strong> for developer-owned fixes (copies <code>developerNote</code>: title, page URL, why, what we found, fix, details, code), otherwise <strong>Show how</strong> (opens and scrolls to the row). Copying uses <code>src/lib/clipboard.ts</code>, which falls back to <code>execCommand</code> because the Marketplace iframe doesn't delegate <code>clipboard-write</code>.</li>
-<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (placeholder until Phase 7) / AI Assist (<code>MetaGenerator</code>). The tabs are force-mounted, so the generator keeps its state. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.</li>
+<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (<code>AgentViewTab</code>, below) / AI Assist (<code>MetaGenerator</code>). The tabs are force-mounted, so the generator keeps its state. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.</li>
+<li><strong>Agent View</strong> (<code>src/components/panel/AgentViewTab.tsx</code>, mockup <code>PanelAgentView</code>): from <code>useMarkdownCheck</code> (<code>/api/markdown-check</code> on page change and Re-scan; a Re-scan keeps the last result until the new one is in, and rows show "Scanning…" while it loads, since P5 is Essential). Top to bottom:</li>
+</ul>
+<p>  - "What AI agents receive" and one line (sends Markdown / some setup missing / sends the full HTML).</p>
+<p>  - Four status tiles from <code>negotiationTiles</code> (<code>markdown-negotiation.ts</code>): Markdown response, HTML fallback, Vary: Accept, Distinct versions (grey "Checked once Markdown is served" without Markdown).</p>
+<p>  - The token bar: "Markdown saves N% fewer tokens" (measured) or "If you served Markdown: about N% fewer tokens" (HTML tokens vs the preview's).</p>
+<p>  - Preview with a Human / Agent switch: Agent shows the served Markdown, or the preview converted from the draft (from the route's conversion of the published page without a draft), labelled "Preview: your site doesn't serve this yet"; Human shows the H1, the first paragraph and the HTML's token count.</p>
+<p>  - "Is the Markdown complete?": P6's three parts as rows, from <code>gradeMarkdownQuality</code>; a grey "Checked once your site serves Markdown" until then.</p>
+<p>  - "How to fix" (Developer) unless all four pass: <code>MarkdownFixes</code> (<code>src/components/shared/MarkdownFixes.tsx</code>; accept-md with Copy, Cloudflare Markdown for Agents, your own route behind Show code; content in <code>src/lib/markdown/fixes.ts</code>) and <strong>Send to developer</strong> with P5's note.</p>
+<p>  - Loading, request failed and "published page wasn't found" states.</p>
+<ul>
 <li><strong>"▲ N since last scan"</strong> (<code>useScanDelta</code>, <code>src/hooks/useScoreHistory.ts</code>): when a scan settles (the page, its draft and the AI and PageSpeed checks have loaded), the stored score for the page (<code>aiDiscovery:pageScore:v1:&lt;pageId&gt;|&lt;language&gt;</code>) becomes the baseline and the new score is stored. Draft edits afterwards show against that baseline. Demo mode uses a fixed baseline (<code>DEMO_PREVIOUS_PAGE_SCORE</code>).</li>
 <li><strong>Shared components</strong> (<code>src/components/shared/</code>): <code>StatusIcon</code> (icon, colour and word; <code>@mdi/js</code> paths), <code>ScoreRing</code> (fills on first render), <code>VerdictCard</code>, <code>CategoryBars</code>, <code>TopFixes</code>, <code>CheckRow</code>, <code>FixButton</code>, <code>Segmented</code>, <code>EmptyState</code>, the chips (<code>OwnerBadge</code>, <code>GainChip</code>, <code>SourceChip</code>, <code>DeltaChip</code>), <code>AppMark</code>. Blok's components are in <code>src/components/ui/</code> and its theme tokens in <code>globals.css</code> (Sitecore/blok @ 0a7997e, light theme only).</li>
 <li><strong>Accessibility:</strong> every status has an icon and a word; buttons and tabs are keyboard-reachable with a visible focus ring; the tab panels are focusable; the panel works at 320 px (the source chip wraps under the title). Motion is off under <code>prefers-reduced-motion</code>.</li>
@@ -468,7 +506,7 @@
 </ul>
 <hr/>
 <h2>Server-side fetching (SSRF protection)</h2>
-<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
+<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>markdown-check</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
 <ul>
 <li><code>http</code>/<code>https</code> only; no credentials in the URL.</li>
 <li>Blocks private, loopback, link-local (incl. <code>169.254.169.254</code>), CGNAT, multicast, reserved and documentation ranges, IPv4 and IPv6, including IPv4-mapped and NAT64/6to4/Teredo forms. The check runs in the undici Agent's DNS lookup at connect time, so DNS rebinding can't bypass it. IP-literal hosts (including <code>http://2130706433/</code>-style encodings) are checked before the request.</li>
@@ -526,6 +564,14 @@
 <td style="text-align:left">the collector against a local server (a firewall returning 403 to ChatGPT-User, GPTBot never requested, samples, sitemap, trust pages, well-known JSON vs HTML), the deadline, private addresses, the link pickers</td>
 </tr>
 <tr>
+<td style="text-align:left"><code>src/lib/server/markdown-check.test.ts</code></td>
+<td style="text-align:left">the collector against a local server: both Accept headers, a served Markdown body without a preview, the preview of an HTML-only page, a missing page, private addresses</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/markdown/markdown.test.ts</code></td>
+<td style="text-align:left">the conversion (main content, chrome, scripts, collapsed answers, absolute links, front matter quoting), P6's grader, P5 and P6 on the demo page (4/4 served, and not served with the estimated saving: the Phase 7 accept-when cases), partial credit, not checked, S3's page count, Markdown once in Fix first</td>
+</tr>
+<tr>
 <td style="text-align:left"><code>src/lib/checks/json-ld.test.ts</code></td>
 <td style="text-align:left">the shared parser</td>
 </tr>
@@ -570,7 +616,19 @@
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/checks/markdown-negotiation.ts</code></td>
-<td style="text-align:left">The accept.md checks (S3; P5 in Phase 7)</td>
+<td style="text-align:left">The accept.md checks (S3, P5) and the Agent View's status tiles</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/markdown-check.ts</code>, <code>src/app/api/markdown-check/route.ts</code>, <code>src/hooks/useMarkdownCheck.ts</code></td>
+<td style="text-align:left">The page as an agent and as a browser (P5, P6)</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/markdown/</code></td>
+<td style="text-align:left">The preview conversion and token estimate, P6's grader, the fix cards' content, the route's types</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/components/panel/AgentViewTab.tsx</code>, <code>src/components/shared/MarkdownFixes.tsx</code></td>
+<td style="text-align:left">The Agent View tab and the fix cards (also under S3 on the dashboard)</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/agent-access/</code>, <code>src/lib/server/agent-access.ts</code>, <code>src/app/api/agent-access/route.ts</code></td>

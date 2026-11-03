@@ -1,9 +1,12 @@
 // Page checks — Read: can they read it?
-// P5 and P6 (Markdown) come in Phase 7.
 
 import { wordCount } from "@/lib/rule-engine/helpers";
 import type { BodyBlock } from "@/lib/rule-engine/types";
+import { MARKDOWN_FIX_SUMMARY } from "@/lib/markdown/fixes";
+import { CHROME_PASS, COVERAGE_PASS, gradeMarkdownQuality } from "@/lib/markdown/quality";
+import type { MarkdownCheckData } from "@/lib/markdown/types";
 import { compareBlocks } from "../draft-diff";
+import { gradeNegotiation, markdownResponseType, mediaType, type NegotiationResult } from "../markdown-negotiation";
 import { htmlNotScanned, notApplicable, notChecked, scored } from "../result";
 import type { CheckDef, PageContext } from "../types";
 
@@ -158,6 +161,141 @@ export const landmarks: CheckDef<PageContext> = {
   },
 };
 
+/** P5's grade of a markdown-check result, shared with the Agent View's status tiles. */
+export function gradePageNegotiation(data: MarkdownCheckData): NegotiationResult {
+  return gradeNegotiation({ markdown: data.markdown, html: data.html });
+}
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+/** P5 — new. The accept.md checks on this page, graded like S3 on the home page. */
+export const markdownPage: CheckDef<PageContext> = {
+  id: "read.markdown-page",
+  ref: "P5",
+  title: "Agents can get this page as Markdown",
+  why: "Markdown gives agents the page's content without its code, so they read more of it for fewer tokens.",
+  category: "read",
+  tier: "essential",
+  scope: "page",
+  sources: ["live"],
+  owner: "developer",
+  fix: "send-to-developer",
+  applies: () => true,
+  run({ markdown }) {
+    if (!markdown) return notChecked("Not yet checked", "Checked by requesting the published page as an AI agent would.");
+    const g = gradePageNegotiation(markdown);
+    if (!g.checked) {
+      return notChecked("Couldn't check", `The published page didn't respond (${markdown.html.error ?? markdown.markdown.error ?? "failed"}).`);
+    }
+    if (!g.servesMarkdown && markdown.html.status !== 200) {
+      return notChecked(
+        "Published page not found",
+        `The published page returned HTTP ${markdown.html.status}. If it isn't published yet, publish it and re-scan.`,
+      );
+    }
+
+    const htmlType = markdown.html.status === null ? "no response" : mediaType(markdown.html.contentType) || `HTTP ${markdown.html.status}`;
+    const details = [
+      `Markdown for Accept: text/markdown: ${g.servesMarkdown ? "yes" : `no, ${markdownResponseType(markdown.markdown)}`}`,
+      `HTML for browsers: ${g.htmlFallback ? "yes" : `no, ${htmlType}`}`,
+      `Vary: Accept header: ${g.varyAccept ? "yes" : "no"}`,
+      `Smaller than the HTML: ${!g.servesMarkdown ? "checked once Markdown is served" : g.smaller ? `yes, ${g.savingPct}% smaller` : "no"}`,
+    ];
+    const fixSuggestion = `Serve a Markdown version when a request asks for text/markdown, keep HTML for browsers, and send Vary: Accept. ${MARKDOWN_FIX_SUMMARY} The Agent View tab shows the steps.`;
+
+    if (!g.servesMarkdown) {
+      const saving =
+        markdown.preview && markdown.html.tokens > 0
+          ? ` Converted, it would be about ${pct(Math.max(0, 1 - markdown.preview.tokens / markdown.html.tokens))} fewer tokens.`
+          : "";
+      return scored(0, "No Markdown", `The page returned ${markdownResponseType(markdown.markdown)} for Accept: text/markdown.${saving}`, {
+        fixSuggestion,
+        details,
+      });
+    }
+    const missing = [!g.htmlFallback && "HTML for browsers", !g.varyAccept && "a Vary: Accept header", !g.smaller && "a Markdown version smaller than the HTML"].filter(
+      (m): m is string => Boolean(m),
+    );
+    const passed = 4 - missing.length;
+    return scored(
+      g.credit,
+      `${passed} of 4 checks pass`,
+      `This page serves Markdown${g.savingPct !== null ? `, ${g.savingPct}% smaller than the HTML` : ""}.${missing.length > 0 ? ` Missing: ${missing.join(", ")}.` : ""}`,
+      { fixSuggestion: missing.length > 0 ? fixSuggestion : "", details },
+    );
+  },
+};
+
+/** P6 — new. N/A until the page serves Markdown (P5). */
+export const markdownQuality: CheckDef<PageContext> = {
+  id: "read.markdown-quality",
+  ref: "P6",
+  title: "The Markdown version is complete",
+  why: "Agents answer from the Markdown alone, so it needs the page's full content and its title and description, without the menus.",
+  category: "read",
+  tier: "recommended",
+  scope: "page",
+  sources: ["live", "fields"],
+  owner: "developer",
+  fix: "send-to-developer",
+  applies: () => true,
+  run({ markdown, html, fields }) {
+    if (!markdown) return notChecked("Not yet checked", "Checked once the page has been requested as an AI agent.");
+    if (!gradePageNegotiation(markdown).servesMarkdown) {
+      return notApplicable("Checked once Markdown is served", "This checks the Markdown your site serves, so it waits until the page serves Markdown.");
+    }
+    if (!html) return htmlNotScanned();
+
+    const q = gradeMarkdownQuality({ markdown: markdown.markdown.body ?? "", fields, html });
+    const { title, description } = q.frontMatter;
+    const problems: string[] = [];
+    const details: string[] = [];
+
+    if (!q.frontMatter.present) {
+      problems.push("it has no front matter (title and description)");
+    } else {
+      if (!title.ok) problems.push(title.value ? "its title doesn't match the page title" : "its front matter has no title");
+      if (!description.ok) {
+        problems.push(
+          description.expected === null && fields && !fields.metaDescription
+            ? "its front matter has no description: the Meta description field is empty"
+            : description.value
+              ? "its description doesn't match the Meta description field"
+              : "its front matter has no description",
+        );
+      }
+    }
+    details.push(
+      `Front matter title: ${title.value ? `"${title.value}"` : "none"}${title.expected ? ` (page title: "${title.expected}")` : ""}`,
+      `Front matter description: ${description.value ? `"${description.value}"` : "none"}${description.expected ? ` (Meta description: "${description.expected}")` : ""}`,
+    );
+
+    if (q.coverage !== null) {
+      details.push(`Content included: ${pct(q.coverage)} of the headings, paragraphs and FAQ answers (full credit at ${pct(COVERAGE_PASS)})`);
+      if (q.coverage < COVERAGE_PASS) problems.push(`only ${pct(q.coverage)} of the page's content is included`);
+    }
+    details.push(`Menus, header and footer: ${pct(q.chromeShare)} of the Markdown (full credit under ${pct(CHROME_PASS)})`);
+    if (q.chromeShare >= CHROME_PASS) problems.push(`menus, header and footer are ${pct(q.chromeShare)} of it`);
+    if (markdown.markdown.truncated) details.push("Only the first 50,000 characters were checked.");
+
+    return scored(
+      q.credit,
+      q.coverage !== null ? `${pct(q.coverage)} of the content` : "No content to compare",
+      problems.length === 0
+        ? "The Markdown has the page's content, its title and description, and little else."
+        : `The Markdown is served, but ${problems.join("; ")}.`,
+      {
+        fixSuggestion:
+          problems.length === 0
+            ? ""
+            : "Convert the page's main content (not the header, menus and footer), include collapsed sections such as FAQ answers, and put the page's title and Meta description in the front matter.",
+        details,
+        flaggedItems: q.missing.length > 0 ? q.missing.slice(0, 8).map((m) => `Missing: "${m.length > 80 ? `${m.slice(0, 79)}…` : m}"`) : undefined,
+      },
+    );
+  },
+};
+
 /** P7 — was cq-page-experience. On demand: excluded until PageSpeed has run. */
 export const speed: CheckDef<PageContext> = {
   id: "read.speed",
@@ -212,4 +350,4 @@ export const speed: CheckDef<PageContext> = {
   },
 };
 
-export const READ_PAGE_CHECKS = [noJsContent, landmarks, speed];
+export const READ_PAGE_CHECKS = [noJsContent, landmarks, markdownPage, markdownQuality, speed];

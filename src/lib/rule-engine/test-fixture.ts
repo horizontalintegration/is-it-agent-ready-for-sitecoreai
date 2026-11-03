@@ -7,6 +7,8 @@ import { WELL_KNOWN_PATHS } from "@/lib/agent-access/well-known";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport } from "@/lib/checks/view-model";
+import { estimateTokens, toAgentMarkdown } from "@/lib/markdown/convert";
+import type { MarkdownCheckData } from "@/lib/markdown/types";
 
 const SITE_DOMAIN = "https://example.com";
 const DAY = 24 * 60 * 60 * 1000;
@@ -280,7 +282,104 @@ export function makeTestDraft(): DraftHtml {
         ...live.bodyBlocks.slice(footerAt),
       ],
     },
+    source: makeTestPageSource({ draft: true }),
     emptyStates: [],
+  };
+}
+
+// ── The demo page as HTML (Phase 7: the Agent View's Markdown) ────────────────
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * The demo page's HTML, matching makeTestPageData's parsed HTML: published,
+ * or as the sanitised Page Builder draft (edited heading, Related Articles
+ * cards, and an empty head). The Agent View converts it to Markdown.
+ */
+export function makeTestPageSource({ draft = false }: { draft?: boolean } = {}): string {
+  const d = makeTestPageData();
+  const h = d.parsedHtml!;
+  const heading = (text: string) => (draft && text === LIVE_H2 ? DRAFT_H2 : text);
+  const [h1, ...sections] = h.headings;
+  const para = (i: number) => `<p>${esc(h.paragraphs[i])}</p>`;
+  const faq = FAQ.map(
+    (f, i) =>
+      `<div class="accordion-item"><button aria-controls="faq-${i}" aria-expanded="false">${esc(f.question)}</button>` +
+      `<div id="faq-${i}" aria-hidden="true"><p>${esc(f.answer)}</p></div></div>`,
+  ).join("");
+  const related = draft
+    ? `<section data-component="${COMPONENT.related}"><h2>Related articles</h2>${RELATED.map(
+        (r) => `<div><h3>${esc(r.title)}</h3><p>${esc(r.summary)}</p><a href="${r.href}">Read more</a></div>`,
+      ).join("")}</section>`
+    : "";
+  const head = draft
+    ? "<head></head>"
+    : `<head><title>${esc(d.authoring.pageTitle ?? "")}</title><meta name="description" content="${esc(d.authoring.metaDescription ?? "")}">` +
+      `<script>window.__NEXT_DATA__={}</script><style>body{margin:0}</style></head>`;
+  return [
+    `<!doctype html><html lang="en">${head}<body>`,
+    `<header data-component="${COMPONENT.header}"><a href="/">BrandX</a><nav><ul>`,
+    ["Services", "Insights", "About", "Contact"].map((n) => `<li><a href="/${n.toLowerCase()}">${n}</a></li>`).join(""),
+    `</ul></nav></header>`,
+    `<main><article data-component="${COMPONENT.content}">`,
+    `<h1>${esc(h1.text)}</h1>`,
+    `<img src="/images/hero.jpg" alt="Team collaborating around a whiteboard">`,
+    `<h2>${esc(heading(sections[0].text))}</h2>${para(0)}`,
+    `<h2>${esc(heading(sections[1].text))}</h2>${para(1)}`,
+    `<h2>${esc(sections[2].text)}</h2><h3>${esc(sections[3].text)}</h3><h3>${esc(sections[4].text)}</h3>${para(2)}`,
+    `<p>Read <a href="/blog/content-audit">the content audit guide</a> and <a href="/blog/seo-playbook-2026">our 2026 SEO playbook</a>.</p>`,
+    `</article><section data-component="${COMPONENT.accordion}">${faq}</section>${related}</main>`,
+    `<footer data-component="${COMPONENT.footer}"><p>© BrandX. All rights reserved.</p><a href="/privacy">Privacy policy</a> <a href="/terms">Terms of use</a></footer>`,
+    `</body></html>`,
+  ].join("");
+}
+
+/** A typical published page's weight: Next.js pages carry their data, scripts and styles. */
+const DEMO_HTML_BYTES = 24_600;
+
+/**
+ * /api/markdown-check for the demo page. `serves: false` (the default, as in
+ * the mockup): text/html for Accept: text/markdown, no Vary, and the preview
+ * converted from the published HTML. `serves: true` (`?demo=1&md=1`): the
+ * Markdown the page would serve, 4 of 4 checks.
+ */
+export function makeTestMarkdownCheck({ serves = false, pageUrl }: { serves?: boolean; pageUrl?: string } = {}): MarkdownCheckData {
+  const d = makeTestPageData();
+  const url = pageUrl ?? d.pageUrl;
+  const source = makeTestPageSource();
+  const html = {
+    finalUrl: url,
+    status: 200,
+    error: null,
+    contentType: "text/html; charset=utf-8",
+    vary: null,
+    bytes: DEMO_HTML_BYTES,
+    tokens: estimateTokens("x".repeat(DEMO_HTML_BYTES)),
+  };
+  const converted = toAgentMarkdown(source, { title: d.fields.metaTitle, description: d.fields.metaDescription, url });
+  if (serves) {
+    return {
+      url,
+      checkedAt: new Date().toISOString(),
+      markdown: {
+        ...html,
+        contentType: "text/markdown; charset=utf-8",
+        vary: "Accept",
+        bytes: converted.length,
+        tokens: estimateTokens(converted),
+        body: converted,
+        truncated: false,
+      },
+      html: { ...html, vary: "Accept" },
+      preview: null,
+    };
+  }
+  return {
+    url,
+    checkedAt: new Date().toISOString(),
+    markdown: { ...html, body: source.slice(0, 2_000), truncated: true },
+    html,
+    preview: { markdown: converted, tokens: estimateTokens(converted), truncated: false },
   };
 }
 
@@ -301,7 +400,7 @@ function makeTestHomeHtml(): ParsedHtml {
  * agent-access scan is makeTestAgentAccess (ChatGPT-User and Perplexity-User
  * blocked by the firewall, GPTBot opted out in robots.txt).
  */
-export function makeTestSiteContext(): SiteContext {
+export function makeTestSiteContext({ servesMarkdown = false }: { servesMarkdown?: boolean } = {}): SiteContext {
   const data = makeTestPageData();
   return {
     siteUrl: SITE_DOMAIN,
@@ -309,7 +408,7 @@ export function makeTestSiteContext(): SiteContext {
     organization: data.organization,
     expectedOrganization: { name: data.organization.name, url: data.organization.url },
     home: makeTestHomeHtml(),
-    access: makeTestAgentAccess(),
+    access: makeTestAgentAccess({ servesMarkdown }),
   };
 }
 
@@ -317,9 +416,21 @@ export function makeTestSiteContext(): SiteContext {
 //
 // As in the Symposium mockup: the firewall returns 403 to ChatGPT-User and
 // Perplexity-User although robots.txt allows them; robots.txt opts GPTBot
-// out of training; the home page returns HTML for Accept: text/markdown;
-// no llms.txt and no Content-Signal line; a 128-URL sitemap listed in
+// out of training; the home page returns HTML for Accept: text/markdown
+// (Markdown with Vary: Accept for `servesMarkdown`, `?demo=1&md=1`); no
+// llms.txt and no Content-Signal line; a 128-URL sitemap listed in
 // robots.txt; about, contact and privacy pages all published.
+
+const DEMO_HOME_MARKDOWN = `---
+title: BrandX — Financial planning and wealth management
+url: ${SITE_DOMAIN}/
+---
+
+# Plan your financial future with BrandX
+
+- [Services](${SITE_DOMAIN}/services)
+- [Insights](${SITE_DOMAIN}/insights)
+`;
 
 export const DEMO_ROBOTS_TXT = `User-agent: *
 Allow: /
@@ -337,7 +448,7 @@ function demoProbe(path: string, status: number, extra: Partial<HttpProbe> = {})
   return { url, finalUrl: url, status, error: null, contentType: "text/html; charset=utf-8", bytes: 0, ...extra };
 }
 
-export function makeTestAgentAccess(): AgentAccessData {
+export function makeTestAgentAccess({ servesMarkdown = false }: { servesMarkdown?: boolean } = {}): AgentAccessData {
   const pages: SamplePage[] = [
     { path: "/", browser: { ...demoProbe("/", 200, { bytes: 182_000 }), challenge: false } },
     { path: "/insights", browser: { ...demoProbe("/insights", 200, { bytes: 96_000 }), challenge: false } },
@@ -369,11 +480,17 @@ export function makeTestAgentAccess(): AgentAccessData {
     },
     pages,
     bots,
-    markdown: {
-      probe: demoProbe("/", 200, { bytes: 182_000 }),
-      vary: null,
-      body: "<!doctype html><html lang=\"en\"><head><title>BrandX</title></head><body>…</body></html>",
-    },
+    markdown: servesMarkdown
+      ? {
+          probe: demoProbe("/", 200, { contentType: "text/markdown; charset=utf-8", bytes: DEMO_HOME_MARKDOWN.length }),
+          vary: "Accept",
+          body: DEMO_HOME_MARKDOWN,
+        }
+      : {
+          probe: demoProbe("/", 200, { bytes: 182_000 }),
+          vary: null,
+          body: "<!doctype html><html lang=\"en\"><head><title>BrandX</title></head><body>…</body></html>",
+        },
     sitemap: {
       source: "robots",
       probe: demoProbe("/sitemap.xml", 200, { contentType: "application/xml", bytes: 21_000 }),
@@ -442,7 +559,7 @@ interface FixtureRowInput {
   description?: string;
 }
 
-function buildRow(input: FixtureRowInput): PageMatrixRow {
+function buildRow(input: FixtureRowInput, servesMarkdown: boolean): PageMatrixRow {
   const data = makeTestPageData();
   const pageUrl = `${SITE_DOMAIN}${input.route}`;
   data.pageUrl = pageUrl;
@@ -450,7 +567,8 @@ function buildRow(input: FixtureRowInput): PageMatrixRow {
   html(data).canonicalHref = pageUrl;
   for (const v of input.variants) v(data);
 
-  const report = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml }));
+  const markdown = makeTestMarkdownCheck({ serves: servesMarkdown, pageUrl });
+  const report = runPageChecks(buildPageContext({ ...data, html: data.parsedHtml, markdown }));
   return {
     id: input.id,
     name: input.name,
@@ -467,43 +585,44 @@ function buildRow(input: FixtureRowInput): PageMatrixRow {
   };
 }
 
-export function makeTestSitePages(): PageMatrixRow[] {
-  return [
-    buildRow({ id: "p1", name: "About", route: "/about", daysOld: 1200,
-      variants: [notArticle, noFaq, noJsonLd, noCanonical, noDescription, commodity, age(1200)] }),
-    buildRow({ id: "p2", name: "Legacy product page", route: "/products/legacy", daysOld: 900,
-      variants: [notArticle, noFaq, noJsonLd, twoH1s, shortTitle("Legacy"), commodity, age(900)] }),
-    buildRow({ id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800,
-      variants: [noJsonLd, noCanonical, noDescription, shortTitle("Draft"), commodity, age(800)] }),
-    buildRow({ id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
-      variants: [notArticle, noFaq, noJsonLd, noDescription, age(400)] }),
-    buildRow({ id: "p5", name: "Contact us", route: "/contact", daysOld: 200,
-      variants: [notArticle, noFaq, noCanonical, age(200)] }),
-    buildRow({ id: "p6", name: "Old blog post", route: "/blog/intro-to-cms", daysOld: 500,
-      variants: [noJsonLd, twoH1s, age(500)] }),
-    buildRow({ id: "p7", name: "Solutions overview (noindex)", route: "/solutions/overview", daysOld: 300,
-      variants: [notArticle, noindex] }),
-    buildRow({ id: "p8", name: "Blog: content strategy", route: "/blog/how-to-build-an-effective-content-strategy", daysOld: 60,
-      variants: [], description: "A practical guide to building a content strategy that delivers measurable results." }),
-    buildRow({ id: "p9", name: "Homepage", route: "/", daysOld: 30,
+export function makeTestSitePages({ servesMarkdown = false }: { servesMarkdown?: boolean } = {}): PageMatrixRow[] {
+  const rows: FixtureRowInput[] = [
+    { id: "p1", name: "About", route: "/about", daysOld: 1200,
+      variants: [notArticle, noFaq, noJsonLd, noCanonical, noDescription, commodity, age(1200)] },
+    { id: "p2", name: "Legacy product page", route: "/products/legacy", daysOld: 900,
+      variants: [notArticle, noFaq, noJsonLd, twoH1s, shortTitle("Legacy"), commodity, age(900)] },
+    { id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800,
+      variants: [noJsonLd, noCanonical, noDescription, shortTitle("Draft"), commodity, age(800)] },
+    { id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
+      variants: [notArticle, noFaq, noJsonLd, noDescription, age(400)] },
+    { id: "p5", name: "Contact us", route: "/contact", daysOld: 200,
+      variants: [notArticle, noFaq, noCanonical, age(200)] },
+    { id: "p6", name: "Old blog post", route: "/blog/intro-to-cms", daysOld: 500,
+      variants: [noJsonLd, twoH1s, age(500)] },
+    { id: "p7", name: "Solutions overview (noindex)", route: "/solutions/overview", daysOld: 300,
+      variants: [notArticle, noindex] },
+    { id: "p8", name: "Blog: content strategy", route: "/blog/how-to-build-an-effective-content-strategy", daysOld: 60,
+      variants: [], description: "A practical guide to building a content strategy that delivers measurable results." },
+    { id: "p9", name: "Homepage", route: "/", daysOld: 30,
       variants: [notArticle, noFaq, unique, age(30)],
-      description: "The digital experience platform for building content-led customer journeys." }),
-    buildRow({ id: "p10", name: "Blog: SEO playbook 2026", route: "/blog/seo-playbook-2026", daysOld: 45,
+      description: "The digital experience platform for building content-led customer journeys." },
+    { id: "p10", name: "Blog: SEO playbook 2026", route: "/blog/seo-playbook-2026", daysOld: 45,
       variants: [withArticle, unique, age(45)],
-      description: "A practical playbook for ranking across traditional and AI-driven search in 2026." }),
-    buildRow({ id: "p11", name: "Solutions: marketing", route: "/solutions/marketing", daysOld: 90,
+      description: "A practical playbook for ranking across traditional and AI-driven search in 2026." },
+    { id: "p11", name: "Solutions: marketing", route: "/solutions/marketing", daysOld: 90,
       variants: [notArticle, noFaq, age(90)],
-      description: "Marketing solutions for personalising and orchestrating omnichannel campaigns." }),
-    buildRow({ id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
+      description: "Marketing solutions for personalising and orchestrating omnichannel campaigns." },
+    { id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
       variants: [withArticle, age(60)],
-      description: "What answer-engine optimisation is and how it differs from classic SEO." }),
+      description: "What answer-engine optimisation is and how it differs from classic SEO." },
   ];
+  return rows.map((r) => buildRow(r, servesMarkdown));
 }
 
 // ── Demo history (Phase 5 UI) ─────────────────────────────────────────────────
 
 /** The demo page's score at the previous scan, for "▲ N since last scan". */
-export const DEMO_PREVIOUS_PAGE_SCORE = 75;
+export const DEMO_PREVIOUS_PAGE_SCORE = 64;
 
 /** The demo site's earlier scan scores, oldest first; the current score is appended. */
-export const DEMO_SITE_HISTORY_BEFORE = [61, 63, 62, 66, 68, 67, 70];
+export const DEMO_SITE_HISTORY_BEFORE = [48, 50, 49, 53, 55, 54, 56];

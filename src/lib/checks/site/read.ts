@@ -2,7 +2,7 @@
 // /api/agent-access (src/lib/server/agent-access.ts).
 
 import type { WellKnownEvidence, WellKnownId } from "@/lib/agent-access/types";
-import { gradeNegotiation, mediaType } from "../markdown-negotiation";
+import { gradeNegotiation, markdownResponseType, mediaType } from "../markdown-negotiation";
 import { notApplicable, notChecked, scored } from "../result";
 import type { CheckDef, SiteContext } from "../types";
 import { listText, notScanned } from "./shared";
@@ -20,9 +20,11 @@ export const markdownSite: CheckDef<SiteContext> = {
   owner: "developer",
   fix: "send-to-developer",
   applies: () => true,
-  run({ access }) {
+  run({ access, markdownPages }) {
     if (!access) return notScanned();
     const { markdown, home } = access;
+    // The dashboard's P5 results: they don't change the credit, which stays the home page's.
+    const pages = markdownPages && markdownPages.checked > 0 ? ` Markdown on ${markdownPages.served} of ${markdownPages.checked} scanned pages.` : "";
     const g = gradeNegotiation({
       markdown: { ...markdown.probe, vary: markdown.vary, body: markdown.body },
       html: home.probe,
@@ -37,14 +39,16 @@ export const markdownSite: CheckDef<SiteContext> = {
     const fixSuggestion =
       "Serve a Markdown version when a request asks for text/markdown (content negotiation), keep HTML for browsers, and send Vary: Accept so caches keep the two apart.";
     if (!g.servesMarkdown) {
-      const type = markdown.probe.status === null ? `no response (${markdown.probe.error})` : mediaType(markdown.probe.contentType) || `HTTP ${markdown.probe.status}`;
-      return scored(0, "No Markdown", `The home page returned ${type} for Accept: text/markdown.`, { fixSuggestion, details });
+      return scored(0, "No Markdown", `The home page returned ${markdownResponseType(markdown.probe)} for Accept: text/markdown.${pages}`, {
+        fixSuggestion,
+        details,
+      });
     }
     const missing = [!g.htmlFallback && "HTML for browsers", !g.varyAccept && "a Vary: Accept header", !g.smaller && "a Markdown version smaller than the HTML"].filter(
       (m): m is string => Boolean(m),
     );
     const saving = g.savingPct !== null ? ` ${g.savingPct}% smaller than the HTML.` : "";
-    return scored(g.credit, "Serves Markdown", `The home page serves Markdown.${saving}${missing.length > 0 ? ` Missing: ${listText(missing)}.` : ""}`, {
+    return scored(g.credit, "Serves Markdown", `The home page serves Markdown.${saving}${missing.length > 0 ? ` Missing: ${listText(missing)}.` : ""}${pages}`, {
       fixSuggestion: missing.length > 0 ? fixSuggestion : "",
       details,
     });

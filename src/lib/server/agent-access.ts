@@ -32,6 +32,7 @@ import type {
   WellKnownEvidence,
 } from "@/lib/agent-access/types";
 import { WELL_KNOWN_PATHS } from "@/lib/agent-access/well-known";
+import { MARKDOWN_ACCEPT } from "@/lib/checks/markdown-negotiation";
 import { extractFooterTrust, extractParsedHtml } from "@/lib/html/extract-html";
 import { safeFetch as appSafeFetch, SafeFetchError, validateUrl } from "./safe-fetch";
 
@@ -240,7 +241,7 @@ export async function collectAgentAccess(domain: string, options: CollectOptions
   // ── Round 1 ──
   const robotsP = request(0, `${origin}/robots.txt`, { maxBytes: 500 * 1024 });
   const homeP = request(0, `${origin}/`);
-  const markdownP = request(2, `${origin}/`, { accept: "text/markdown, text/html;q=0.5" });
+  const markdownP = request(2, `${origin}/`, { accept: MARKDOWN_ACCEPT });
   const llmsP = request(2, `${origin}/llms.txt`, { maxBytes: 1024 * 1024 });
   const notFoundP = request(2, `${origin}/agent-ready-check-${randomBytes(6).toString("hex")}`, { keepText: false });
   const wellKnownP = Promise.all(

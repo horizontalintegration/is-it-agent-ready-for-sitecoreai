@@ -6,6 +6,7 @@
 // edits and can differ from the dashboard's (plan section 7).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { MarkdownCheckData } from "@/lib/markdown/types";
 import type { AiResults, OrganizationInfo, ParsedHtml, PsiResult } from "@/lib/rule-engine/types";
 import type { DraftHtml, PageContext, PageFields } from "./types";
 
@@ -71,6 +72,8 @@ export interface PageInput {
   draftUnavailable?: boolean;
   ai: AiResults | null;
   psi: PsiResult | null;
+  /** /api/markdown-check for this page (P5, P6). Null or left out until it's in. */
+  markdown?: MarkdownCheckData | null;
   organization: OrganizationInfo;
 }
 
@@ -88,6 +91,7 @@ export function buildPageContext(input: PageInput): PageContext {
     bodySource: draft ? "draft" : "live",
     ai: input.ai,
     psi: input.psi,
+    markdown: input.markdown ?? null,
     organization: input.organization,
   };
 }

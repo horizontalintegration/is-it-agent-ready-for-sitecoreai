@@ -5,7 +5,7 @@ import { mdiChartLine } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useAgentAccess } from "@/hooks/useAgentAccess";
-import { useDemoMode } from "@/hooks/useDemoMode";
+import { useDemoMode, useDemoServesMarkdown } from "@/hooks/useDemoMode";
 import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
 import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
 import { AppMark } from "@/components/shared/AppMark";
@@ -25,7 +25,7 @@ import {
 } from "@/lib/rule-engine/test-fixture";
 import { aggregateSite } from "@/lib/site-aggregate";
 import { runSiteChecks } from "@/lib/checks/engine";
-import { groupPageIssues, siteIssueGroups, type IssueGroup } from "@/lib/checks/view-model";
+import { fixFirstGroups, type IssueGroup } from "@/lib/checks/view-model";
 import type { SiteType } from "@/lib/checks/types";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPagesEditorUrl } from "@/lib/pages-editor-url";
@@ -55,12 +55,17 @@ export default function DashboardWidgetPage() {
   const live = useSitePages(client, isInitialized);
 
   // Fixture data is opt-in via `?demo=1` in the URL.
+  // `&md=1`: the demo site serves Markdown (P5 4/4, S3 passes).
   const useFixture = useDemoMode();
+  const demoServesMarkdown = useDemoServesMarkdown();
   const fixturePages = useMemo<PageMatrixRow[]>(
-    () => (useFixture ? makeTestSitePages() : []),
-    [useFixture],
+    () => (useFixture ? makeTestSitePages({ servesMarkdown: demoServesMarkdown }) : []),
+    [useFixture, demoServesMarkdown],
   );
-  const fixtureSite = useMemo(() => (useFixture ? makeTestSiteContext() : null), [useFixture]);
+  const fixtureSite = useMemo(
+    () => (useFixture ? makeTestSiteContext({ servesMarkdown: demoServesMarkdown }) : null),
+    [useFixture, demoServesMarkdown],
+  );
 
   const pages = useFixture ? fixturePages : live.pages;
   const siteContext = useFixture ? DEMO_SITE_CONTEXT : live.siteContext;
@@ -80,10 +85,13 @@ export default function DashboardWidgetPage() {
   }, []);
   const [issueFilter, setIssueFilter] = useState<IssueGroup | null>(null);
 
+  const aggregate = useMemo(() => aggregateSite(pages), [pages]);
+
   // Site checks (S1–S12): once per site, from the agent-access scan. S7 reads
-  // the home page the scan fetched.
+  // the home page the scan fetched; S3 adds how many scanned pages serve Markdown.
+  const markdownPages = aggregate.markdown;
   const siteReport = useMemo(() => {
-    if (fixtureSite) return runSiteChecks({ ...fixtureSite, siteType });
+    if (fixtureSite) return runSiteChecks({ ...fixtureSite, siteType, markdownPages });
     if (!siteContext.domain || !access) return null;
     return runSiteChecks({
       siteUrl: siteContext.domain,
@@ -92,15 +100,15 @@ export default function DashboardWidgetPage() {
       expectedOrganization: getConfiguredOrganization(),
       home: access.home.html,
       access,
+      markdownPages,
     });
-  }, [fixtureSite, siteType, siteContext.domain, siteContext.name, access]);
-
-  const aggregate = useMemo(() => aggregateSite(pages), [pages]);
+  }, [fixtureSite, siteType, siteContext.domain, siteContext.name, access, markdownPages]);
   const siteScore = aggregate.overallPct === null ? null : Math.round(aggregate.overallPct);
 
-  // Fix first: site issues (they affect every page), then page issues by total gain.
+  // Fix first: site issues (they affect every page), then page issues by total
+  // gain; Markdown once, as P5 with its page count when pages were checked.
   const issues = useMemo(
-    () => [...(siteReport ? siteIssueGroups(siteReport.outcomes) : []), ...groupPageIssues(pages)],
+    () => fixFirstGroups(siteReport?.outcomes ?? null, pages),
     [siteReport, pages],
   );
 
