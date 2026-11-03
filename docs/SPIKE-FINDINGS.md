@@ -310,7 +310,7 @@ Confirmed with a local `next dev` run against the BrandX article *Banking Sector
 
 Plan section 13, item 1. Every `xmc.*` call from the dashboard widget fails with `[HostSDK] … Authentication required but getAccessToken method not provided`. The Page builder panel makes the same calls with built-in authorization and they work. Sitecore support ticket **CS0746928** is open.
 
-**Status (2026-11-02): Sitecore has identified the root cause on their side** and is targeting a production fix for the middle of the week of 2026-11-02 (7.6). Built-in authorization stays. The custom-authorization contingency (7.4) is shelved unless the fix slips.
+**Status (2026-11-03): Sitecore deployed their fix** and the authorization error is gone (7.6). The next call, the page-list query, then failed on an app bug that only now ran: it's fixed in the app (7.6). Built-in authorization stays. The custom-authorization contingency (7.4) is shelved.
 
 App changes made alongside the investigation (built-in authorization kept):
 
@@ -468,13 +468,16 @@ The call shape differs: built-in takes `{ params: { path, query, body } }`, the 
 | 2026-11-01 | Raised. The support AI replied: built-in authorization is documented to work in dashboard widgets, and client credentials would switch the whole app to custom authorization. It handed the case to a support engineer. |
 | 2026-11-01 | Diagnostics from 7.1 prepared for the engineer: June machine-token evidence, the same `_fetch` in client 0.3.2 and 0.4.1, the Context ID present, the `host.state` comparison, and the `contextId` question. |
 | 2026-11-02 | Engineer: "We have identified the root cause of the issue and are currently completing the final validation and testing before deploying the fix to production." The production deploy is targeted for the middle of that week. They'll confirm once it's deployed. |
+| 2026-11-03 | Sitecore deployed the fix to production; the authorization error is gone. They also saw the next error, `Could not load pages: GraphQL errors with no usable data: The specified value type of field itemId does not match the field type`, and asked whether it needs a separate investigation. It doesn't: it's an app bug (below). |
 
-Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, and record it here.
+Sitecore hasn't said what the root cause was. Ask, and record it here.
 
-**After Sitecore confirms the deploy** (all **Open**):
+**The `itemId` error (app bug, fixed 2026-11-03).** The page-list query looks up the site's Home item by the `homePageId` that `xmc.sites.retrieveSite` returns, or by content path when there isn't one. It declared both variables `String!`, but the authoring schema types `ItemQueryInput.itemId` as `ID` (`path` is `String`; checked with an `__type(name: "ItemQueryInput")` query from the dashboard widget's console). HotChocolate rejects a `String!` variable in an `ID` position. The by-ID lookup had existed since `48b4f9c` (2026-06-01) but never ran in production: in June `retrieveSite` returned a 401, so the dashboard always took the path lookup. With Sitecore's fix, `retrieveSite` succeeds, so the by-ID lookup ran for the first time. The fix declares `$rootItemId: ID!` in `buildSitePagesQuery` (`src/hooks/useSitePages.ts`), with a test. The Phase 9 spike box (`src/components/spike/AssistSpike.tsx`) declares its `itemId` variables `String!` too and needs the same fix in that workstream.
 
-- [ ] The dashboard Overview lists pages, with no "Sitecore didn't authorize…" message.
-- [ ] Check the console for `retrieveSite`. In June the Sites API returned a 401 for its scope. If that comes back, the dashboard falls back to the content-tree walk and still loads pages, so it isn't a blocker.
+**After Sitecore's deploy** (all **Open** until the app fix is deployed):
+
+- [ ] The dashboard Overview lists pages, with no "Sitecore didn't authorize…" message and no `itemId` error.
+- [ ] Check the console for `retrieveSite`. On 2026-11-03 it seems to succeed (the by-ID lookup ran). If it returns a 401 as in June, the dashboard falls back to the content-tree walk and still loads pages, so it isn't a blocker.
 - [ ] Panel regression: fields load, and Generate → Populate still writes.
 - [ ] Plan section 13, item 2: the parity check between panel and dashboard for the same page.
 - [ ] Record the root cause and these results here, then close plan item 1.
