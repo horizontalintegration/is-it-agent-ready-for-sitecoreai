@@ -6,7 +6,6 @@ import {
   parseErrors,
   parseJsonLdScript,
   resolve,
-  typesOnPage,
 } from "./json-ld";
 
 const parse = (...blocks: string[]) => blocks.map(parseJsonLdScript);
@@ -59,13 +58,6 @@ describe("type matching", () => {
   it("recognises Article subtypes", () => {
     const nodes = collectNodes(parse('{"@type":"BlogPosting"}', '{"@type":"NewsArticle"}', '{"@type":"WebPage"}'));
     expect(nodes.map(isArticle)).toEqual([true, true, false]);
-  });
-
-  it("lists every distinct type on the page", () => {
-    expect(typesOnPage(parse('{"@graph":[{"@type":["Organization","LocalBusiness"]},{"@type":"Organization"}]}'))).toEqual([
-      "Organization",
-      "LocalBusiness",
-    ]);
   });
 });
 

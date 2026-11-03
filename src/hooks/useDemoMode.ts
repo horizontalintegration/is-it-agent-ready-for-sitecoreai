@@ -35,6 +35,31 @@ export function useDemoMode(): boolean {
   return useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 }
 
+/**
+ * `?domain=https://example.com`, opened directly in a browser tab (not inside
+ * a Sitecore extension point, and not in demo mode): the dashboard runs for
+ * that site without the Marketplace client. Agent access, AI citations (with a
+ * page URL) and Files work; Overview and Pages need Sitecore's page list.
+ * Returns the origin, or "" when it doesn't apply.
+ */
+export function standaloneDomain(): string {
+  if (typeof window === "undefined" || isDemoUrl() || window.self !== window.top) return "";
+  const raw = new URLSearchParams(window.location.search).get("domain")?.trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : "";
+  } catch {
+    return "";
+  }
+}
+
+const serverEmpty = () => "";
+
+export function useStandaloneDomain(): string {
+  return useSyncExternalStore(subscribe, standaloneDomain, serverEmpty);
+}
+
 /** `?demo=1&md=1`: the demo site serves Markdown (P5 4/4, S3 passes). Without it, it doesn't, as in the mockup. */
 function isDemoMarkdownUrl(): boolean {
   return isDemoUrl() && new URLSearchParams(window.location.search).get("md") === "1";

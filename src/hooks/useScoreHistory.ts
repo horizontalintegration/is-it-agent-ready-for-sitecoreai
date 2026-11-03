@@ -1,31 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { localHistoryStore } from "@/lib/history/store";
 
 // Score history for "▲ N since last scan" and the dashboard's trend line
-// (plan section 6.2, item 8). localStorage only (plan section 12, decision 2);
-// Phase 8 decides on shared storage for "What changed".
+// (plan section 6.2, item 8). localStorage only, through HistoryStore (plan
+// section 12, decision 2, decided in Phase 8). "What changed" keeps its own
+// snapshots (useWhatChanged).
 
 const PAGE_PREFIX = "aiDiscovery:pageScore:v1:";
 const SITE_PREFIX = "aiDiscovery:siteHistory:v1:";
 const SITE_HISTORY_MAX = 8;
 
-function read<T>(key: string): T | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: unknown) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore quota errors and blocked storage
-  }
-}
+const read = <T,>(key: string) => localHistoryStore.read<T>(key);
+const write = (key: string, value: unknown) => localHistoryStore.write(key, value);
 
 /**
  * The panel's change since the previous scan of this page. Each time a scan

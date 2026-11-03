@@ -31,10 +31,15 @@ const FALLBACK_MODELS = new Set([
 ]);
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
+/** The refusal-fallback request fields for `model`; none for a model that doesn't accept them. */
+export function fallbackParams(model: string): { betas?: string[]; fallbacks?: "default" } {
+  return FALLBACK_MODELS.has(model) ? { betas: [FALLBACK_BETA], fallbacks: "default" } : {};
+}
+
 export type ModelPurpose = "default" | "bulk";
 
 /**
- * `default`: generate-meta and citation-forecast. `bulk`: ai-check, which the
+ * `default`: generate-meta and citation-probe. `bulk`: ai-check, which the
  * dashboard runs for every page. It is used in the panel too, so a page gets
  * the same rating (and cache entry) in both places.
  */
@@ -118,7 +123,6 @@ export async function structuredCall<S extends z.ZodType>(
   opts: StructuredCallOptions<S>,
 ): Promise<StructuredResult<z.infer<S>>> {
   const anthropic = opts.client ?? getAnthropic();
-  const fallback = FALLBACK_MODELS.has(opts.model);
 
   const message = await anthropic.beta.messages.create({
     model: opts.model,
@@ -126,7 +130,7 @@ export async function structuredCall<S extends z.ZodType>(
     system: opts.system,
     messages: opts.messages,
     output_config: { effort: opts.effort, format: zodOutputFormat(opts.schema) },
-    ...(fallback ? { betas: [FALLBACK_BETA], fallbacks: "default" as const } : {}),
+    ...fallbackParams(opts.model),
   });
   logUsage(opts.label, message);
 

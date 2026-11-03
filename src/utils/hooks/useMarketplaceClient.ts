@@ -3,7 +3,7 @@
 import { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { XMC } from "@sitecore-marketplace-sdk/xmc";
-import { isDemoUrl } from "@/hooks/useDemoMode";
+import { isDemoUrl, standaloneDomain } from "@/hooks/useDemoMode";
 
 export interface MarketplaceClientState {
   client: ClientSDK | null;
@@ -120,8 +120,9 @@ export function useMarketplaceClient(options: UseMarketplaceClientOptions = {}) 
   useEffect(() => {
     // Demo mode (?demo=1) shows fixture data and must never talk to Sitecore,
     // even when the page is open inside a Sitecore extension point: with no
-    // client, no live hook reads from or writes to the real site.
-    if (opts.autoInit && !isDemoUrl()) {
+    // client, no live hook reads from or writes to the real site. The standalone
+    // dashboard (?domain= outside Sitecore) has no host to talk to.
+    if (opts.autoInit && !isDemoUrl() && !standaloneDomain()) {
       initializeClient();
     }
 

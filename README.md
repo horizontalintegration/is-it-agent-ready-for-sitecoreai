@@ -13,11 +13,11 @@ The v2 roadmap is in [docs/IS-IT-AGENT-READY-PLAN.md](docs/IS-IT-AGENT-READY-PLA
 | Extension point | Route | What it does |
 |---|---|---|
 | **Pages context panel** | `src/app/pages-contextpanel-extension/page.tsx` | "Is this page agent-ready?" Scores the page open in Page Builder in four categories (Reach, Read, Understand, Trust), runs the AI uniqueness check on the page's main text, and generates meta and Open Graph values in your brand voice. **Populate field** writes them to the page through `xmc.pages.updateFields`. |
-| **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site with the same checks: site score, category cards, site checks (robots.txt, home page Organization schema), worst pages, AI citation forecast, llms.txt generator, robots.txt AI-crawler check and footer trust signals. |
+| **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site with the same checks: site score, category cards, site checks (robots.txt, home page Organization schema), Fix first, "What changed since last scan", the Agent access checklist and bot grid, AI citations (a readiness estimate per engine and on-demand citation probes), the llms.txt generator and the robots.txt helper. |
 
 Both run inside the Sitecore iframe. Opening their routes directly in a browser only works in demo mode (below).
 
-Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `agent-access` for the site checks, `markdown-check` for Markdown, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-forecast`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
+Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `agent-access` for the site checks, `markdown-check` for Markdown, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `citation-probe`). Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
 
 The panel and the dashboard share one check engine (`src/lib/checks/`), so the same page gets the same score in both. Each page is scored out of 100: Essential checks share 80 points, Recommended checks 20, and Bonus checks add up to 5 (capped at 100). Checks that don't apply are skipped, not failed. Scores use the same thresholds everywhere: 80 and above is good (Agent-ready), 60–79 is a warning (Almost there), and below 60 is critical (Not ready). Details: `docs/PAGE-CHECKS-TECHNICAL.md`.
 
@@ -53,8 +53,8 @@ Put these in `.env.local` for development and in your host's settings for deploy
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes, for AI features | Claude API key for `ai-check`, `generate-meta` and `citation-forecast`. |
-| `ANTHROPIC_MODEL` | No | Claude model for `generate-meta` and `citation-forecast`. Default `claude-opus-5-5`. |
+| `ANTHROPIC_API_KEY` | Yes, for AI features | Claude API key for `ai-check`, `generate-meta` and `citation-probe` (citation probes also use web search, $10 per 1,000 searches). |
+| `ANTHROPIC_MODEL` | No | Claude model for `generate-meta` and `citation-probe`. Default `claude-opus-5-5`. |
 | `ANTHROPIC_MODEL_BULK` | No | Claude model for `ai-check`, which the dashboard runs for every page (the panel uses it too, so both show the same rating). Defaults to `ANTHROPIC_MODEL`. `claude-sonnet-5-5` costs about half as much as Opus 5.5. |
 | `PSI_API_KEY` | No | Google PageSpeed Insights key. Works without one at low rate limits. |
 | `BRAND_VOICE_FILE` | No | Markdown brand-voice document, relative to the project root, used to ground meta generation (e.g. `brand/brandx.md`). Without it, a neutral default voice is used. |
