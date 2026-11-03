@@ -39,14 +39,15 @@ The panel and the dashboard use the **same four categories and the same scoring*
 
 **The header:** the app name, a **Draft** or **Live** label (hover or focus it to see what was scored), and **Re-scan**.
 
-**Three tabs:** **Score**, **Agent View** (the page as an AI agent receives it, below) and **AI Assist** (the meta & social generator).
+**Three tabs:** **Score**, **Agent View** (the page as an AI agent receives it, below) and **AI Assist** (suggested fixes you can apply to the page, below).
 
 **The Score tab, top to bottom:**
 1. **The verdict:** a score ring out of 100, the verdict (Agent-ready, Almost there or Not ready), **▲ or ▼ N since last scan**, and one sentence, such as "2 fixes would make this page agent-ready."
 2. **Four category bars:** Reach, Read, Understand and Trust, each scored out of 100. Click one to show only that category's checks; click it again to show them all.
 3. **Site issues (only when there are any):** a red strip when something about the **whole site** keeps AI agents out of every page, such as a firewall that blocks ChatGPT, or a robots.txt that shuts out AI search. It's not part of this page's score, and it isn't something you fix in the page: **View in dashboard** opens the Agent access tab with the details and a note for your developer.
 4. **Top fixes:** the three fixes worth the most, each with "+N pts", a **You can fix** or **Developer** badge, and a button:
-   - **Generate** opens AI Assist to write the title or description.
+   - **Generate** opens AI Assist at that fix: the title and description, FAQ answers, question headings or image alt text.
+   - **Choose author** opens AI Assist's author byline (article pages).
    - **Copy snippet** copies ready-to-paste code, such as structured data.
    - **Send to developer** copies a note with the page address, what we found and the fix, to paste into a ticket or a message.
    - **Show how** opens the check below with the details.
@@ -152,7 +153,7 @@ The panel reads the page **as it is in Page Builder right now**, including edits
 ### Title and description are set — Essential
 **What it checks:** The page title (ideally **50–60 characters**) and the meta description (ideally **120–160 characters**). It reads the Sitecore fields you edit.
 
-**Why it matters:** These are the summary that search results and AI show before anyone clicks. If the description is missing, search engines write their own, usually a random snippet you don't control. The panel's **Generate** buttons can write both for you.
+**Why it matters:** These are the summary that search results and AI show before anyone clicks. If the description is missing, search engines write their own, usually a random snippet you don't control. AI Assist can write both for you, and the dashboard can write the missing descriptions for many pages at once.
 
 ### Structured data is present and valid — Essential
 **What it checks:** Whether the page has the "schema" labels (hidden code called JSON-LD) that it needs, and that they're complete:
@@ -162,7 +163,7 @@ The panel reads the page **as it is in Page Builder right now**, including edits
 
 If something is missing, the check gives you **the code to paste in**.
 
-**Why it matters:** Schema tells AI exactly what the content is — an article, a set of answers, a page in a section — without guessing. **This used to always pass, even when the labels weren't there. It now looks at the real page**, so it tells you what's actually missing.
+**Why it matters:** Schema tells AI exactly what the content is — an article, a set of answers, a page in a section — without guessing. **This used to always pass, even when the labels weren't there. It now looks at the real page**, so it tells you what's actually missing. AI Assist shows the same code; your developer adds it to the page template (or AI Assist saves it, if your templates have a field for it).
 
 ### Page identity metadata is complete — Recommended
 **What it checks:** The page's language setting and its social sharing tags (type, title, description and image).
@@ -172,12 +173,12 @@ If something is missing, the check gives you **the code to paste in**.
 ### FAQ answers are quotable — Recommended
 **What it checks:** That each FAQ answer is **40–300 characters** — long enough to be useful, short enough to quote. It finds questions and answers in **any** accordion or expandable section, not just one component.
 
-**Why it matters:** AI assistants lift FAQ answers word for word. A one-line answer is useless; a wall of text won't fit.
+**Why it matters:** AI assistants lift FAQ answers word for word. A one-line answer is useless; a wall of text won't fit. AI Assist can rewrite the answers that miss the range and save them to the FAQ items.
 
 ### Sections answer real questions — Recommended
 **What it checks:** Whether some section headings are phrased as the questions people ask ("How do I…?", "What is…?").
 
-**Why it matters:** People ask AI questions. A section headed by the question it answers is easy to match and cite. Only rephrase where it's natural.
+**Why it matters:** People ask AI questions. A section headed by the question it answers is easy to match and cite. Only rephrase where it's natural. AI Assist suggests question headings for you to copy into the page.
 
 ### Easy to read and quote — Recommended
 **What it checks:** How easy the writing is to read, paragraph by paragraph (aiming for an early-college reading level or simpler), and whether paragraphs are a comfortable length (about 40–120 words).
@@ -187,7 +188,7 @@ If something is missing, the check gives you **the code to paste in**.
 ### Images are described — Recommended
 **What it checks:** What share of images have alt text — a short written description.
 
-**Why it matters:** AI can't see pictures; the alt text is how it learns what an image shows. It's also what screen readers announce.
+**Why it matters:** AI can't see pictures; the alt text is how it learns what an image shows. It's also what screen readers announce. AI Assist looks at each image and suggests alt text, and flags alt text that is just a file name (such as "campaign-creators-unsplash"), which this check counts as present.
 
 ---
 
@@ -201,7 +202,7 @@ If something is missing, the check gives you **the code to paste in**.
 ### Author is named and linked — Recommended, article pages only
 **What it checks:** Whether the article names its author and links to an author profile.
 
-**Why it matters:** A named author with a profile lets AI judge expertise before citing an article.
+**Why it matters:** A named author with a profile lets AI judge expertise before citing an article. AI Assist lets you pick the author from the people who already write for the site. It reads the published page, so the score changes after you publish.
 
 ### Content is recently updated — Recommended
 **What it checks:** When the page was last updated: full marks within six months, partial up to two years.
@@ -273,14 +274,34 @@ The dashboard's **Agent access** tab has the other site checks: whether AI agent
 
 ---
 
-## AI Assist: the meta & social generator
+## AI Assist: suggested fixes you can apply
 
-On the **AI Assist** tab, the panel can write the **meta title, meta description, Open Graph title and Open Graph description** for you. **Generate** on a "Title and description" or "Page identity metadata" fix opens it. Click **Generate** on a field, review the suggestion, then click **Populate field** to write it into the page in Sitecore.
+The **AI Assist** tab collects the fixes the panel can make for you, ordered by the points they'd add. **Generate** (or **Choose author**) on a fix in the Score tab opens the tab at that fix. Each suggestion shows **what's there now** and the suggestion, which you can edit before you use it.
 
-- Suggestions are written **from the page's main text, as in your draft**, so they describe what the page actually says, unpublished edits included. The button waits until the page scan has read the text.
-- They follow your **brand voice document**: tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, the generator uses neutral, plain-language guidelines.
-- Suggestions **stay within the character limit** shown next to them (60 for the meta title, 155 for the meta description, 70 and 200 for the Open Graph fields). If the first draft runs long, the tool asks the AI for a shorter one. In the rare case that it's still over, the count turns amber so you can trim it before populating.
-- Nothing is saved until you click **Populate field**.
+| Fix | What it does | Where it goes |
+|---|---|---|
+| **Title, description and social** | Writes the meta title, meta description and the two social sharing (Open Graph) fields | **Apply to field** saves it to the page's field |
+| **Quotable FAQ answers** | Rewrites FAQ answers so each one answers the question in its first sentence and stands alone, in 40–300 characters | **Apply to field** saves it to that FAQ item |
+| **Image alt text** | Looks at each image and suggests alt text. Images with no alt text, or alt text that is just a file name, come first | **Apply to field** saves it on the image field, so it changes this use of the image only, not the image in the media library |
+| **Author byline** (article pages) | Lists the people who already write for the site, or lets you type a name. No AI | **Apply** saves it to the page's author field |
+| **Structured data** | The schema code the page is missing, built from the page itself. No AI | Copy it for your developer; **Apply** appears only if your templates have a field for it |
+| **Question headings** | Suggests headings phrased as the questions each section answers | Copy, then change the heading in Page Builder |
+| **Summary paragraph** | A 40–70 word paragraph that answers the page's main question, to place at the top | Copy, then paste it into the page's intro |
+
+**How a change is saved:**
+- **Nothing is written until you confirm.** **Apply** opens a box showing the field, the item and its language, and the value **before → after**. Only **Write to Sitecore** saves it.
+- Changes go into the **current version** of the page or item and follow your workflow. **Nothing is published**: the live site changes when you publish as usual.
+- After saving, a message confirms it, and the app keeps a record of the change (in the browser's console) with the old and the new value, so it can be undone by hand.
+- If a component is **shared** (used on other pages too), the confirmation says so: the change shows everywhere that component is used.
+- When **Apply** can't be used, the reason is shown next to it, for example "This page's template has no "MetaDescription" field." Copy still works.
+
+**What the suggestions are based on:**
+- **Your draft:** the page's main text, unpublished edits included. The buttons wait until the page text has been read.
+- **Your brand voice document:** tone, words to use and avoid, and compliance rules such as "no guaranteed returns". If no brand voice has been set up, neutral, plain-language guidelines are used.
+- **Length limits** are shown under each suggestion (60 characters for the meta title, 120–160 for the meta description, 40–300 for FAQ answers, 125 for alt text). The count turns amber when a suggestion is outside the range, so you can trim it first.
+- Asking again for the same page text costs nothing: the answer is remembered until the text changes.
+
+**In demo mode** (`?demo=1`), every fix shows an example suggestion, and nothing is sent to the AI or written to Sitecore. **Apply** says "Demo: nothing is written to Sitecore."
 
 ---
 
@@ -289,6 +310,7 @@ On the **AI Assist** tab, the panel can write the **meta title, meta description
 - **"Four plain questions."** Can AI agents get to it, read it, understand it, and trust it? Every check answers one of them.
 - **"Answer first."** One verdict and one sentence: what it would take to make this page agent-ready.
 - **"Fix the essentials first."** Top fixes ranks them by what they're worth, and every fix has a button: Generate, Copy snippet or Send to developer.
+- **"Fix it right here."** AI Assist writes the description, FAQ answers and alt text, and saves them to the page after you confirm. Nothing is published until you say so.
 - **"It checks the real page."** Schema checks look at what's actually on the page, and hand you the code when something's missing.
 - **"Fair by design."** Checks that don't apply are skipped, not failed.
 - **"Score as you write."** Edit a heading and the score updates by itself, before you publish.

@@ -89,7 +89,9 @@ describe("fixes", () => {
   it("picks a verb button per fix", () => {
     expect(fixButton({ id: "understand.title-meta", fix: "generate", owner: "author" })).toBe("generate");
     // Alt text has a generate fix, but the generator can't write it until Phase 9.
-    expect(fixButton({ id: "understand.image-alt", fix: "generate", owner: "author" })).toBe("show-how");
+    expect(fixButton({ id: "understand.image-alt", fix: "generate", owner: "author" })).toBe("generate");
+    expect(fixButton({ id: "understand.faq-quality", fix: "generate", owner: "author" })).toBe("generate");
+    expect(fixButton({ id: "trust.author", fix: "apply-field", owner: "author" })).toBe("apply");
     expect(fixButton({ id: "understand.json-ld", fix: "copy-snippet", owner: "developer", codePreview: "{}" })).toBe("copy-snippet");
     expect(fixButton({ id: "understand.json-ld", fix: "copy-snippet", owner: "developer" })).toBe("send-to-developer");
     expect(fixButton({ id: "reach.canonical", fix: "send-to-developer", owner: "developer" })).toBe("send-to-developer");

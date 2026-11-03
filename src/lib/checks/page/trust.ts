@@ -68,6 +68,7 @@ export const author: CheckDef<PageContext> = {
   scope: "page",
   sources: ["live"],
   owner: "author",
+  fix: "apply-field",
   applies: (ctx) => isArticleTemplate(ctx.templateName),
   run(ctx) {
     const { html } = ctx;

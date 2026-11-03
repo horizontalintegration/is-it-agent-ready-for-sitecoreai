@@ -6,15 +6,19 @@ import type { AuthoringFields, FaqItem } from "@/lib/rule-engine/types";
 import { stripHtml } from "@/lib/rule-engine/helpers";
 import { pageFieldsFromFieldMap } from "@/lib/checks/context";
 import type { PageFields } from "@/lib/checks/types";
+import { FIELD_MAP, resolveFieldName } from "@/lib/sitecore/field-map";
 
 /**
- * Everything the "Populate field" action needs to write a value back via
- * `xmc.pages.updateFields`. `fieldNames` maps each meta/social field to its
- * Sitecore field name on the current page item — null when the page's template
- * doesn't define that field. (updateFields matches fields by name, not GUID.)
+ * Everything an Apply needs to write a page field via `xmc.pages.updateFields`
+ * (src/lib/sitecore/write.ts). `fieldNames` maps each field the app writes to
+ * its name on the current page item — null when the page's template doesn't
+ * define it, or none is configured. (updateFields matches fields by name.)
  */
 export interface PageWriteContext {
   pageId: string | null;
+  /** Content path of the page item, e.g. /sitecore/content/…/Home/About. */
+  pagePath: string | null;
+  pageName: string | null;
   language: string;
   sitecoreContextId: string | undefined;
   fieldNames: {
@@ -22,7 +26,22 @@ export interface PageWriteContext {
     metaDescription: string | null;
     ogTitle: string | null;
     ogDescription: string | null;
+    author: string | null;
+    jsonLd: string | null;
   };
+}
+
+/** One FAQ question and answer, with the datasource item it's stored in (plan section 13, item 4). */
+export interface FaqSource {
+  itemId: string;
+  path: string;
+  question: string;
+  /** The answer field's raw rich text. */
+  answerHtml: string;
+  /** The answer as plain text. */
+  answer: string;
+  /** The answer field's name on the item. */
+  answerField: string;
 }
 
 interface UsePageFieldsResult {
@@ -42,6 +61,14 @@ interface UsePageFieldsResult {
   writeContext: PageWriteContext;
   /** Goes up on every `pages.content.fieldsUpdated`, so the draft HTML can be re-read. */
   contentVersion: number;
+  /** The page's FAQ pairs with their datasource items (AccordionItem renderings). */
+  faqSources: FaqSource[];
+  /** Every datasource the page's own layout references, resolved to a path or an item ID. */
+  datasources: string[];
+  /** The page item's raw field values, by field name as the item spells it (image fields, author, …). */
+  fieldValues: Record<string, string>;
+  /** Reads the page's fields and FAQ datasources again (after a write). */
+  refetch: () => void;
 }
 
 type SdkPageInfo = {
@@ -93,6 +120,7 @@ const AUTHORING_ITEM_FIELDS_QUERY = /* GraphQL */ `
     item(where: { path: $path, language: $language }) {
       itemId
       name
+      path
       template { name }
       fields(ownFields: false) {
         nodes {
@@ -113,6 +141,7 @@ interface AuthoringEnvelope {
     item?: {
       itemId?: string;
       name?: string;
+      path?: string;
       template?: { name?: string | null } | null;
       fields?: { nodes?: AuthoringItemFieldNode[] };
     } | null;
@@ -188,13 +217,13 @@ async function fetchItemFieldsAuthoring(
 // AccordionItem / FAQ fetching
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Fetch heading + content fields for a single AccordionItem datasource. */
+/** Fetch the question and answer fields of a single AccordionItem datasource. */
 async function fetchAccordionItemFields(
   client: ClientSDK,
   dataSource: string,
   language: string,
   sitecoreContextId: string | undefined,
-): Promise<FaqItem | null> {
+): Promise<FaqSource | null> {
   try {
     const result = await client.mutate("xmc.authoring.graphql", {
       params: {
@@ -214,17 +243,32 @@ async function fetchAccordionItemFields(
     if (nodes.length === 0) return null;
 
     const fieldMap: Record<string, string> = {};
+    const names: Record<string, string> = {};
     for (const n of nodes) {
       if (n?.name && typeof n.value === "string") {
         fieldMap[n.name.toLowerCase()] = n.value;
+        names[n.name.toLowerCase()] = n.name;
       }
     }
 
-    const question = fieldMap["heading"] ?? fieldMap["title"] ?? null;
-    const rawAnswer = fieldMap["content"] ?? fieldMap["text"] ?? fieldMap["body"] ?? null;
-    if (!question || !rawAnswer) return null;
+    // The configured field names first (FIELD_MAP), then the common ones.
+    const pick = (candidates: string[]) => candidates.map((c) => c.toLowerCase()).find((c) => fieldMap[c] !== undefined) ?? null;
+    const questionKey = pick([FIELD_MAP.faqQuestion, "heading", "title"]);
+    const answerKey = pick([FIELD_MAP.faqAnswer, "content", "text", "body"]);
+    const item = envelope?.data?.item;
+    if (!questionKey || !answerKey || !item?.itemId) return null;
+    const question = fieldMap[questionKey];
+    const answerHtml = fieldMap[answerKey];
+    if (!question || !answerHtml) return null;
 
-    return { question, answer: stripHtml(rawAnswer) };
+    return {
+      itemId: item.itemId,
+      path: item.path ?? dataSource,
+      question,
+      answerHtml,
+      answer: stripHtml(answerHtml),
+      answerField: names[answerKey],
+    };
   } catch (err) {
     console.error("[usePageFields] fetchAccordionItemFields threw:", err);
     return null;
@@ -289,10 +333,10 @@ function mapFieldsToAuthoring(
   const noIndexField = robotsMetaTag.includes("noindex");
 
   return {
-    pageTitle: get(META_FIELD_NAMES.pageTitle) ?? pageName ?? null,
-    metaDescription: get(META_FIELD_NAMES.metaDescription),
-    ogTitle: get(META_FIELD_NAMES.ogTitle),
-    ogDescription: get(META_FIELD_NAMES.ogDescription),
+    pageTitle: get(FIELD_MAP.metaTitle) ?? pageName ?? null,
+    metaDescription: get(FIELD_MAP.metaDescription),
+    ogTitle: get(FIELD_MAP.ogTitle),
+    ogDescription: get(FIELD_MAP.ogDescription),
     ogImage: get("OpenGraphImage"),
     author: null,
     publishDate: null,
@@ -313,27 +357,33 @@ function mapFieldsToAuthoring(
 // Rendering template ID that identifies AccordionItem components in the layout.
 const ACCORDION_ITEM_RENDERING_ID = "286d51ef-1a33-4920-9009-569a66a27629";
 
-// Sitecore field names for the four meta/social fields the generator targets.
-// Overridable per-tenant via env (mirrors useSitePages.ts), since field names
-// vary between SXA and custom templates.
-const META_FIELD_NAMES = {
-  pageTitle: process.env.NEXT_PUBLIC_FIELD_TITLE ?? "pageTitle",
-  metaDescription: process.env.NEXT_PUBLIC_FIELD_META_DESCRIPTION ?? "MetaDescription",
-  ogTitle: process.env.NEXT_PUBLIC_FIELD_OG_TITLE ?? "OpenGraphTitle",
-  ogDescription: process.env.NEXT_PUBLIC_FIELD_OG_DESCRIPTION ?? "OpenGraphDescription",
-} as const;
+const NO_FIELD_NAMES: PageWriteContext["fieldNames"] = {
+  pageTitle: null,
+  metaDescription: null,
+  ogTitle: null,
+  ogDescription: null,
+  author: null,
+  jsonLd: null,
+};
 
 function buildFieldNames(
   nameMap: Record<string, string>,
 ): PageWriteContext["fieldNames"] {
   // nameMap is keyed by lower-cased field name → original name (see fetchItemFieldsAuthoring).
-  // A null entry means the field isn't present on the page's template.
+  // A null entry means the field isn't present on the page's template (field names: FIELD_MAP).
   return {
-    pageTitle: nameMap[META_FIELD_NAMES.pageTitle.toLowerCase()] ?? null,
-    metaDescription: nameMap[META_FIELD_NAMES.metaDescription.toLowerCase()] ?? null,
-    ogTitle: nameMap[META_FIELD_NAMES.ogTitle.toLowerCase()] ?? null,
-    ogDescription: nameMap[META_FIELD_NAMES.ogDescription.toLowerCase()] ?? null,
+    pageTitle: resolveFieldName(nameMap, FIELD_MAP.metaTitle),
+    metaDescription: resolveFieldName(nameMap, FIELD_MAP.metaDescription),
+    ogTitle: resolveFieldName(nameMap, FIELD_MAP.ogTitle),
+    ogDescription: resolveFieldName(nameMap, FIELD_MAP.ogDescription),
+    author: resolveFieldName(nameMap, FIELD_MAP.author),
+    jsonLd: resolveFieldName(nameMap, FIELD_MAP.jsonLd),
   };
+}
+
+/** A layout datasource as a path or item ID: `local:/Data/Faq1` resolves under the page. */
+function resolveDatasource(dataSource: string, pagePath: string | undefined): string {
+  return dataSource.startsWith("local:") ? `${pagePath ?? ""}${dataSource.slice("local:".length)}` : dataSource;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -356,15 +406,15 @@ export function usePageFields(
   const [contentVersion, setContentVersion] = useState(0);
   const [writeContext, setWriteContext] = useState<PageWriteContext>({
     pageId: null,
+    pagePath: null,
+    pageName: null,
     language: "en",
     sitecoreContextId: undefined,
-    fieldNames: {
-      pageTitle: null,
-      metaDescription: null,
-      ogTitle: null,
-      ogDescription: null,
-    },
+    fieldNames: NO_FIELD_NAMES,
   });
+  const [faqSources, setFaqSources] = useState<FaqSource[]>([]);
+  const [datasources, setDatasources] = useState<string[]>([]);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
   // Refs hold the latest values across async closures.
   const fieldMapRef = useRef<Record<string, string>>({});
@@ -376,12 +426,19 @@ export function usePageFields(
   const contextIdRef = useRef<string | undefined>(undefined);
   const currentSiteRef = useRef<string | undefined>(undefined);
   const inFlightRef = useRef<Promise<unknown> | null>(null);
-  const faqItemsRef = useRef<FaqItem[]>([]);
+  const faqItemsRef = useRef<FaqSource[]>([]);
+  const datasourcesRef = useRef<string[]>([]);
   const templateNameRef = useRef<string | null>(null);
 
   const rebuildFields = useCallback(() => {
+    const faqItems: FaqItem[] = faqItemsRef.current.map((f) => ({ question: f.question, answer: f.answer }));
     setFields(
-      mapFieldsToAuthoring(fieldMapRef.current, currentPageNameRef.current, faqItemsRef.current),
+      mapFieldsToAuthoring(fieldMapRef.current, currentPageNameRef.current, faqItems),
+    );
+    setFaqSources(faqItemsRef.current);
+    setDatasources(datasourcesRef.current);
+    setFieldValues(
+      Object.fromEntries(Object.entries(fieldNameMapRef.current).map(([key, name]) => [name, fieldMapRef.current[key] ?? ""])),
     );
     // Null while the page's fields are loading, so the checks wait for them.
     setScoringFields(
@@ -390,6 +447,8 @@ export function usePageFields(
     setTemplateName(templateNameRef.current);
     setWriteContext({
       pageId: currentPageIdRef.current ?? null,
+      pagePath: currentPathRef.current ?? null,
+      pageName: currentPageNameRef.current ?? null,
       language: currentLanguageRef.current,
       sitecoreContextId: contextIdRef.current,
       fieldNames: buildFieldNames(fieldNameMapRef.current),
@@ -442,32 +501,33 @@ export function usePageFields(
         return;
       }
 
-      // Only collect datasources belonging to AccordionItem renderings (matched by template ID).
+      // Every datasource (AI Assist reads their image fields on demand); the
+      // AccordionItem ones (matched by rendering ID) are the FAQ pairs.
       const datasources: string[] = [];
+      const accordion: string[] = [];
       for (const device of parsedLayout.devices ?? []) {
         for (const rendering of device.renderings ?? []) {
-          if (rendering.id?.toLowerCase() !== ACCORDION_ITEM_RENDERING_ID) continue;
           if (!rendering.dataSource) continue;
-          const ds = rendering.dataSource.startsWith("local:")
-            ? `${currentPathRef.current}${rendering.dataSource.slice("local:".length)}`
-            : rendering.dataSource;
-          datasources.push(ds);
+          const ds = resolveDatasource(rendering.dataSource, currentPathRef.current);
+          if (!datasources.includes(ds)) datasources.push(ds);
+          if (rendering.id?.toLowerCase() === ACCORDION_ITEM_RENDERING_ID) accordion.push(ds);
         }
       }
+      datasourcesRef.current = datasources;
 
-      if (datasources.length === 0) {
+      if (accordion.length === 0) {
         faqItemsRef.current = [];
         rebuildFields();
         return;
       }
 
       const results = await Promise.allSettled(
-        datasources.map((ds) =>
+        accordion.map((ds) =>
           fetchAccordionItemFields(client, ds, language, contextIdRef.current)
         )
       );
 
-      const items: FaqItem[] = [];
+      const items: FaqSource[] = [];
       for (const r of results) {
         if (r.status === "fulfilled" && r.value) items.push(r.value);
         else if (r.status === "rejected") console.warn("[faq] datasource fetch rejected:", r.reason);
@@ -513,6 +573,12 @@ export function usePageFields(
       if (inFlightRef.current === p) inFlightRef.current = null;
     }
   }, [client, rebuildFields]);
+
+  // After a write: the page's fields and FAQ answers as Sitecore now has them.
+  const refetch = useCallback(() => {
+    void refetchFields();
+    void refetchFaqItems();
+  }, [refetchFields, refetchFaqItems]);
 
   useEffect(() => {
     if (!client || !isInitialized) return;
@@ -587,6 +653,7 @@ export function usePageFields(
         fieldMapRef.current = {};
         fieldNameMapRef.current = {};
         faqItemsRef.current = [];
+        datasourcesRef.current = [];
         templateNameRef.current = null;
         rebuildFields();
         void refetchFields();
@@ -665,7 +732,7 @@ export function usePageFields(
   }, [client, isInitialized, refetchFields, refetchFaqItems, rebuildFields]);
 
   return useMemo(
-    () => ({ fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion }),
-    [fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion],
+    () => ({ fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion, faqSources, datasources, fieldValues, refetch }),
+    [fields, scoringFields, pageUrl, route, templateName, siteDomain, siteName, editingToken, isLoading, writeContext, contentVersion, faqSources, datasources, fieldValues, refetch],
   );
 }

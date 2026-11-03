@@ -10,7 +10,9 @@ import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
 import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
 import { useWhatChanged } from "@/hooks/useWhatChanged";
 import { AppMark } from "@/components/shared/AppMark";
-import { AssistSpike, useAssistSpikeEnabled } from "@/components/spike/AssistSpike";
+import { BulkMetaDialog } from "@/components/dashboard/BulkMetaDialog";
+import { WriteConfirmProvider } from "@/components/shared/WriteConfirm";
+import { demoAnswers } from "@/lib/assist/demo";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { PagesTab } from "@/components/dashboard/PagesTab";
@@ -25,6 +27,7 @@ import {
   DEMO_SITE_HISTORY_BEFORE,
   makeTestCitationDemo,
   makeTestSiteContext,
+  makeTestAssist,
   makeTestSitePages,
   makeTestWhatChanged,
 } from "@/lib/rule-engine/test-fixture";
@@ -62,8 +65,6 @@ const DEMO_SITE_CONTEXT = {
 export default function DashboardWidgetPage() {
   const { client, isInitialized } = useMarketplaceClient();
   const live = useSitePages(client, isInitialized);
-  // TEMPORARY (Phase 9 spikes): localStorage iiar-spike=9 or ?spike=9.
-  const showSpike = useAssistSpikeEnabled();
 
   // Fixture data is opt-in via `?demo=1` in the URL.
   // `&md=1`: the demo site serves Markdown (P5 4/4, S3 passes).
@@ -203,6 +204,13 @@ export default function DashboardWidgetPage() {
     setTab("pages");
   };
 
+  // "Generate for all" (Phase 9). Demo mode uses the fixture's suggestions and
+  // writes nothing; the standalone dashboard has no pages, so no such row.
+  const [bulkIssue, setBulkIssue] = useState<IssueGroup | null>(null);
+  const bulkDemo = useMemo(() => (useFixture ? demoAnswers(makeTestAssist()) : null), [useFixture]);
+  const bulkPages = useMemo(() => (bulkIssue ? pages.filter((p) => bulkIssue.pageIds.includes(p.id)) : []), [bulkIssue, pages]);
+  const writeClient = offline ? null : client;
+
   const siteHost = siteContext.domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const tabContent = "min-h-0 flex-1 overflow-y-auto focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=inactive]:hidden";
   const trigger = "h-11 border-b-0 px-1 text-md font-semibold data-[state=active]:border-b-2";
@@ -217,6 +225,7 @@ export default function DashboardWidgetPage() {
   ) : null;
 
   return (
+    <WriteConfirmProvider client={writeClient} contextId={offline ? undefined : live.siteContext.sitecoreContextId || undefined}>
     <div className="flex h-screen flex-col bg-subtle-bg text-body-text">
       <Tabs value={tab} onValueChange={(v) => setTab(v as DashboardTab)} className="min-h-0 flex-1 gap-0">
         <header className="shrink-0 border-b bg-body-bg">
@@ -272,12 +281,6 @@ export default function DashboardWidgetPage() {
           </div>
         </header>
 
-        {showSpike && !useFixture && (
-          <div className="max-h-[50vh] shrink-0 overflow-y-auto border-b">
-            <AssistSpike client={client} mode="dashboard" />
-          </div>
-        )}
-
         <TabsContent value="overview" className={tabContent}>
           {loadError ?? (
             <OverviewTab
@@ -289,6 +292,7 @@ export default function DashboardWidgetPage() {
               history={history.map((h) => h.score)}
               changes={changes}
               onReviewPages={reviewPages}
+              onGenerateAll={setBulkIssue}
             />
           )}
         </TabsContent>
@@ -345,5 +349,13 @@ export default function DashboardWidgetPage() {
         </TabsContent>
       </Tabs>
     </div>
+    <BulkMetaDialog
+      open={Boolean(bulkIssue)}
+      onOpenChange={(o) => !o && setBulkIssue(null)}
+      pages={bulkPages}
+      demo={bulkDemo}
+      hasClient={Boolean(writeClient)}
+    />
+    </WriteConfirmProvider>
   );
 }

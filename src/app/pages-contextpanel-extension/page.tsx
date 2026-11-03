@@ -10,7 +10,7 @@ import { useAgentAccess } from "@/hooks/useAgentAccess";
 import { useDemoMode, useDemoServesMarkdown } from "@/hooks/useDemoMode";
 import { useMarkdownCheck } from "@/hooks/useMarkdownCheck";
 import { useScanDelta } from "@/hooks/useScoreHistory";
-import { DEMO_PREVIOUS_PAGE_SCORE, makeTestAgentAccess, makeTestDraft, makeTestMarkdownCheck, makeTestPageData } from "@/lib/rule-engine/test-fixture";
+import { DEMO_PREVIOUS_PAGE_SCORE, makeTestAgentAccess, makeTestAssist, makeTestDraft, makeTestMarkdownCheck, makeTestPageData } from "@/lib/rule-engine/test-fixture";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPageContext, isHomeRoute, type PageInput } from "@/lib/checks/context";
 import { draftDiffersFromLive } from "@/lib/checks/draft-diff";
@@ -23,8 +23,9 @@ import { Chip } from "@/components/shared/Chips";
 import { AgentViewTab } from "@/components/panel/AgentViewTab";
 import { ScoreTab } from "@/components/panel/ScoreTab";
 import { ScanNote } from "@/components/panel/ScanNote";
-import { MetaGenerator } from "@/components/MetaGenerator";
-import { AssistSpike, useAssistSpikeEnabled } from "@/components/spike/AssistSpike";
+import { AssistTab } from "@/components/panel/AssistTab";
+import { WriteConfirmProvider } from "@/components/shared/WriteConfirm";
+import { demoAnswers } from "@/lib/assist/demo";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -59,6 +60,10 @@ export default function PagesContextPanel() {
     isLoading,
     writeContext,
     contentVersion,
+    faqSources,
+    datasources,
+    fieldValues,
+    refetch: refetchFields,
   } = usePageFields(client, isInitialized);
 
   // Fixture data is opt-in via `?demo=1` in the URL — never auto-activated
@@ -218,8 +223,6 @@ export default function PagesContextPanel() {
   };
 
   const showSkeleton = !fixture && isLoading;
-  // TEMPORARY (Phase 9 spikes): `?spike=9` or localStorage iiar-spike=9.
-  const showSpike = useAssistSpikeEnabled();
   const [tab, setTab] = useState<PanelTab>("score");
 
   // "▲ N since last scan": recorded once the page, its draft and the on-demand
@@ -238,10 +241,28 @@ export default function PagesContextPanel() {
     ? "Scored from your Page Builder draft, unsaved edits included. Title, canonical, metadata and structured data come from the published page."
     : "Scored from the published page: the Page Builder draft isn't available.";
 
+  // AI Assist (Phase 9): the draft's images, headings and Q&A pairs; the demo's
+  // suggestions and fields in `?demo=1` (no requests, writes off).
+  const assistBody = draft?.html ?? liveHtml;
+  const allRows = useMemo(() => Object.values(rows).flat(), [rows]);
+  const [assistFocus, setAssistFocus] = useState<string | null>(null);
+  const assistDemo = useMemo(() => {
+    if (!fixture) return null;
+    const data = makeTestAssist();
+    return { data, answers: demoAnswers(data) };
+  }, [fixture]);
+  // After a write: the fields and FAQ answers as Sitecore has them now, and a
+  // fresh draft (Page Builder may not announce a write made through the API).
+  const afterWrite = () => {
+    refetchFields();
+    pageHtml.refresh();
+  };
+
   const tabContent = "min-h-0 flex-1 overflow-y-auto focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=inactive]:hidden";
   const trigger = "h-10 border-b-0 px-2.5 text-sm font-semibold data-[state=active]:border-b-2";
 
   return (
+    <WriteConfirmProvider client={fixture ? null : client} contextId={writeContext.sitecoreContextId}>
     <TooltipProvider>
       <div className="flex h-screen flex-col bg-body-bg text-body-text">
         <header className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5">
@@ -270,12 +291,6 @@ export default function PagesContextPanel() {
           </Button>
         </header>
 
-        {showSpike && !fixture && (
-          <div className="max-h-[55vh] shrink-0 overflow-y-auto border-b">
-            <AssistSpike client={client} sitecoreContextId={writeContext.sitecoreContextId} />
-          </div>
-        )}
-
         <Tabs value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="min-h-0 flex-1 gap-0">
           <TabsList aria-label="Panel sections" className="h-auto w-full shrink-0 justify-start gap-1 border-b px-2">
             <TabsTrigger value="score" className={trigger}>Score</TabsTrigger>
@@ -303,7 +318,10 @@ export default function PagesContextPanel() {
                   aiStale={scan.aiStale}
                   onAiScan={scan.runAiScan}
                   onPsiScan={scan.runPsiScan}
-                  onGenerate={() => setTab("assist")}
+                  onGenerate={(checkId) => {
+                    setAssistFocus(checkId);
+                    setTab("assist");
+                  }}
                 />
                 <ScanNote isScanning={isScanning} lastScannedAt={scan.lastScannedAt} demo={Boolean(fixture)} />
               </>
@@ -328,22 +346,39 @@ export default function PagesContextPanel() {
           </TabsContent>
 
           <TabsContent value="assist" forceMount className={tabContent}>
-            <MetaGenerator
-              client={client}
-              writeContext={writeContext}
-              current={{
-                metaTitle: effectiveAuthoring?.pageTitle ?? "",
-                metaDescription: effectiveAuthoring?.metaDescription ?? "",
-                ogTitle: effectiveAuthoring?.ogTitle ?? "",
-                ogDescription: effectiveAuthoring?.ogDescription ?? "",
-              }}
-              pageTitle={pageTitle}
-              bodyText={bodyText}
-              bodyPending={bodyPending}
-            />
+            {showSkeleton ? (
+              <SkeletonRows />
+            ) : (
+              <AssistTab
+                client={client}
+                demo={assistDemo}
+                active={tab === "assist"}
+                writeContext={writeContext}
+                fieldValues={fieldValues}
+                faqSources={faqSources}
+                datasources={datasources}
+                currentMeta={{
+                  metaTitle: effectiveAuthoring?.pageTitle ?? "",
+                  metaDescription: effectiveAuthoring?.metaDescription ?? "",
+                  ogTitle: effectiveAuthoring?.ogTitle ?? "",
+                  ogDescription: effectiveAuthoring?.ogDescription ?? "",
+                }}
+                pageTitle={pageTitle}
+                mainText={bodyText}
+                bodyPending={bodyPending}
+                templateName={pageInput.templateName}
+                images={assistBody?.images ?? []}
+                h2s={assistBody?.headings.filter((h) => h.level === 2).map((h) => h.text) ?? []}
+                qaPairs={assistBody?.qaPairs ?? []}
+                rows={allRows}
+                focus={assistFocus}
+                onWritten={afterWrite}
+              />
+            )}
           </TabsContent>
         </Tabs>
       </div>
     </TooltipProvider>
+    </WriteConfirmProvider>
   );
 }

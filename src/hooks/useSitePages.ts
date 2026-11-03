@@ -28,6 +28,8 @@ function cacheKey(siteId: string): string {
   return `${CACHE_KEY_PREFIX}${siteId}`;
 }
 const CONCURRENCY = 5;
+/** The dashboard lists and scores the site's pages in this language. */
+export const SITE_LANGUAGE = "en";
 const TREE_WALK_DEPTH = 5; // descendants levels fetched per GraphQL call
 
 // Sitecore field names pulled at enumeration time: the fields the checks read
@@ -412,6 +414,8 @@ export interface UseSitePagesResult {
     organization: string;
     /** Tenant name from application.context resourceAccess — for Pages editor deep-links. */
     tenantName: string;
+    /** For writes from the dashboard (Generate for all). */
+    sitecoreContextId: string;
   };
   isLoading: boolean;
   error: string | null;
@@ -438,6 +442,7 @@ export function useSitePages(
     name: "",
     organization: "",
     tenantName: "",
+    sitecoreContextId: "",
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -628,9 +633,7 @@ export function useSitePages(
           resourceCount: list.length,
           hasContextId: Boolean(sitecoreContextId),
         });
-        if (organization || tenantName) {
-          setSiteContext((prev) => ({ ...prev, organization, tenantName }));
-        }
+        setSiteContext((prev) => ({ ...prev, organization, tenantName, sitecoreContextId: sitecoreContextId ?? "" }));
       } catch (err) {
         console.warn("[sitePages] application.context query failed:", err);
       }
@@ -701,7 +704,7 @@ export function useSitePages(
       //   a. homePageId from xmc.sites.retrieveSite (preferred — exact match)
       //   b. content-tree walk by siteName (works without Sites M2M scope)
       //   c. NEXT_PUBLIC_SITE_ROOT_PATH env override (manual fallback)
-      const language = "en";
+      const language = SITE_LANGUAGE;
       const envOverride = process.env.NEXT_PUBLIC_SITE_ROOT_PATH?.trim();
       let lookupBy: "itemId" | "path" = "itemId";
       let rootRef: string | null = siteInfo.homePageId ?? null;
@@ -835,6 +838,9 @@ export function useSitePages(
             lastModified,
             metaTitle,
             metaDescription,
+            // field(name) is null when the page's template has no such field.
+            metaDescriptionField: p.metaDescription ? SCORING_FIELD_NAMES.metaDescription : null,
+            language: SITE_LANGUAGE,
             fields,
             score: fromCache ? fromCache.score : null,
             scanStatus: fromCache ? "scanned" : "idle",
@@ -887,7 +893,7 @@ export function useSitePages(
       if (!newSiteId) {
         setError("Could not load site context.");
         setPages([]);
-        setSiteContext({ id: "", domain: "", name: "", organization: "", tenantName: "" });
+        setSiteContext({ id: "", domain: "", name: "", organization: "", tenantName: "", sitecoreContextId: "" });
         setIsLoading(false);
         return;
       }

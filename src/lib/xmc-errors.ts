@@ -18,6 +18,10 @@ const MAX_DEPTH = 3;
 export const HOST_AUTH_ERROR_MESSAGE =
   "Sitecore didn't authorize the SitecoreAI request from this dashboard widget, so the site's pages can't be loaded here. The Page builder panel isn't affected.";
 
+/** The same refusal on a write (Apply, Write approved). */
+export const HOST_AUTH_WRITE_MESSAGE =
+  "Sitecore didn't authorize the write from this extension, so nothing was saved. Try again from the Page builder panel.";
+
 /** True when an error (or HTTP error envelope) is the host's built-in authorization refusal. */
 export function isHostAuthError(err: unknown, depth = 0): boolean {
   if (err == null || depth > MAX_DEPTH) return false;

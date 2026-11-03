@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { labelForPct, LABEL_TEXT, READY_PCT, type ScoreLabel } from "@/lib/score-thresholds";
+import { DESCRIPTION_MISSING } from "./page/understand";
 import { checkMeta, PAGE_CHECKS } from "./registry";
 import {
   CATEGORIES,
@@ -147,14 +148,24 @@ export function needsWork(row: Pick<CheckRowModel, "display">): boolean {
 
 // ── Fixes ─────────────────────────────────────────────────────────────────────
 
-/** The checks the AI Assist tab can generate a fix for today (the meta & social generator). */
-const GENERATOR_CHECK_IDS = new Set(["understand.title-meta", "understand.metadata"]);
+/** The checks the AI Assist tab has a card for (Phase 9). */
+const GENERATOR_CHECK_IDS = new Set([
+  "understand.title-meta",
+  "understand.metadata",
+  "understand.faq-quality",
+  "understand.question-headings",
+  "understand.image-alt",
+]);
+/** Checks fixed by choosing a value in AI Assist, with no AI (P17's author byline). */
+const APPLY_CHECK_IDS = new Set(["trust.author"]);
 
 /** The verb button a fix gets (plan section 6.2, item 2). */
-export type FixButton = "generate" | "copy-snippet" | "send-to-developer" | "show-how";
+export type FixButton = "generate" | "apply" | "copy-snippet" | "send-to-developer" | "show-how";
 
 export const FIX_BUTTON_TEXT: Record<FixButton, string> = {
   generate: "Generate",
+  // Only P17 uses it today.
+  apply: "Choose author",
   "copy-snippet": "Copy snippet",
   "send-to-developer": "Send to developer",
   "show-how": "Show how",
@@ -162,6 +173,7 @@ export const FIX_BUTTON_TEXT: Record<FixButton, string> = {
 
 export function fixButton(row: Pick<CheckRowModel, "id" | "fix" | "owner" | "codePreview">): FixButton {
   if (row.fix === "generate" && GENERATOR_CHECK_IDS.has(row.id)) return "generate";
+  if (row.fix === "apply-field" && APPLY_CHECK_IDS.has(row.id)) return "apply";
   if (row.fix === "copy-snippet" && row.codePreview) return "copy-snippet";
   if (row.fix === "send-to-developer" || row.owner === "developer") return "send-to-developer";
   return "show-how";
@@ -261,6 +273,8 @@ export interface PageScoreSummary {
   issues: PageIssue[];
   /** P5: true when the page serves Markdown (any credit), false when it doesn't; null when it wasn't checked. */
   servesMarkdown: boolean | null;
+  /** Points a meta description would add (half of P9); 0 when the page has one. Missing in summaries cached before Phase 9. */
+  descriptionGain?: number;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -275,6 +289,8 @@ export function summarisePageReport(report: PageReport): PageScoreSummary {
         .filter((o) => o.result.state === "scored" && (o.result.status === "warning" || o.result.status === "fail"))
         .map((o) => ({ id: o.check.id, status: o.result.status as PageIssue["status"], gain: round2(Math.max(0, o.maxPoints - o.points)) }));
   const p5 = report.outcomes.find((o) => o.check.id === "read.markdown-page")?.result;
+  const p9 = report.outcomes.find((o) => o.check.id === "understand.title-meta");
+  const noDescription = !report.gate.blocked && p9?.result.state === "scored" && (p9.result.details ?? []).includes(DESCRIPTION_MISSING);
   return {
     score: report.gate.blocked ? null : report.score,
     label: report.gate.blocked || report.score === null ? null : labelForPct(report.score),
@@ -283,6 +299,7 @@ export function summarisePageReport(report: PageReport): PageScoreSummary {
     categories,
     issues,
     servesMarkdown: p5?.state === "scored" ? p5.credit > 0 : null,
+    descriptionGain: noDescription && p9 ? round2(p9.maxPoints / 2) : 0,
   };
 }
 
@@ -304,6 +321,41 @@ export interface IssueGroup {
   weight: number;
   /** The site check's result (site issues only), for its developer note. */
   row?: CheckRowModel;
+  /** A fix the dashboard can generate for every page at once ("Generate for all"). */
+  bulk?: "meta-description";
+}
+
+/** A dashboard page as Fix first reads it. */
+type FixFirstPage = { id: string; score: PageScoreSummary | null; fields?: { metaDescription: string | null } | null };
+
+/**
+ * "Meta description missing": the pages whose Meta Description field is empty,
+ * for "Generate for all" (plan section 6.4). One part of P9, so it can show
+ * next to P9's own row, which also covers the title.
+ */
+export function metaDescriptionGroup(pages: FixFirstPage[]): IssueGroup | null {
+  const missing = pages
+    .filter((p) => p.score && !p.score.blocked && !p.fields?.metaDescription)
+    .map((p) => {
+      // Summaries cached before Phase 9 have no descriptionGain: P9's own gain stands in.
+      const gain = p.score!.descriptionGain ?? p.score!.issues.find((i) => i.id === "understand.title-meta")?.gain ?? 0;
+      return { id: p.id, gain };
+    })
+    .filter((p) => p.gain > 0);
+  if (missing.length === 0) return null;
+  const total = missing.reduce((s, p) => s + p.gain, 0);
+  const meta = PAGE_CHECK_META.get("understand.title-meta");
+  return {
+    id: "meta-description-missing",
+    title: "Meta description missing",
+    owner: meta?.owner ?? "author",
+    display: "fix",
+    scope: "page",
+    pageIds: missing.map((p) => p.id),
+    gainEach: Math.max(1, Math.round(total / missing.length)),
+    weight: total,
+    bulk: "meta-description",
+  };
 }
 
 /** Page issues grouped by check across pages, biggest total gain first. */
@@ -361,9 +413,10 @@ export function siteIssueGroups(outcomes: CheckOutcome[]): IssueGroup[] {
  * "+N pts each") stands in for S3's and comes right after the site issues,
  * since it's one developer fix for every page.
  */
-export function fixFirstGroups(siteOutcomes: CheckOutcome[] | null, pages: Array<{ id: string; score: PageScoreSummary | null }>): IssueGroup[] {
+export function fixFirstGroups(siteOutcomes: CheckOutcome[] | null, pages: FixFirstPage[]): IssueGroup[] {
   const site = siteOutcomes ? siteIssueGroups(siteOutcomes) : [];
-  const page = groupPageIssues(pages);
+  const description = metaDescriptionGroup(pages);
+  const page = [...groupPageIssues(pages), ...(description ? [description] : [])].sort((a, b) => b.weight - a.weight);
   const p5 = page.find((g) => g.id === "read.markdown-page");
   if (!p5) return [...site, ...page];
   return [...site.filter((g) => g.id !== "read.markdown-site"), p5, ...page.filter((g) => g !== p5)];
