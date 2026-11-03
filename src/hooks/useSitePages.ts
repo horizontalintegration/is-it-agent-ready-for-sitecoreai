@@ -237,7 +237,10 @@ interface GqlEnvelope {
 // treated as pages; the rest are skipped client-side. The lookup key can be
 // either the home item's itemId (preferred — from xmc.sites.retrieveSite) or
 // its content tree path (fallback — from the discoverSiteHomePath walk).
-function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
+// ItemQueryInput types itemId as ID and path as String; a variable declared
+// with the other type fails validation ("The specified value type of field
+// `itemId` does not match the field type", 2026-11-03).
+export function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
   // template { name } returns the template's display name (e.g.
   // "Article Detail Page"). isArticleTemplate in src/lib/checks/context.ts
   // compares it (case-insensitive) to mark article pages — this avoids the
@@ -262,8 +265,9 @@ function buildSitePagesQuery(depth: number, by: "path" | "itemId"): string {
     inner = `children { nodes { ${itemFields} ${inner} } }`;
   }
   const varName = by === "itemId" ? "rootItemId" : "rootPath";
+  const varType = by === "itemId" ? "ID!" : "String!";
   return `
-    query GetSitePages($${varName}: String!, $language: String!) {
+    query GetSitePages($${varName}: ${varType}, $language: String!) {
       item(where: { ${by}: $${varName}, language: $language }) {
         ${itemFields}
         ${inner}
