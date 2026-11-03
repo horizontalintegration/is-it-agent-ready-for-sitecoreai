@@ -580,3 +580,18 @@ Pages: the Banking article and /Contact-and-Support/FAQs (site `BrandKS`, langua
 - **Confirmed: the FAQ storage** (row c1).
 - **Open: the article's renderings.** `retrievePage` returned no renderings for the Banking article, while the FAQ page listed 14. Its components may come from a page design or partial design rather than the page's own layout.
 - The first run's introspection ran out of its 45-type budget on the `Mutation` input types (alphabetical), before reaching `UpdateItemInput`. Run 2 asks for the needed types by name.
+
+### 9.2 Run 2 (2026-11-03, production, free-form queries)
+
+- **Confirmed: the write mutation.** `updateItem(input: UpdateItemInput!): UpdateItemPayload { item: Item }`. `UpdateItemInput` = `{ itemId: ID, path: String, language: String, version: Int, database: String, fields: [FieldValueInput] }`, and `FieldValueInput` = `{ name: String!, value: String, reset: Boolean }`. The item can be named by `itemId` or `path`; `language` and `version` can be given explicitly.
+- **Confirmed: workflow is readable.** `Item.workflow: ItemWorkflow { canEdit, canSave, workflow, workflowState }`. The Banking article has **no workflow** (`__Workflow` and `__Workflow state` are empty) and one version (1).
+- **Confirmed: media items.** `mediaItem(where: { mediaItemId: ID, path, language, version, database })` returns `{ alt, title, description, url, mediaPath, extension, mimeType, size, innerItem: Item }`.
+- **Confirmed: an image field's value can carry its own alt (a2).** The shared Feature datasource `Data/Feature/Home - Advisor` stores `background` as `<image mediaid="9738FE20-…" alt="people-discussing" />`. The article's own `image` field is `<image mediaid="C61FE8F9-…" />`, with no alt, so the rendered alt comes from the media item.
+- **Confirmed: where images come from on the article.**
+  - The hero image is the page item's own `image` field. In the draft its `src` is the media path (`…/-/media/Project/HztlFoundation/BrandKS/Articles/campaign-creators-pypeCEaJeZY-unsplash.jpg`), so a draft `<img>` can be matched to its media item by path.
+  - Its alt, `campaign-creators-pypeCEaJeZY-unsplash`, is the file name, and P15 counts it as present.
+  - A second image sits inside the `description` rich-text field (`<img src="-/media/37709AE5….ashx" alt="Pioneers working in initial days">`).
+- **Confirmed: the article's layout.** `__Renderings` has a device with a layout but no renderings, and `__Final Renderings` is empty. The article's components come from its page design, so their datasources are shared items, not page-local ones. The FAQ page's ID-based datasource `5C9EE781-…` is the shared `Home - Advisor` Feature item.
+- **Confirmed: the author (b2).** Article Detail Page has a **single-line text field `authorName`** ("Sam Clark"), not a reference to an author item. The published page renders it as `<meta name="author">` and as Article JSON-LD `author: { "@type": "Person", "name": "Sam Clark" }` with no `url`, which is why P17 gives half credit (named, not linked). There's also an empty `baseMetadataAuthor` field.
+- **Confirmed: no JSON-LD field (c2)** on the Article Detail Page, AccordionItem, PageTitle or Feature templates. No field name matches json, schema or structured.
+- **Confirmed: the ID type.** `item(where: { itemId: "…" })` works with an inline ID literal (`byId`).
