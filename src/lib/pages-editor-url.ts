@@ -9,8 +9,7 @@
 //
 // Every param is sourced from the Marketplace SDK:
 //   tenantName   ← application.context → resourceAccess[].tenantName, or
-//                  host.state → xmCloudTenantInfo.name when that's empty
-//                  (the dashboard's host since 2026-11)
+//                  host.state when that's empty (tenantNameFromHostState)
 //   organization ← application.context → organizationId
 //   sc_itemid    ← the page's Sitecore itemId (normalised here)
 //   sc_lang      ← site language ("en")
@@ -19,6 +18,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PAGES_EDITOR_BASE = "https://pages.sitecorecloud.io/editor";
+
+const TENANT_NAME_CLAIM = "https://auth.sitecorecloud.io/claims/tenant_name";
+
+/**
+ * The tenant name from `host.state`, for hosts whose application.context has
+ * none (the dashboard's host since 2026-11). Seen in two places:
+ * `xmCloudTenantInfo.name`, and (2026-11-03) the user's token claim
+ * `userInfo["https://auth.sitecorecloud.io/claims/tenant_name"]`.
+ * Returns "" when neither holds a string.
+ */
+export function tenantNameFromHostState(state: unknown): string {
+  const s = state as { xmCloudTenantInfo?: { name?: unknown }; userInfo?: Record<string, unknown> } | null | undefined;
+  for (const value of [s?.xmCloudTenantInfo?.name, s?.userInfo?.[TENANT_NAME_CLAIM]]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
 
 /**
  * GraphQL itemIds may arrive as "{GUID}", upper-case or without dashes
