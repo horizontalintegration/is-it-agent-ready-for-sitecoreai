@@ -550,13 +550,13 @@ Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | — | **Open** |
+| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | `updateItem(input: UpdateItemInput!): UpdateItemPayload` exists (run 1). Its input shape: — | **Open** (input shape) |
 | a2 | A media item's Alt field: its name, and whether the image field value can carry its own `alt` (a per-use override) | — | **Open** |
 | a3 | Is the media item used by other pages, and can the app find out (link lookups or search)? | — | **Open** |
 | a4 | Does a write go into the current version and keep the workflow state (no new version, no publish)? | — | **Open** |
 | b1 | Where author items live (the Authors folder) and their template | — | **Open** |
 | b2 | The byline field on article pages: its name, type and stored value | — | **Open** |
-| c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | — | **Open** |
+| c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | One local datasource per question (`local:/Data/Faq1` … `Faq8`, template `AccordionItem`, rendering `286d51ef-…`). Fields: `heading` (plain text, the question) and `content` (rich text, `<div class="ck-content"><p>…</p></div>`). See run 1. | **Confirmed** |
 | c2 | Does any template have a JSON-LD / structured-data field? | — | **Open** |
 
 **How to run the spike** (in Page Builder, on production after deployment):
@@ -567,3 +567,13 @@ Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
 4. "Run spike" only reads. The free-form box refuses a mutation unless **Run write…** is used, which shows the full text in a confirm first. The one test write (a4) is sent only after the user agrees to the item and the value, and the old value is written back straight after.
 
 Implementation: `src/components/spike/AssistSpike.tsx` (temporary; removed before Phase 9 is merged).
+
+### 9.1 Run 1 (2026-11-03, production, Page Builder)
+
+Pages: the Banking article and /Contact-and-Support/FAQs (site `BrandKS`, language `en`).
+
+- **Confirmed: the schema.** Mutations include `updateItem`, `addItemVersion`, `executeWorkflowCommand`, `startWorkflow` and `publishItem`; the app never calls the last one. `Item` has `version`, `versions(allLanguages)`, `workflow: ItemWorkflow`, `field(name)`, `url`, `parent`, `children` and `fields(ownFields, excludeStandardFields, withLanguageFallback)`. There's no "referrers" field on `Item`; `Query` has `search(query: SearchQueryInput!)`, `mediaItem(where: MediaItemQueryInput!)` and `workflow(where: …)`.
+- **Confirmed: `item(where: { itemId })` needs the `ID` type.** A `String` variable fails with "The specified value type of field `itemId` does not match the field type." So the spike's lookups by ID failed: the page items and the FAQ page's datasource `5C9EE781-…`. Lookups by path worked. **`useSitePages` has the same bug:** it sends `$rootItemId: String!` when `retrieveSite` returns `homePageId`, so the dashboard's page list would fail on that branch once open item 1 is fixed. Fixed in Phase 9.
+- **Confirmed: the FAQ storage** (row c1).
+- **Open: the article's renderings.** `retrievePage` returned no renderings for the Banking article, while the FAQ page listed 14. Its components may come from a page design or partial design rather than the page's own layout.
+- The first run's introspection ran out of its 45-type budget on the `Mutation` input types (alphabetical), before reaching `UpdateItemInput`. Run 2 asks for the needed types by name.
