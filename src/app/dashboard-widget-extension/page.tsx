@@ -10,6 +10,7 @@ import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
 import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
 import { useWhatChanged } from "@/hooks/useWhatChanged";
 import { AppMark } from "@/components/shared/AppMark";
+import { AssistSpike, useAssistSpikeEnabled } from "@/components/spike/AssistSpike";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { PagesTab } from "@/components/dashboard/PagesTab";
@@ -61,6 +62,8 @@ const DEMO_SITE_CONTEXT = {
 export default function DashboardWidgetPage() {
   const { client, isInitialized } = useMarketplaceClient();
   const live = useSitePages(client, isInitialized);
+  // TEMPORARY (Phase 9 spikes): localStorage iiar-spike=9 or ?spike=9.
+  const showSpike = useAssistSpikeEnabled();
 
   // Fixture data is opt-in via `?demo=1` in the URL.
   // `&md=1`: the demo site serves Markdown (P5 4/4, S3 passes).
@@ -268,6 +271,12 @@ export default function DashboardWidgetPage() {
             </TabsList>
           </div>
         </header>
+
+        {showSpike && !useFixture && (
+          <div className="max-h-[50vh] shrink-0 overflow-y-auto border-b">
+            <AssistSpike client={client} mode="dashboard" />
+          </div>
+        )}
 
         <TabsContent value="overview" className={tabContent}>
           {loadError ?? (

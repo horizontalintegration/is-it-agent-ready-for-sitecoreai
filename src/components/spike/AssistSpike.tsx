@@ -6,13 +6,15 @@
 //       whether the media item is shared by other pages;
 //   (b) where author items and the byline field live;
 //   (c) how FAQ answers are stored, and whether a JSON-LD field exists.
-// Shown only with `?spike=9` or localStorage `iiar-spike` = "9". "Run spike"
-// sends read-only queries through xmc.authoring.graphql. The free-form box
-// refuses mutations unless "Run write…" is used, which shows the full text in
-// a confirm first. Remove before Phase 9 is merged.
+// Shown only with `?spike=9` or localStorage `iiar-spike` = "9", in the panel
+// and the dashboard. "Run spike" (panel) sends read-only queries through
+// xmc.authoring.graphql. The free-form box refuses mutations unless "Run
+// write…" is used, and the page-field box writes only through "Write with
+// updateFields…"; both show the full write in a confirm first. Remove before
+// Phase 9 is merged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 
 const STORAGE_KEY = "spike:assist:v1";
@@ -144,19 +146,19 @@ async function describeTypes(
 
 // ── Item reads ───────────────────────────────────────────────────────────────
 
-// Only the shapes usePageFields and useSitePages already use (itemId is a String there).
+// Only shapes the schema confirmed (SPIKE-FINDINGS §9.1–9.2); itemId is an ID.
 const ITEM_BODY = `itemId name path template { name } fields(ownFields: false) { nodes { name value } }`;
-const ITEM_BY_ID = `query I($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { ${ITEM_BODY} } }`;
+const ITEM_BY_ID = `query I($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { ${ITEM_BODY} } }`;
 const ITEM_BY_PATH = `query I($path: String!, $language: String!) { item(where: { path: $path, language: $language }) { ${ITEM_BODY} } }`;
 
 // Kept separate so a field the schema doesn't have fails alone.
 const ITEM_EXTRAS: Array<[string, string]> = [
-  ["version + templateId", `query VT($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { version template { templateId } } }`],
-  ["workflow", `query W($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { workflow { workflow { displayName } workflowState { displayName final } } } }`],
-  ["versions", `query V($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { versions { version } } }`],
-  ["std fields", `query S($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { workflowState: field(name: "__Workflow state") { value } updated: field(name: "__Updated") { value } updatedBy: field(name: "__Updated by") { value } } }`],
-  ["template fields", `query TF($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { template { name fields { nodes { name type } } } } }`],
-  ["parent + siblings", `query P($id: String!, $language: String!) { item(where: { itemId: $id, language: $language }) { parent { path name template { name } children { nodes { itemId name path template { name } } } } } }`],
+  ["version + templateId", `query VT($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { version template { templateId } } }`],
+  ["workflow", `query W($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { workflow { workflow { displayName } workflowState { displayName final } } } }`],
+  ["versions", `query V($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { versions { version } } }`],
+  ["std fields", `query S($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { workflowState: field(name: "__Workflow state") { value } updated: field(name: "__Updated") { value } updatedBy: field(name: "__Updated by") { value } } }`],
+  ["template fields", `query TF($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { template { name fields { nodes { name type } } } } }`],
+  ["parent + siblings", `query P($id: ID!, $language: String!) { item(where: { itemId: $id, language: $language }) { parent { path name template { name } children { nodes { itemId name path template { name } } } } } }`],
 ];
 
 interface ItemNode {
@@ -237,10 +239,38 @@ function saveReports(r: SpikeReport[]) {
 
 interface AssistSpikeProps {
   client: ClientSDK | null;
-  sitecoreContextId: string | undefined;
+  /** The panel passes its Context ID; the dashboard leaves it out and the box reads application.context. */
+  sitecoreContextId?: string;
+  /** The dashboard has no open page, so "Run spike" is hidden there. */
+  mode?: "panel" | "dashboard";
 }
 
-export function AssistSpike({ client, sitecoreContextId }: AssistSpikeProps) {
+const FIELD_READ = `query F($id: ID!, $language: String!, $field: String!) { item(where: { itemId: $id, language: $language }) { path version workflow { canEdit canSave } field(name: $field) { value } } }`;
+
+export function AssistSpike({ client, sitecoreContextId: ctxProp, mode = "panel" }: AssistSpikeProps) {
+  const [ctxRead, setCtxRead] = useState<string | undefined>(undefined);
+  const sitecoreContextId = ctxProp ?? ctxRead;
+  useEffect(() => {
+    if (!client || ctxProp) return;
+    void (async () => {
+      try {
+        const res = (await client.query("application.context")) as {
+          data?: { resourceAccess?: Array<{ context?: { preview?: string; live?: string } }>; resources?: Array<{ context?: { preview?: string; live?: string } }> };
+        };
+        const list = res?.data?.resourceAccess ?? res?.data?.resources ?? [];
+        setCtxRead(list.map((r) => r?.context?.preview ?? r?.context?.live).find(Boolean));
+      } catch (err) {
+        console.warn("[spike:assist] application.context failed:", err);
+      }
+    })();
+  }, [client, ctxProp]);
+
+  const [pfPageId, setPfPageId] = useState("");
+  const [pfLanguage, setPfLanguage] = useState("en");
+  const [pfField, setPfField] = useState("");
+  const [pfValue, setPfValue] = useState("");
+  const [pfOut, setPfOut] = useState("");
+
   const [reports, setReports] = useState<SpikeReport[]>(loadReports);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -396,6 +426,45 @@ export function AssistSpike({ client, sitecoreContextId }: AssistSpikeProps) {
     setBusy(false);
   }
 
+  // Page field read/write through xmc.pages.updateFields, the call MetaGenerator
+  // (and the dashboard's bulk write) uses. Read is authoring GraphQL by item ID.
+  async function readPageField() {
+    if (!client) return;
+    setBusy(true);
+    const r = await gql(client, sitecoreContextId, "page field read", FIELD_READ, { id: pfPageId.trim(), language: pfLanguage, field: pfField });
+    setPfOut(JSON.stringify(r, null, 2));
+    add({ label: `read ${pfField} on ${pfPageId}`, capturedAt: new Date().toISOString(), page: { mode }, sections: { result: r } });
+    setBusy(false);
+  }
+
+  async function writePageField() {
+    if (!client) return;
+    const before = await gql(client, sitecoreContextId, "before", FIELD_READ, { id: pfPageId.trim(), language: pfLanguage, field: pfField });
+    const beforeValue = (before.data as { item?: { field?: { value?: string } | null } } | undefined)?.item?.field?.value;
+    if (!window.confirm(`Write with xmc.pages.updateFields?\n\nPage: ${pfPageId}\nLanguage: ${pfLanguage}\nField: ${pfField}\n\nBefore: ${beforeValue ?? "(couldn't read)"}\nAfter: ${pfValue}`)) return;
+    setBusy(true);
+    const t0 = performance.now();
+    let result: unknown;
+    let threw: string | undefined;
+    try {
+      result = await client.mutate("xmc.pages.updateFields", {
+        params: {
+          path: { pageId: pfPageId.trim() },
+          body: { language: pfLanguage, fields: [{ name: pfField, value: pfValue }] },
+          ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+        },
+      } as Parameters<ClientSDK["mutate"]>[1]);
+    } catch (err) {
+      threw = String(err);
+    }
+    const after = await gql(client, sitecoreContextId, "after", FIELD_READ, { id: pfPageId.trim(), language: pfLanguage, field: pfField });
+    const out = { mode, ms: Math.round(performance.now() - t0), before: before.data ?? before.errors, result, threw, after: after.data ?? after.errors };
+    console.info("[audit] spike updateFields", { pageId: pfPageId, language: pfLanguage, field: pfField, before: beforeValue, after: pfValue, threw });
+    setPfOut(JSON.stringify(out, null, 2));
+    add({ label: `WRITE updateFields ${pfField} on ${pfPageId} (${mode})`, capturedAt: new Date().toISOString(), page: { mode }, sections: out });
+    setBusy(false);
+  }
+
   const json = JSON.stringify(reports, null, 2);
   const copy = async () => {
     try {
@@ -409,8 +478,10 @@ export function AssistSpike({ client, sitecoreContextId }: AssistSpikeProps) {
   return (
     <section className="m-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm" aria-label="Phase 9 spike">
       <h2 className="font-bold">Phase 9 spike (temporary)</h2>
-      <p className="mb-2 text-xs">Read-only: “Run spike” sends only queries. Open the article page, then the FAQ page, and run it on each.</p>
-      <div className="flex flex-wrap items-center gap-2">
+      <p className="mb-2 text-xs">
+        {mode === "panel" ? "“Run spike” sends only queries. " : ""}Writes go only through the red buttons, after a confirm. Context ID: {sitecoreContextId ? "yes" : "no"}
+      </p>
+      {mode === "panel" && <div className="flex flex-wrap items-center gap-2">
         <input className="min-w-0 flex-1 rounded border px-2 py-1" placeholder="Label (e.g. article)" value={label} onChange={(e) => setLabel(e.target.value)} />
         <label className="flex items-center gap-1 text-xs">
           <input type="checkbox" checked={introspect} onChange={(e) => setIntrospect(e.target.checked)} /> Schema
@@ -418,7 +489,21 @@ export function AssistSpike({ client, sitecoreContextId }: AssistSpikeProps) {
         <button type="button" className="rounded bg-amber-600 px-3 py-1 font-semibold text-white disabled:opacity-50" disabled={!client || busy} onClick={run}>
           Run spike
         </button>
-      </div>
+      </div>}
+      <details className="mt-2">
+        <summary className="cursor-pointer text-xs font-semibold">Page field (xmc.pages.updateFields)</summary>
+        <div className="mt-1 grid grid-cols-2 gap-1">
+          <input className="col-span-2 rounded border px-2 py-1 font-mono text-xs" placeholder="Page item ID" value={pfPageId} onChange={(e) => setPfPageId(e.target.value)} />
+          <input className="rounded border px-2 py-1 text-xs" placeholder="Field name" value={pfField} onChange={(e) => setPfField(e.target.value)} />
+          <input className="rounded border px-2 py-1 text-xs" placeholder="Language" value={pfLanguage} onChange={(e) => setPfLanguage(e.target.value)} />
+          <textarea className="col-span-2 h-14 rounded border p-1 text-xs" placeholder="New value" value={pfValue} onChange={(e) => setPfValue(e.target.value)} />
+        </div>
+        <div className="mt-1 flex gap-2">
+          <button type="button" className="rounded border bg-white px-3 py-1 disabled:opacity-50" disabled={!client || busy || !pfPageId || !pfField} onClick={readPageField}>Read field</button>
+          <button type="button" className="rounded border border-red-400 bg-white px-3 py-1 text-red-700 disabled:opacity-50" disabled={!client || busy || !pfPageId || !pfField} onClick={writePageField}>Write with updateFields…</button>
+        </div>
+        {pfOut && <pre className="mt-1 max-h-48 overflow-auto rounded bg-white p-1 text-xs">{pfOut}</pre>}
+      </details>
       <details className="mt-2">
         <summary className="cursor-pointer text-xs font-semibold">Free-form query</summary>
         <textarea className="mt-1 h-28 w-full rounded border p-1 font-mono text-xs" placeholder="query { … }" value={freeQuery} onChange={(e) => setFreeQuery(e.target.value)} />

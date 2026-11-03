@@ -553,13 +553,13 @@ Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | — | **Open** |
+| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | `updateItem(input: UpdateItemInput!): UpdateItemPayload` exists (run 1). Its input shape: — | **Open** (input shape) |
 | a2 | A media item's Alt field: its name, and whether the image field value can carry its own `alt` (a per-use override) | — | **Open** |
 | a3 | Is the media item used by other pages, and can the app find out (link lookups or search)? | — | **Open** |
 | a4 | Does a write go into the current version and keep the workflow state (no new version, no publish)? | — | **Open** |
 | b1 | Where author items live (the Authors folder) and their template | — | **Open** |
 | b2 | The byline field on article pages: its name, type and stored value | — | **Open** |
-| c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | — | **Open** |
+| c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | One local datasource per question (`local:/Data/Faq1` … `Faq8`, template `AccordionItem`, rendering `286d51ef-…`). Fields: `heading` (plain text, the question) and `content` (rich text, `<div class="ck-content"><p>…</p></div>`). See run 1. | **Confirmed** |
 | c2 | Does any template have a JSON-LD / structured-data field? | — | **Open** |
 
 **How to run the spike** (in Page Builder, on production after deployment):
@@ -570,3 +570,28 @@ Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
 4. "Run spike" only reads. The free-form box refuses a mutation unless **Run write…** is used, which shows the full text in a confirm first. The one test write (a4) is sent only after the user agrees to the item and the value, and the old value is written back straight after.
 
 Implementation: `src/components/spike/AssistSpike.tsx` (temporary; removed before Phase 9 is merged).
+
+### 9.1 Run 1 (2026-11-03, production, Page Builder)
+
+Pages: the Banking article and /Contact-and-Support/FAQs (site `BrandKS`, language `en`).
+
+- **Confirmed: the schema.** Mutations include `updateItem`, `addItemVersion`, `executeWorkflowCommand`, `startWorkflow` and `publishItem`; the app never calls the last one. `Item` has `version`, `versions(allLanguages)`, `workflow: ItemWorkflow`, `field(name)`, `url`, `parent`, `children` and `fields(ownFields, excludeStandardFields, withLanguageFallback)`. There's no "referrers" field on `Item`; `Query` has `search(query: SearchQueryInput!)`, `mediaItem(where: MediaItemQueryInput!)` and `workflow(where: …)`.
+- **Confirmed: `item(where: { itemId })` needs the `ID` type.** A `String` variable fails with "The specified value type of field `itemId` does not match the field type." So the spike's lookups by ID failed: the page items and the FAQ page's datasource `5C9EE781-…`. Lookups by path worked. **`useSitePages` has the same bug:** it sends `$rootItemId: String!` when `retrieveSite` returns `homePageId`, so the dashboard's page list would fail on that branch once open item 1 is fixed. Fixed in Phase 9.
+- **Confirmed: the FAQ storage** (row c1).
+- **Open: the article's renderings.** `retrievePage` returned no renderings for the Banking article, while the FAQ page listed 14. Its components may come from a page design or partial design rather than the page's own layout.
+- The first run's introspection ran out of its 45-type budget on the `Mutation` input types (alphabetical), before reaching `UpdateItemInput`. Run 2 asks for the needed types by name.
+
+### 9.2 Run 2 (2026-11-03, production, free-form queries)
+
+- **Confirmed: the write mutation.** `updateItem(input: UpdateItemInput!): UpdateItemPayload { item: Item }`. `UpdateItemInput` = `{ itemId: ID, path: String, language: String, version: Int, database: String, fields: [FieldValueInput] }`, and `FieldValueInput` = `{ name: String!, value: String, reset: Boolean }`. The item can be named by `itemId` or `path`; `language` and `version` can be given explicitly.
+- **Confirmed: workflow is readable.** `Item.workflow: ItemWorkflow { canEdit, canSave, workflow, workflowState }`. The Banking article has **no workflow** (`__Workflow` and `__Workflow state` are empty) and one version (1).
+- **Confirmed: media items.** `mediaItem(where: { mediaItemId: ID, path, language, version, database })` returns `{ alt, title, description, url, mediaPath, extension, mimeType, size, innerItem: Item }`.
+- **Confirmed: an image field's value can carry its own alt (a2).** The shared Feature datasource `Data/Feature/Home - Advisor` stores `background` as `<image mediaid="9738FE20-…" alt="people-discussing" />`. The article's own `image` field is `<image mediaid="C61FE8F9-…" />`, with no alt, so the rendered alt comes from the media item.
+- **Confirmed: where images come from on the article.**
+  - The hero image is the page item's own `image` field. In the draft its `src` is the media path (`…/-/media/Project/HztlFoundation/BrandKS/Articles/campaign-creators-pypeCEaJeZY-unsplash.jpg`), so a draft `<img>` can be matched to its media item by path.
+  - Its alt, `campaign-creators-pypeCEaJeZY-unsplash`, is the file name, and P15 counts it as present.
+  - A second image sits inside the `description` rich-text field (`<img src="-/media/37709AE5….ashx" alt="Pioneers working in initial days">`).
+- **Confirmed: the article's layout.** `__Renderings` has a device with a layout but no renderings, and `__Final Renderings` is empty. The article's components come from its page design, so their datasources are shared items, not page-local ones. The FAQ page's ID-based datasource `5C9EE781-…` is the shared `Home - Advisor` Feature item.
+- **Confirmed: the author (b2).** Article Detail Page has a **single-line text field `authorName`** ("Sam Clark"), not a reference to an author item. The published page renders it as `<meta name="author">` and as Article JSON-LD `author: { "@type": "Person", "name": "Sam Clark" }` with no `url`, which is why P17 gives half credit (named, not linked). There's also an empty `baseMetadataAuthor` field.
+- **Confirmed: no JSON-LD field (c2)** on the Article Detail Page, AccordionItem, PageTitle or Feature templates. No field name matches json, schema or structured.
+- **Confirmed: the ID type.** `item(where: { itemId: "…" })` works with an inline ID literal (`byId`).
