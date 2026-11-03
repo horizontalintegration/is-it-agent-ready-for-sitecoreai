@@ -9,6 +9,9 @@ import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport } from "@/lib/checks/view-model";
 import { estimateTokens, toAgentMarkdown } from "@/lib/markdown/convert";
 import type { MarkdownCheckData } from "@/lib/markdown/types";
+import { botGrid } from "@/lib/agent-access/grid";
+import type { CitationDemo, ProbeEvidence } from "@/lib/citations/types";
+import { accessSnapshot, scanSnapshot, type AccessSnapshot, type ScanSnapshot, type WhatChangedInput } from "@/lib/history/what-changed";
 
 const SITE_DOMAIN = "https://example.com";
 const DAY = 24 * 60 * 60 * 1000;
@@ -626,3 +629,123 @@ export const DEMO_PREVIOUS_PAGE_SCORE = 64;
 
 /** The demo site's earlier scan scores, oldest first; the current score is appended. */
 export const DEMO_SITE_HISTORY_BEFORE = [48, 50, 49, 53, 55, 54, 56];
+
+// ── AI citations (Phase 8) ────────────────────────────────────────────────────
+//
+// A probe run of "Blog: content strategy" with every outcome: cited, found
+// but not cited, not found, and one question that wasn't searched (left out
+// of the totals). The run before had the same questions and no citations, so
+// the tab shows "▲ 2 since last run". Totals: cited 2 of 7, found 5 of 7,
+// contentmarketinghub.example cited instead in 4 answers.
+
+/** The page the AI citations tab opens on in demo mode. */
+export const DEMO_CITATION_PAGE_ID = "p8";
+const DEMO_CITATION_URL = `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`;
+
+interface DemoProbe {
+  question: string;
+  found: boolean;
+  cited: boolean;
+  instead: string[];
+  excerpt: string;
+  searched?: boolean;
+}
+
+const DEMO_PROBES: DemoProbe[] = [
+  { question: "How do I build a content strategy from scratch?", found: true, cited: true, instead: [],
+    excerpt: "Start with clear goals, research your audience, audit what you already have, then plan topics and a publishing cadence [example.com]." },
+  { question: "What should a content strategy document include?", found: true, cited: false, instead: ["contentmarketinghub.example"],
+    excerpt: "A typical strategy document covers goals, audience personas, core topics, channels, a calendar and how success is measured [contentmarketinghub.example]." },
+  { question: "How often should a B2B company publish blog posts?", found: false, cited: false, instead: ["contentmarketinghub.example", "strategyplain.example"],
+    excerpt: "Consistency matters more than volume: one to four quality posts a month is common for B2B teams [strategyplain.example]." },
+  { question: "How do you measure whether content marketing is working?", found: true, cited: false, instead: ["seoweekly.example"],
+    excerpt: "Track engagement, organic traffic, conversions and pipeline influenced by content, not just page views [seoweekly.example]." },
+  { question: "What is a content audit and how do I run one?", found: true, cited: true, instead: [],
+    excerpt: "A content audit inventories every page, then scores each one on performance and accuracy to decide what to keep, update or remove [example.com]." },
+  { question: "What is the difference between content strategy and content marketing?", found: true, cited: false, instead: ["contentmarketinghub.example"],
+    excerpt: "Content strategy is the plan: why, for whom and how content is made and governed. Content marketing is executing it [contentmarketinghub.example]." },
+  { question: "How many content pillars should a strategy have?", found: false, cited: false, instead: ["contentmarketinghub.example"],
+    excerpt: "Most teams settle on three to five pillars that map to their audience's main problems [contentmarketinghub.example]." },
+  { question: "Should small teams use AI to write content?", found: false, cited: false, instead: [], searched: false,
+    excerpt: "AI can speed up research and first drafts, but human editing keeps content accurate and on-brand." },
+];
+
+function demoEvidence(p: DemoProbe, ranAt: string, previous: boolean): ProbeEvidence {
+  const searched = p.searched ?? true;
+  const own = (path: string) => `${SITE_DOMAIN}${path}`;
+  const cited = p.cited && !previous;
+  const instead = cited || !p.cited ? p.instead : ["contentmarketinghub.example"];
+  return {
+    question: p.question,
+    searched,
+    resultUrls: searched
+      ? [...(p.found ? [DEMO_CITATION_URL, own("/blog")] : []), ...instead.map((h) => `https://${h}/guide`), "https://en.wikipedia.org/wiki/Content_strategy"]
+      : [],
+    citedUrls: [...(cited ? [DEMO_CITATION_URL] : []), ...instead.map((h) => `https://${h}/guide`)],
+    queries: searched ? [p.question.replace(/\?$/, "").toLowerCase()] : [],
+    searchErrors: [],
+    excerpt: p.excerpt,
+    refused: false,
+    retried: !searched,
+    model: "claude-opus-5-5",
+    ranAt,
+  };
+}
+
+export function makeTestCitationDemo(): CitationDemo {
+  const now = new Date().toISOString();
+  const before = daysAgo(9).toISOString();
+  return {
+    questions: DEMO_PROBES.map((p) => p.question),
+    country: "US",
+    runs: [
+      { at: before, setKey: "demo", country: "US", evidence: DEMO_PROBES.map((p) => demoEvidence(p, before, true)) },
+      { at: now, setKey: "demo", country: "US", evidence: DEMO_PROBES.map((p) => demoEvidence(p, now, false)) },
+    ],
+  };
+}
+
+// ── What changed (Phase 8) ────────────────────────────────────────────────────
+//
+// The mockup's four kinds of change, made from the demo's own data so each
+// line matches the other tabs: the weakest unready page dropped 18 points
+// after a publish two days ago (its biggest current issue is new), ChatGPT-User
+// got 200 at the last scan and 403 now, two pages became agent-ready after
+// their structured data was fixed, and the content-strategy post is cited in
+// 2 more probe answers.
+
+export function makeTestWhatChanged(pages: PageMatrixRow[], siteScore: number | null, access: AgentAccessData): WhatChangedInput {
+  const prevAt = daysAgo(7).toISOString();
+  const cur = scanSnapshot(pages, siteScore, new Date().toISOString());
+  const prev: ScanSnapshot = { at: prevAt, score: siteScore === null ? null : siteScore - 3, pages: structuredClone(cur.pages) };
+
+  const ready = Object.entries(cur.pages).filter(([, p]) => p.label === "agent-ready" && !p.issues.includes("understand.json-ld")).slice(0, 2);
+  for (const [id, p] of ready) {
+    prev.pages[id] = { ...p, label: "almost-there", score: p.score === null ? null : p.score - 8, issues: [...p.issues, "understand.json-ld"] };
+  }
+  const dropped = pages
+    .filter((p) => p.score?.score != null && p.score.label !== "agent-ready" && p.score.issues.length > 0)
+    .sort((a, b) => (a.score!.score ?? 0) - (b.score!.score ?? 0))[0];
+  if (dropped?.score) {
+    const top = [...dropped.score.issues].sort((a, b) => b.gain - a.gain)[0].id;
+    cur.pages[dropped.id] = { ...cur.pages[dropped.id], lastModified: daysAgo(2).toISOString() };
+    prev.pages[dropped.id] = {
+      ...cur.pages[dropped.id],
+      lastModified: daysAgo(30).toISOString(),
+      score: (dropped.score.score ?? 0) + 18,
+      issues: dropped.score.issues.map((i) => i.id).filter((i) => i !== top),
+    };
+  }
+
+  const nowAccess = accessSnapshot(botGrid(access), access.checkedAt);
+  const prevAccess: AccessSnapshot = {
+    at: prevAt,
+    bots: { ...nowAccess.bots, "ChatGPT-User": { status: "pass", outcome: "can-read", live: "200", failStatus: null } },
+  };
+
+  return {
+    scans: [prev, cur],
+    access: [prevAccess, nowAccess],
+    citations: [{ route: "/blog/how-to-build-an-effective-content-strategy", delta: 2, at: new Date().toISOString() }],
+  };
+}

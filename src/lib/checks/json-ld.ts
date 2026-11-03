@@ -103,11 +103,6 @@ export function hasType(node: JsonLdNode, wanted: ReadonlySet<string> | string):
 export const isOrganization = (node: JsonLdNode) => hasType(node, ORGANIZATION_TYPES);
 export const isArticle = (node: JsonLdNode) => hasType(node, ARTICLE_TYPES);
 
-/** Every distinct `@type` on the page, in first-seen order. */
-export function typesOnPage(scripts: JsonLdScript[]): string[] {
-  return Array.from(new Set(collectNodes(scripts).flatMap((n) => n.types)));
-}
-
 /** A non-empty string property, trimmed; null otherwise. */
 export function stringProp(data: Record<string, unknown>, key: string): string | null {
   const v = data[key];

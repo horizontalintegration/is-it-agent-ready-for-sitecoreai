@@ -276,6 +276,21 @@ The Phase 0 captures kept only 1.5 KB excerpts, so the sanitiser was built from 
   - **The T. Rowe Price run never searched.** The response was a single `text` block. troweprice.com was cited for the same question on 2026-10-23, so this `false` says nothing about the site (see item 6 above).
   - **BrandX's dev site is publicly indexed** and was cited next to the live site (see item 7 above). That's worth raising with the site owner on its own merits.
 
+### 5.1 Phase 8: the probe in the app (Confirmed, 2026-11-02)
+
+A real run through `/api/citation-probe` (local production build, standalone dashboard in headless Chrome) on the BrandX replica, `https://hztl-page-health-checker-demo.vercel.app/services`, US location, `claude-opus-5-5`:
+
+| Step | Calls | Result | Cost |
+|---|---|---|---|
+| Suggest questions (effort medium, structured output) | 1 | 8 non-branded questions; 1,303 in / 196 out | ~$0.009 |
+| Run probe (effort low, direct web search, cached system prompt) | 8 | every question searched once (no retry, no refusal); 9–10 results and 8–17 citations each; found 0, cited 0; about 30 s for the run, 4 at a time | ~$0.26 (~$0.03 each) |
+| Run again | 0 | every answer from the browser's 7-day cache | $0 |
+| The same question sent to the route | 0 | `cached: true` (server cache) | $0 |
+
+- **Prompt caching works on the probe.** Every probe read 2,731 tokens from the cache (some 5,462, two reads in one call): the tool definitions plus the system prompt with `cache_control` are above the minimum cacheable length. That's most of the drop from the spike's $0.08 (whose system prompt wasn't cached) to about $0.03.
+- **Every question searched first time** with the system prompt that requires a search. The retry for unsearched questions (item 6 above) didn't fire on this run.
+- **Found 0 of 8** is the expected result: the replica is a new `vercel.app` host, and no search returned it. The positive case was shown in the follow-up runs above (irs.gov, BrandX).
+
 ## 6. Phase 2 acceptance: Claude API on the SDK (2026-10-31)
 
 Confirmed with a local `next dev` run against the BrandX article *Banking Sector Earnings Point to Resilience* (2,621 chars of main text), `ANTHROPIC_MODEL_BULK=claude-sonnet-5-5`, `ANTHROPIC_MODEL` unset (Opus 5.5). About $0.06 in total.

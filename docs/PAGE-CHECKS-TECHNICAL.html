@@ -468,7 +468,7 @@
 </ul>
 <hr/>
 <h2>Shared JSON-LD parser (<code>json-ld.ts</code>)</h2>
-<p><code>extract-html.ts</code> keeps every block as <code>ParsedHtml.jsonLdScripts</code>, either <code>{ ok: true, value }</code> or <code>{ ok: false, error }</code>, so parse errors are reported instead of dropped. <code>collectNodes</code> turns the blocks into typed nodes: each top-level object, each array entry and each <code>@graph</code> member (nested objects stay inside their parent; read them with <code>resolve</code>, which also follows <code>{"@id": …}</code> references). <code>@type</code> is always a list with <code>schema:</code> / <code>https://schema.org/</code> prefixes removed. <code>isOrganization</code> and <code>isArticle</code> match subtypes. <code>typesOnPage</code> feeds the citation forecast prompt.</p>
+<p><code>extract-html.ts</code> keeps every block as <code>ParsedHtml.jsonLdScripts</code>, either <code>{ ok: true, value }</code> or <code>{ ok: false, error }</code>, so parse errors are reported instead of dropped. <code>collectNodes</code> turns the blocks into typed nodes: each top-level object, each array entry and each <code>@graph</code> member (nested objects stay inside their parent; read them with <code>resolve</code>, which also follows <code>{"@id": …}</code> references). <code>@type</code> is always a list with <code>schema:</code> / <code>https://schema.org/</code> prefixes removed. <code>isOrganization</code> and <code>isArticle</code> match subtypes.</p>
 <hr/>
 <h2>The view model and the panel UI (Phase 5)</h2>
 <p><code>view-model.ts</code> turns reports into what the screens show. It never changes a score: everything comes from the points the engine computed.</p>
@@ -506,7 +506,7 @@
 </ul>
 <hr/>
 <h2>Server-side fetching (SSRF protection)</h2>
-<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>markdown-check</code>, <code>citation-forecast</code>, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
+<p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>markdown-check</code>, <code>citation-probe</code> for the page it suggests questions from, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
 <ul>
 <li><code>http</code>/<code>https</code> only; no credentials in the URL.</li>
 <li>Blocks private, loopback, link-local (incl. <code>169.254.169.254</code>), CGNAT, multicast, reserved and documentation ranges, IPv4 and IPv6, including IPv4-mapped and NAT64/6to4/Teredo forms. The check runs in the undici Agent's DNS lookup at connect time, so DNS rebinding can't bypass it. IP-literal hosts (including <code>http://2130706433/</code>-style encodings) are checked before the request.</li>

@@ -9,12 +9,14 @@ import { StatusIcon } from "@/components/shared/StatusIcon";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { CATEGORY_META, issueNote, pageCheckTitles, type IssueGroup } from "@/lib/checks/view-model";
+import type { WhatChanged } from "@/lib/history/what-changed";
 import { LABEL_TEXT } from "@/lib/score-thresholds";
 import type { SiteAggregate } from "@/lib/site-aggregate";
 import type { PageMatrixRow } from "@/types/dashboard";
 import { Sparkline } from "./Sparkline";
 
 const FIX_FIRST_LIMIT = 6;
+const CHANGES_LIMIT = 5;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -27,6 +29,8 @@ interface OverviewTabProps {
   issues: IssueGroup[];
   /** Site scores of the last scans, oldest first. */
   history: number[];
+  /** "What changed since last scan". */
+  changes: WhatChanged;
   onReviewPages: (issue: IssueGroup) => void;
 }
 
@@ -44,7 +48,7 @@ function heroSentence(aggregate: SiteAggregate, issues: IssueGroup[], scanning: 
   return authorIssues > 0 ? `${first} Authors can fix ${authorIssues} of the ${issues.length} issues in Page Builder.` : first;
 }
 
-export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, history, onReviewPages }: OverviewTabProps) {
+export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, history, changes, onReviewPages }: OverviewTabProps) {
   const [showAll, setShowAll] = useState(false);
   const score = aggregate.overallPct === null ? null : Math.round(aggregate.overallPct);
   const scanning = aggregate.scanningCount > 0 || (isLoading && aggregate.scannedCount < aggregate.totalCount);
@@ -147,30 +151,68 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
         })}
       </div>
 
-      {/* Fix first */}
-      <section aria-labelledby="fix-first" className="flex flex-col gap-3 rounded-xl border bg-body-bg p-[18px]">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 id="fix-first" className="text-lg font-bold">Fix first</h3>
-          <span className="text-sm text-subtle-text">Grouped by issue, biggest gain first</span>
-        </div>
-        {issues.length === 0 ? (
-          <p className="border-t pt-3 text-sm text-subtle-text">
-            {aggregate.scannedCount === 0 ? "Issues show here once pages are scanned." : "Nothing to fix on the scanned pages."}
-          </p>
-        ) : (
-          <ul className="flex flex-col">
-            {shown.map((issue) => (
-              <FixFirstRow key={issue.id} issue={issue} pages={pages} siteUrl={siteUrl} onReviewPages={onReviewPages} />
-            ))}
-          </ul>
-        )}
-        {issues.length > FIX_FIRST_LIMIT && (
-          <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? "Show fewer" : `Show all ${issues.length} issues`}
-          </Button>
-        )}
-      </section>
+      <div className="flex flex-wrap items-start gap-5">
+        {/* Fix first */}
+        <section aria-labelledby="fix-first" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3 rounded-xl border bg-body-bg p-[18px]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 id="fix-first" className="text-lg font-bold">Fix first</h3>
+            <span className="text-sm text-subtle-text">Grouped by issue, biggest gain first</span>
+          </div>
+          {issues.length === 0 ? (
+            <p className="border-t pt-3 text-sm text-subtle-text">
+              {aggregate.scannedCount === 0 ? "Issues show here once pages are scanned." : "Nothing to fix on the scanned pages."}
+            </p>
+          ) : (
+            <ul className="flex flex-col">
+              {shown.map((issue) => (
+                <FixFirstRow key={issue.id} issue={issue} pages={pages} siteUrl={siteUrl} onReviewPages={onReviewPages} />
+              ))}
+            </ul>
+          )}
+          {issues.length > FIX_FIRST_LIMIT && (
+            <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Show fewer" : `Show all ${issues.length} issues`}
+            </Button>
+          )}
+        </section>
+
+        <WhatChangedCard changes={changes} />
+      </div>
     </div>
+  );
+}
+
+function WhatChangedCard({ changes }: { changes: WhatChanged }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? changes.items : changes.items.slice(0, CHANGES_LIMIT);
+  return (
+    <section aria-labelledby="what-changed" className="flex min-w-0 flex-[1_1_340px] flex-col gap-3 rounded-xl border bg-body-bg p-[18px]">
+      <h3 id="what-changed" className="text-lg font-bold">What changed since last scan</h3>
+      {changes.items.length === 0 ? (
+        <p className="border-t pt-3 text-sm text-subtle-text">
+          {changes.comparable ? "No changes since the last scan." : "Changes show here after the next scan, compared with this one."}
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {shown.map((item) => (
+            <li key={item.key} className="flex gap-2.5 border-t py-3">
+              <span className={item.tone === "down" ? "w-10 shrink-0 font-bold text-danger-fg" : "w-10 shrink-0 font-bold text-success-fg"}>
+                <span className="sr-only">{item.tone === "down" ? "Worse: " : "Better: "}</span>
+                {item.badge}
+              </span>
+              <span className="min-w-0 text-md leading-snug break-words">
+                {item.parts.map((part, i) => (typeof part === "string" ? <span key={i}>{part}</span> : <strong key={i}>{part.strong}</strong>))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {changes.items.length > CHANGES_LIMIT && (
+        <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? "Show fewer" : `Show all ${changes.items.length} changes`}
+        </Button>
+      )}
+    </section>
   );
 }
 

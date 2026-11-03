@@ -5,24 +5,29 @@ import { mdiChartLine } from "@mdi/js";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useAgentAccess } from "@/hooks/useAgentAccess";
-import { useDemoMode, useDemoServesMarkdown } from "@/hooks/useDemoMode";
+import { useDemoMode, useDemoServesMarkdown, useStandaloneDomain } from "@/hooks/useDemoMode";
 import { SITE_TYPES, useSiteType } from "@/hooks/useSiteType";
 import { useSiteHistory, type SiteSnapshot } from "@/hooks/useScoreHistory";
+import { useWhatChanged } from "@/hooks/useWhatChanged";
 import { AppMark } from "@/components/shared/AppMark";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { PagesTab } from "@/components/dashboard/PagesTab";
 import { AgentAccessTab } from "@/components/dashboard/AgentAccessTab";
 import { FilesTab } from "@/components/dashboard/FilesTab";
-import { CitationView } from "@/components/CitationView";
+import { CitationsTab } from "@/components/dashboard/CitationsTab";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  DEMO_CITATION_PAGE_ID,
   DEMO_SITE_HISTORY_BEFORE,
+  makeTestCitationDemo,
   makeTestSiteContext,
   makeTestSitePages,
+  makeTestWhatChanged,
 } from "@/lib/rule-engine/test-fixture";
+import { botGrid } from "@/lib/agent-access/grid";
 import { aggregateSite } from "@/lib/site-aggregate";
 import { runSiteChecks } from "@/lib/checks/engine";
 import { fixFirstGroups, type IssueGroup } from "@/lib/checks/view-model";
@@ -41,6 +46,9 @@ function hashTab(): DashboardTab | null {
   const hash = window.location.hash.slice(1) as DashboardTab;
   return TABS.includes(hash) ? hash : null;
 }
+
+/** The standalone dashboard's page list: stable, so memos don't re-run. */
+const NO_PAGES: PageMatrixRow[] = [];
 
 const DEMO_SITE_CONTEXT = {
   id: "demo",
@@ -67,11 +75,20 @@ export default function DashboardWidgetPage() {
     [useFixture, demoServesMarkdown],
   );
 
-  const pages = useFixture ? fixturePages : live.pages;
-  const siteContext = useFixture ? DEMO_SITE_CONTEXT : live.siteContext;
-  const isLoading = useFixture ? false : live.isLoading;
-  const error = useFixture ? null : live.error;
-  const scanningCount = useFixture ? 0 : live.scanningCount;
+  // `?domain=` outside Sitecore: the site checks and AI citations for that
+  // domain, with no Marketplace client and so no page list.
+  const standalone = useStandaloneDomain();
+  const standaloneSite = useMemo(() => {
+    const host = standalone.replace(/^https?:\/\//, "");
+    return { id: standalone ? `standalone:${host}` : "", domain: standalone, name: host, organization: "", tenantName: "" };
+  }, [standalone]);
+  const offline = useFixture || Boolean(standalone);
+
+  const pages = useFixture ? fixturePages : standalone ? NO_PAGES : live.pages;
+  const siteContext = useFixture ? DEMO_SITE_CONTEXT : standalone ? standaloneSite : live.siteContext;
+  const isLoading = offline ? false : live.isLoading;
+  const error = offline ? null : live.error;
+  const scanningCount = offline ? 0 : live.scanningCount;
   // S1–S12's data: once per domain (cached an hour), the fixture in demo mode.
   const agentAccess = useAgentAccess(useFixture ? "" : siteContext.domain, fixtureSite?.access ?? null);
   const access = agentAccess.data;
@@ -120,13 +137,30 @@ export default function DashboardWidgetPage() {
   );
   const history = useSiteHistory(siteContext.id, siteScore, scanningCount, demoHistory);
 
+  const botRows = useMemo(() => (access ? botGrid(access) : null), [access]);
+  const demoChanges = useMemo(
+    () => (useFixture && fixtureSite?.access ? makeTestWhatChanged(fixturePages, siteScore, fixtureSite.access) : undefined),
+    [useFixture, fixtureSite, fixturePages, siteScore],
+  );
+  const changes = useWhatChanged({
+    siteId: siteContext.id,
+    siteUrl: siteContext.domain,
+    pages,
+    siteScore,
+    scanningCount,
+    botRows,
+    accessCheckedAt: access?.checkedAt ?? null,
+    demo: demoChanges,
+  });
+  const citationDemo = useMemo(() => (useFixture ? makeTestCitationDemo() : null), [useFixture]);
+
   const lastScan = useMemo(() => {
     const times = pages.map((p) => (p.lastScannedAt ? Date.parse(p.lastScannedAt) : NaN)).filter(Number.isFinite);
     return times.length > 0 ? new Date(Math.max(...times)) : null;
   }, [pages]);
 
   const handleScanRow = (row: PageMatrixRow) => {
-    if (useFixture) return;
+    if (offline) return;
     live.scanRow(row.id);
   };
 
@@ -191,7 +225,7 @@ export default function DashboardWidgetPage() {
                 {siteContext.name && (
                   <span className="truncate text-sm text-subtle-text">
                     {siteContext.name}
-                    {siteHost && ` · ${siteHost}`}
+                    {siteHost && siteHost !== siteContext.name && ` · ${siteHost}`}
                   </span>
                 )}
               </div>
@@ -208,18 +242,18 @@ export default function DashboardWidgetPage() {
                   </SelectContent>
                 </Select>
                 <span className="text-sm text-subtle-text">
-                  {useFixture ? "Demo data" : scanningCount > 0 ? "Scanning…" : lastScan ? `Last scan ${timeAgo(lastScan)}` : "Not scanned yet"}
+                  {useFixture ? "Demo data" : standalone ? "Outside Sitecore: site checks only" : scanningCount > 0 ? "Scanning…" : lastScan ? `Last scan ${timeAgo(lastScan)}` : "Not scanned yet"}
                 </span>
                 <Button
                   type="button"
                   size="sm"
                   className="text-sm"
                   onClick={() => {
-                    live.clearAndRefresh();
+                    if (!standalone) live.clearAndRefresh();
                     agentAccess.refresh();
                   }}
                   disabled={useFixture || scanningCount > 0 || isLoading}
-                  title={useFixture ? "Scanning is off in demo mode" : "Rescan every page"}
+                  title={useFixture ? "Scanning is off in demo mode" : standalone ? "Check the site again" : "Rescan every page"}
                 >
                   Scan site
                 </Button>
@@ -244,6 +278,7 @@ export default function DashboardWidgetPage() {
               isLoading={isLoading}
               issues={issues}
               history={history.map((h) => h.score)}
+              changes={changes}
               onReviewPages={reviewPages}
             />
           )}
@@ -273,15 +308,21 @@ export default function DashboardWidgetPage() {
         </TabsContent>
 
         <TabsContent value="citations" className={tabContent}>
-          <div className="mx-auto max-w-[1320px] p-2 sm:p-4">
-            {pages.length === 0 && !siteContext.domain ? (
+          {pages.length === 0 && !siteContext.domain ? (
+            <div className="mx-auto max-w-[1320px] p-2 sm:p-4">
               <EmptyState icon={mdiChartLine} title="AI citations">
                 Check how often AI answers cite your pages, once your pages have loaded.
               </EmptyState>
-            ) : (
-              <CitationView pages={pages} siteDomain={siteContext.domain} />
-            )}
-          </div>
+            </div>
+          ) : (
+            <CitationsTab
+              pages={pages}
+              siteUrl={siteContext.domain}
+              botRows={botRows}
+              demo={citationDemo}
+              initialPageId={useFixture ? DEMO_CITATION_PAGE_ID : undefined}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="files" className={tabContent}>
