@@ -76,6 +76,15 @@ The issues worth fixing, **grouped by issue rather than by page**, biggest gain 
 
 Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.
 
+### What changed since last scan
+Next to Fix first, the news since the previous scan, worst first:
+- **▼ 18 /services dropped after the Oct 28 publish. Now needs work: One clear H1 and logical headings.** A page lost 5 points or more; when it was published since the last scan, the card says when, and it names the checks that newly need work.
+- **New: ChatGPT-User now gets 403 from your firewall (it got 200 last time).** A search or user agent that could read the site and now can't (or **▲** can again). Training agents are left out: blocking them is your choice.
+- **▲ 2 pages became agent-ready**, and the fix they had in common when there is one.
+- **▲ Cited in 2 AI answers more** for a page, when its citation probe was run again with the same questions (see AI citations).
+
+The comparison needs two scans, so on the first one the card says changes will show after the next. Like the trend line, the history is kept in your browser: someone else, or another browser, starts its own.
+
 ---
 
 ## Pages
@@ -116,7 +125,25 @@ In the **Page Builder panel**, a red strip says when a site issue keeps agents o
 
 ## AI citations
 
-The citation forecast: for a page, how likely AI answers are to cite it. A later release replaces it with measured citation checks.
+Will AI answers cite this page? Pick a page from the list, or type the address of any page on your site. The tab has two parts, clearly labelled.
+
+**Can each engine cite this page?** (*Estimate · instant · from your checks*). For ChatGPT, Claude, Perplexity, Gemini and Copilot: **Ready**, **Limited** or **Blocked**, with the reason. It comes from the Agent access results and the page's score, with no AI involved, so it's the same every time:
+- **Blocked**: both the engine's search agent and its user agent are kept out (by robots.txt or the firewall), or the page is set to noindex or nosnippet.
+- **Limited**: one of them is kept out (for example "The search crawler can read it, but ChatGPT-User gets 403 from the firewall"), or the page scores **Not ready**. For Gemini, Google-Extended being disallowed in robots.txt also limits it. Not serving Markdown doesn't: engines cite ordinary web pages.
+- Copilot relies on Bing's index, so it only depends on the page being indexable.
+
+**Are AI answers citing this page?** (*Measured · citation probe*). The real test: we ask Claude 5 to 10 questions this page should answer, with live web search, and look at what came back.
+1. **Suggest questions** writes 8 realistic questions about the page's topic, never naming your brand (people asking about a topic don't know your name yet). Change, add or remove them with **Edit questions**, choose the country to ask from, and list any other hosts that count as your site (a staging or regional domain), so they don't show up as competitors.
+2. **Run probe** asks each question. It takes about 20 seconds, and the rows fill in as answers arrive.
+3. For each question: **Found** means your site was in the search results Claude saw; **Cited** means the answer linked to it; **Cited instead** lists the other sites the answer linked to. "(this page)" means the exact page, not just your site. Click a question for the answer's start, what Claude searched for, and what it means.
+
+The totals read like **"Cited in the answer: 2 of 7 · Found in search results: 5 of 7 · Most cited instead: contentmarketinghub.example"**, with **▲ N since last run** when the same questions were asked before. These are counted from the search results and the answer's links, never by asking the AI whether it cited you.
+
+Sometimes Claude answers from memory without searching, even when asked to search. We then ask once more; if it still doesn't search, the question shows **Not searched** and is left out of the totals, because it says nothing about your site.
+
+**Cost and limits:** each question costs about 3 to 8 cents (Claude plus one web search; measured at about 3 cents on the BrandX replica), so a run of 8 is usually under $0.65. Probes run only when you click, never during a site scan. Results are kept for 7 days: **Run again** within a week shows the same results without asking again, except for questions that weren't searched. Editing one question asks only that one. The history of the last 10 runs is kept in your browser. A site can run at most 40 new probe questions an hour.
+
+The caveat under the results says it plainly: **AI answers vary by time, location and engine. This is a sample, not a ranking.** The probes use Claude; other engines answer differently.
 
 ---
 
@@ -150,3 +177,5 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 - **"One switch for every page."** Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX demo site the home page is about 54,000 tokens as HTML and about 1,500 as the Markdown it now serves.
 - **"Fix first, grouped by issue."** One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.
 - **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.
+- **"Measured, not guessed."** The citation probe asks real questions with live web search and counts who the answer actually links to: "Cited in 2 of 7, found in 5 of 7, and this competitor was cited instead." The estimate beside it says why an engine can't cite you, straight from the Agent access results.
+- **"What changed since last scan."** A page that dropped after a publish, a firewall that started blocking ChatGPT-User, pages that became agent-ready: the news, without comparing reports by hand.

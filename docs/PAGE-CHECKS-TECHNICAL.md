@@ -208,7 +208,7 @@ The panel reads the same scan through `useAgentAccess` (cached an hour per domai
 
 ## Shared JSON-LD parser (`json-ld.ts`)
 
-`extract-html.ts` keeps every block as `ParsedHtml.jsonLdScripts`, either `{ ok: true, value }` or `{ ok: false, error }`, so parse errors are reported instead of dropped. `collectNodes` turns the blocks into typed nodes: each top-level object, each array entry and each `@graph` member (nested objects stay inside their parent; read them with `resolve`, which also follows `{"@id": …}` references). `@type` is always a list with `schema:` / `https://schema.org/` prefixes removed. `isOrganization` and `isArticle` match subtypes. `typesOnPage` feeds the citation forecast prompt.
+`extract-html.ts` keeps every block as `ParsedHtml.jsonLdScripts`, either `{ ok: true, value }` or `{ ok: false, error }`, so parse errors are reported instead of dropped. `collectNodes` turns the blocks into typed nodes: each top-level object, each array entry and each `@graph` member (nested objects stay inside their parent; read them with `resolve`, which also follows `{"@id": …}` references). `@type` is always a list with `schema:` / `https://schema.org/` prefixes removed. `isOrganization` and `isArticle` match subtypes.
 
 ---
 
@@ -251,7 +251,7 @@ The panel reads the same scan through `useAgentAccess` (cached an hour per domai
 
 ## Server-side fetching (SSRF protection)
 
-Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-access`, `markdown-check`, `citation-forecast`, and `psi-check` for its Google call) uses `safeFetch` from `src/lib/server/safe-fetch.ts`. Phase 6 removed `robots-check` and `footer-check`; `agent-access` does both.
+Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-access`, `markdown-check`, `citation-probe` for the page it suggests questions from, and `psi-check` for its Google call) uses `safeFetch` from `src/lib/server/safe-fetch.ts`. Phase 6 removed `robots-check` and `footer-check`; `agent-access` does both.
 
 - `http`/`https` only; no credentials in the URL.
 - Blocks private, loopback, link-local (incl. `169.254.169.254`), CGNAT, multicast, reserved and documentation ranges, IPv4 and IPv6, including IPv4-mapped and NAT64/6to4/Teredo forms. The check runs in the undici Agent's DNS lookup at connect time, so DNS rebinding can't bypass it. IP-literal hosts (including `http://2130706433/`-style encodings) are checked before the request.
