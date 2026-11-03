@@ -637,17 +637,28 @@ export function useSitePages(
 
       // host.state tells which Sitecore host runs the widget: null for the
       // Cloud Portal ("portal"), { environment, language } for SitecoreAI
-      // ("xmc:xmapps"). Diagnostic only; only keys and those two fields are logged.
+      // ("xmc:xmapps"), { organizationId, xmCloudTenantInfo, userInfo } for the
+      // Pages-style host the dashboard runs in since 2026-11. That host's
+      // application.context has no tenantName, so the Pages editor deep-link
+      // takes it from xmCloudTenantInfo.name. Only keys and named fields are logged.
       try {
         const hostRes = await client.query("host.state");
         const state = (hostRes as { data?: unknown })?.data;
-        const s = state as { environment?: unknown; language?: unknown } | null | undefined;
+        const s = state as
+          | { environment?: unknown; language?: unknown; xmCloudTenantInfo?: { name?: unknown } }
+          | null
+          | undefined;
+        const hostTenantName = typeof s?.xmCloudTenantInfo?.name === "string" ? s.xmCloudTenantInfo.name : "";
         console.log("[sitePages] host.state →", {
           isNull: state === null,
           keys: state && typeof state === "object" ? Object.keys(state) : [],
           environment: s?.environment,
           language: s?.language,
+          hostTenantName,
         });
+        if (hostTenantName) {
+          setSiteContext((prev) => (prev.tenantName ? prev : { ...prev, tenantName: hostTenantName }));
+        }
       } catch (err) {
         console.warn("[sitePages] host.state query failed:", err);
       }
