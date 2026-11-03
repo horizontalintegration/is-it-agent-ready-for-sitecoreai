@@ -147,6 +147,6 @@ The citation forecast: for a page, how likely AI answers are to cite it. A later
 - **"It checks the real page."** Schema checks look at what's actually published — and the BrandX demo site's missing organisation details show up straight away, with the code to fix it.
 - **"robots.txt says yes, the firewall says no."** The demo site's robots.txt welcomes ChatGPT, but its firewall answers ChatGPT-User with 403. Only a live request as each agent shows that.
 - **"Blocking training is your choice."** Opting out of model training never costs points; blocking AI search does.
-- **"One switch for every page."** Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX site a page is about 54,000 tokens as HTML and about 1,300 as Markdown.
+- **"One switch for every page."** Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX demo site the home page is about 54,000 tokens as HTML and about 1,500 as the Markdown it now serves.
 - **"Fix first, grouped by issue."** One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.
 - **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.

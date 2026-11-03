@@ -121,8 +121,11 @@ export function gradeMarkdownQuality({ markdown, fields, html }: QualityInput): 
   const text = ` ${lines.join(" ")} `;
   const vocabulary = new Set(words(text));
 
-  // Coverage: each content item counts by its words.
-  const items = [...new Set([...html.headings.map((h) => h.text), ...html.paragraphs, ...html.qaPairs.map((q) => q.answer)])].filter(
+  // Coverage: each content item counts by its words. Headings come from the whole page, so only
+  // those in the main text count: a footer's "Legal" isn't content a Markdown version should keep.
+  const mainLines = new Set(html.mainText.split("\n").map(normalise).filter(Boolean));
+  const headings = html.headings.map((h) => h.text).filter((t) => mainLines.has(normalise(t)));
+  const items = [...new Set([...headings, ...html.paragraphs, ...html.qaPairs.map((q) => q.answer)])].filter(
     (s) => normalise(s) !== "",
   );
   let total = 0;
@@ -139,9 +142,7 @@ export function gradeMarkdownQuality({ markdown, fields, html }: QualityInput): 
   const coverage = total > 0 ? covered / total : null;
 
   // Chrome: Markdown lines that are text from outside the main content.
-  const main = new Set(
-    [...html.mainText.split("\n"), ...items, ...html.qaPairs.map((q) => q.question)].map(normalise).filter(Boolean),
-  );
+  const main = new Set([...mainLines, ...[...items, ...html.qaPairs.map((q) => q.question)].map(normalise).filter(Boolean)]);
   const chrome = new Set(html.bodyBlocks.map((b) => normalise(b.text)).filter((t) => t && !main.has(t)));
   let all = 0;
   let chromeChars = 0;

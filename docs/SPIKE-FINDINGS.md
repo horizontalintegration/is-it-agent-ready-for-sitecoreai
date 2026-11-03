@@ -502,18 +502,29 @@ Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, 
 - **`npx` inside the repo** fails on this machine: the repo's `.nvmrc` asks for Node 22 and nvm-windows refuses ("Node.js v22.x.x is not installed"). `init` takes the app's path, so it ran from outside: `npx --yes accept-md@5.0.2 init <path>`. The lockfile was updated with `npm install --package-lock-only` (adds `accept-md-runtime`, Turndown, linkedom; no other versions changed).
 - **Fix card:** the accept-md card says to check `next.config` after `init` on a Content SDK app (see 8.4).
 
-### 8.3 On the deployed replica
+### 8.3 On the deployed replica (Confirmed, 2026-11-02)
 
-Merged to the replica's `develop` and deployed to production in ksorthiya/hztl-xcelerate-blueprint-copy#4 and #5 (the build fixes in 8.2). Tested on 2026-11-02 through `/api/markdown-check` and plain requests (13 requests, plus one agent-access scan: 43 requests in 2.6 s).
+Deployed to the replica's production in three steps: ksorthiya/hztl-xcelerate-blueprint-copy#4 (accept-md), #5 (the build fixes in 8.2) and #6 (the path fix below). Tested through `/api/markdown-check`, plain requests and the agent-access scan.
 
-- [ ] **A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4). Fails with accept-md 5.0.2 as generated.** `/`, `/services` and `/contact-and-support` each answer `Accept: text/markdown` with **`404 {"error":"Not found"}`** (`application/json`, no `Vary`); browsers still get the HTML (214 KB, 214 KB and 171 KB). So the rewrite reaches the handler, but the handler refuses the request. Cause: it reads the page path from `x-accept-md-path`, then from the matched-path headers, then from the rewrite's `?path=`. On Vercel `x-matched-path` is the route that matched, `/api/accept-md`, so the path starts with `/api/` and its "Exclude /api and /_next paths" branch answers 404 (the only place that body comes from). Fix in ksorthiya/hztl-xcelerate-blueprint-copy#6: `?path=` first whenever it's present (`''` for the home page). **Open** until that's deployed and re-tested.
-- [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite). Waits for the fix above.
-- [ ] A Sitecore redirect still answers a Markdown request with the redirect. **Not configured on the replica's site** (user, 2026-11-02): the redirects middleware passes every request through, so this stays untested unless a test redirect is added.
-- [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default. **Not configured on the replica's site** (user, 2026-11-02): untested here. Customers who personalise pages should check it.
-- [ ] A missing page: the Markdown request returns an error, not a 200. So far `404` (the handler's refusal above), so it waits for the fix. The browser request returns a 200 "not found" page of 2.6 KB, the soft 404 S8 already reports; `/es-MX/services` returns the same 2.6 KB page (no Spanish content on this site).
-- [x] **Sitecore's rewrites still work:** `/healthz` 200, `/robots.txt` 200, `/sitemap.xml` 200 (117 KB, 149 URLs).
-- [x] **Agent access unchanged:** every search and user agent 200 on all three pages; S3 sees the same 404 for Markdown, so it still fails.
+**After #4 and #5** (13 requests and one scan):
+- Every Markdown request reached the handler and got **`404 {"error":"Not found"}`** (`application/json`, no `Vary`); browsers still got the HTML. Cause: the generated Pages Router handler reads the page path from `x-accept-md-path`, then the matched-path headers, then the rewrite's `?path=`. On Vercel, `x-matched-path` is the route that matched, `/api/accept-md`, so the path starts with `/api/`, and its "Exclude /api and /_next paths" branch answers 404 (the only place that body comes from).
+- **Fix (#6):** `?path=` first whenever it's present (it's `''` for the home page, so a plain `||` wouldn't do). Worth reporting to accept-md.
+
+**After #6** (6 requests and one scan: 43 requests in 2.5 s):
+- [x] **A page serves Markdown, 4/4 (P5):** `/`, `/services` and `/contact-and-support` answer `Accept: text/markdown` with `text/markdown; charset=utf-8` and `Vary: Accept`, browsers still get `text/html`, and the Markdown is 97–98% smaller (home: 214,718 → 6,045 bytes, about 53,700 → 1,500 tokens). **S1, S2 and S3 pass.** This is the Phase 7 accept-when "supported site shows 4/4 green" on a real site.
+- [x] **P6 on the home page: full credit.** The front matter title and description match the page's, 100% of the main content is in the Markdown, and menus, header and footer are 5% of it. (A first run counted footer headings such as "Legal" as missing content; P6 now counts only headings in the main text.)
+- [x] **Multisite:** each page's Markdown is its own page on this site (title and canonical), so the multisite rewrite and the handler's own HTML fetch resolve the right site.
+- [ ] A Sitecore redirect still answers a Markdown request with the redirect. **Not configured on the replica's site** (user, 2026-11-02): untested.
+- [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default. **Not configured on the replica's site**: untested. The handler forwards the request's cookies to its HTML fetch, so it should follow the visitor's variant; customers who personalise pages should check it.
+- [ ] A missing page: not retested after #6. The browser request returns a 200 "not found" page (2.6 KB), the soft 404 S8 already reports, and accept-md converts what the page returns.
+- [x] **Sitecore's rewrites still work** (after #5): `/healthz` 200, `/robots.txt` 200, `/sitemap.xml` 200 (117 KB, 149 URLs). Every search and user agent still gets 200.
+- **What accept-md's Markdown looks like here:** the site header stays in (the logo, the menu as a list, the country selector), because accept-md removes `nav` and `footer` but not `header`; links and images stay relative (`/services`, `/_next/image?url=…`); the front matter carries title, description, canonical, language, Open Graph and robots.
 
 ### 8.4 Recommendation
 
-**Open** until 8.3 is done. So far: accept-md works for a Content SDK site only with the hand-fixed `next.config.js` (8.2); the fix card and P5's developer note say so.
+**accept-md works with the Content SDK, with three hand fixes** (5.0.2, Next.js 15 Pages Router on Vercel):
+1. `npx accept-md init` breaks `next.config.js`: undo its edit and add the rewrite after the next-config plugins, in `beforeFiles`, with their array as `afterFiles` (8.2).
+2. Format the generated handler for the project's lint rules (8.2).
+3. On Vercel, make the handler read `?path=` before `x-matched-path` (8.3).
+
+Then test it with the site's own redirects and personalisation. The fix card and P5's developer note list these steps. Redirects and personalisation stay untested here (not configured on the replica).

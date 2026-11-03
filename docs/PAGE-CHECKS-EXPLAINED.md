@@ -126,7 +126,7 @@ The panel reads the page **as it is in Page Builder right now**, including edits
 
 **Why it matters:** Markdown gives agents your content without the page's code, so they read more of it, faster, and are less likely to give up on a heavy page. On a typical Sitecore page the Markdown is over 90% smaller.
 
-**Good to know:** this is a setting for the whole site, so your developer fixes it once for every page. Until then every page shows it as a fix. The options: **accept-md** for Next.js sites (`npx accept-md init`; it needs a manual change on Sitecore's Content SDK starter, and testing with Sitecore's redirects, personalisation and multisite), **Markdown for Agents** if the site is behind Cloudflare, or a route your developer writes. A page that isn't published yet shows **Not checked**.
+**Good to know:** this is a setting for the whole site, so your developer fixes it once for every page. Until then every page shows it as a fix. The options: **accept-md** for Next.js sites (`npx accept-md init`; on Sitecore's Content SDK starter it needs three small changes by hand, which the fix card lists; the BrandX demo site serves Markdown this way), **Markdown for Agents** if the site is behind Cloudflare, or a route your developer writes. A page that isn't published yet shows **Not checked**.
 
 ### The Markdown version is complete — Recommended, once Markdown is served
 **What it checks:** In the Markdown your site serves: the title and description at the top match the page's **Title** and **Meta description** fields; at least 90% of the page's headings, paragraphs and FAQ answers are included; and menus, header and footer make up less than a quarter of it.
@@ -295,4 +295,4 @@ On the **AI Assist** tab, the panel can write the **meta title, meta description
 - **"It sees what AI crawlers see."** The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.
 - **"One set of rules everywhere."** The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.
 - **"A perfect page can still be invisible."** If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.
-- **"See what the agent gets."** The Agent View shows the page as Markdown, and the saving: on the BrandX site, about 1,300 tokens instead of 54,000.
+- **"See what the agent gets."** The Agent View shows the page as Markdown, and the saving: on the BrandX demo site, which now serves Markdown, the home page is about 1,500 tokens instead of 54,000.

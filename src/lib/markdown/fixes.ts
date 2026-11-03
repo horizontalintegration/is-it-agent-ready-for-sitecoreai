@@ -52,7 +52,7 @@ export const MARKDOWN_FIXES: MarkdownFix[] = [
   {
     id: "accept-md",
     title: "Next.js site (Sitecore Content SDK)",
-    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. On the Content SDK starter, init breaks next.config.js: undo its edit and add the accept-md rewrite after the next-config plugins, in beforeFiles, keeping the plugins' array as afterFiles; then run your lint on the generated handler. Test it alongside your Sitecore middleware (redirects, personalisation, multisite).",
+    text: "accept-md adds a route that converts each page to Markdown when an agent asks for it. On the Content SDK starter (accept-md 5.0.2) it needs three changes by hand: init breaks next.config.js, so add the rewrite after the next-config plugins instead (beforeFiles, with their array as afterFiles); format the generated handler for your lint rules; and on Vercel make the handler read ?path= before x-matched-path. Then test it with your redirects and personalisation.",
     command: "npx accept-md init",
   },
   {
@@ -70,4 +70,4 @@ export const MARKDOWN_FIXES: MarkdownFix[] = [
 
 /** The options in one line, for the developer note. */
 export const MARKDOWN_FIX_SUMMARY =
-  "Options: `npx accept-md init` in the Next.js head app (on the Content SDK starter, init breaks next.config.js: add accept-md's rewrite after the next-config plugins, in beforeFiles, with their array as afterFiles; test it with the Sitecore middleware: redirects, personalisation, multisite), Cloudflare's Markdown for Agents, or your own route that converts the page and answers Accept: text/markdown with Vary: Accept.";
+  "Options: `npx accept-md init` in the Next.js head app (on the Content SDK starter it needs three hand fixes: add its rewrite after the next-config plugins, in beforeFiles, because init breaks next.config.js; format the generated handler for your lint; on Vercel, read ?path= before x-matched-path in the handler; then test it with your redirects and personalisation), Cloudflare's Markdown for Agents, or your own route that converts the page and answers Accept: text/markdown with Vary: Accept.";

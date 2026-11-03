@@ -80,6 +80,12 @@ describe("gradeMarkdownQuality (P6)", () => {
     expect(q.credit).toBeCloseTo(1 / 6);
   });
 
+  it("doesn't count headings outside the main content, such as a footer's", () => {
+    const withFooter = { ...html, headings: [...html.headings, { level: 3, text: "Legal" }] };
+    const q = gradeMarkdownQuality({ markdown: `---\ntitle: Pricing\ndescription: Plans and prices.\n---\n\n${body}`, fields, html: withFooter });
+    expect(q).toMatchObject({ coverage: 1, missing: [] });
+  });
+
   it("reads Markdown without front matter", () => {
     const q = gradeMarkdownQuality({ markdown: body, fields, html });
     expect(q.frontMatter.present).toBe(false);

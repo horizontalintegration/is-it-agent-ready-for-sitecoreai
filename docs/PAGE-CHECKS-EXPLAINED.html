@@ -143,7 +143,7 @@
 <h3>Agents can get this page as Markdown — Essential</h3>
 <p><strong>What it checks:</strong> We ask the published page for Markdown, as an AI agent does, and for the normal web page, as a browser does. Full marks need all four checks on the Agent View tab: Markdown comes back, browsers still get the web page, the "Vary: Accept" label is set, and the Markdown is smaller than the web page. Markdown without the other three gets half marks or more.</p>
 <p><strong>Why it matters:</strong> Markdown gives agents your content without the page's code, so they read more of it, faster, and are less likely to give up on a heavy page. On a typical Sitecore page the Markdown is over 90% smaller.</p>
-<p><strong>Good to know:</strong> this is a setting for the whole site, so your developer fixes it once for every page. Until then every page shows it as a fix. The options: <strong>accept-md</strong> for Next.js sites (<code>npx accept-md init</code>; it needs a manual change on Sitecore's Content SDK starter, and testing with Sitecore's redirects, personalisation and multisite), <strong>Markdown for Agents</strong> if the site is behind Cloudflare, or a route your developer writes. A page that isn't published yet shows <strong>Not checked</strong>.</p>
+<p><strong>Good to know:</strong> this is a setting for the whole site, so your developer fixes it once for every page. Until then every page shows it as a fix. The options: <strong>accept-md</strong> for Next.js sites (<code>npx accept-md init</code>; on Sitecore's Content SDK starter it needs three small changes by hand, which the fix card lists; the BrandX demo site serves Markdown this way), <strong>Markdown for Agents</strong> if the site is behind Cloudflare, or a route your developer writes. A page that isn't published yet shows <strong>Not checked</strong>.</p>
 <h3>The Markdown version is complete — Recommended, once Markdown is served</h3>
 <p><strong>What it checks:</strong> In the Markdown your site serves: the title and description at the top match the page's <strong>Title</strong> and <strong>Meta description</strong> fields; at least 90% of the page's headings, paragraphs and FAQ answers are included; and menus, header and footer make up less than a quarter of it.</p>
 <p><strong>Why it matters:</strong> An agent answers from the Markdown alone. If it leaves out the FAQ answers, or is mostly menu links, the agent misses what the page is for. An empty Meta description field is something you can fix in Page Builder.</p>
@@ -365,7 +365,7 @@
 <li><strong>"It sees what AI crawlers see."</strong> The panel spots content that only appears after JavaScript runs, which most AI crawlers never see.</li>
 <li><strong>"One set of rules everywhere."</strong> The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.</li>
 <li><strong>"A perfect page can still be invisible."</strong> If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.</li>
-<li><strong>"See what the agent gets."</strong> The Agent View shows the page as Markdown, and the saving: on the BrandX site, about 1,300 tokens instead of 54,000.</li>
+<li><strong>"See what the agent gets."</strong> The Agent View shows the page as Markdown, and the saving: on the BrandX demo site, which now serves Markdown, the home page is about 1,500 tokens instead of 54,000.</li>
 </ul>
 </body>
 </html>
