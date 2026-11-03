@@ -270,6 +270,8 @@ export function AssistSpike({ client, sitecoreContextId: ctxProp, mode = "panel"
   const [pfField, setPfField] = useState("");
   const [pfValue, setPfValue] = useState("");
   const [pfOut, setPfOut] = useState("");
+  /** A write waiting for "Send write". */
+  const [pending, setPending] = useState<{ text: string; send: () => Promise<void> } | null>(null);
 
   const [reports, setReports] = useState<SpikeReport[]>(loadReports);
   const [status, setStatus] = useState<string>("");
@@ -417,13 +419,18 @@ export function AssistSpike({ client, sitecoreContextId: ctxProp, mode = "panel"
       setFreeOut("Variables aren't valid JSON.");
       return;
     }
-    if (write && !window.confirm(`Send this write to Sitecore?\n\n${freeQuery}\n\nVariables: ${JSON.stringify(vars)}`)) return;
-    setBusy(true);
-    const r = await gql(client, sitecoreContextId, write ? "free write" : "free query", freeQuery, vars);
-    if (write) console.info("[audit] spike write", { query: freeQuery, variables: vars, result: r });
-    setFreeOut(JSON.stringify(r, null, 2));
-    add({ label: `${write ? "WRITE" : "query"}: ${freeQuery.slice(0, 60)}`, capturedAt: new Date().toISOString(), page: {}, sections: { query: freeQuery, variables: vars, result: r } });
-    setBusy(false);
+    const query = freeQuery;
+    const send = async () => {
+      setBusy(true);
+      const r = await gql(client, sitecoreContextId, write ? "free write" : "free query", query, vars);
+      if (write) console.info("[audit] spike write", { query, variables: vars, result: r });
+      setFreeOut(JSON.stringify(r, null, 2));
+      add({ label: `${write ? "WRITE" : "query"}: ${query.slice(0, 60)}`, capturedAt: new Date().toISOString(), page: { mode }, sections: { query, variables: vars, result: r } });
+      setBusy(false);
+    };
+    // The panel's iframe blocks window.confirm, so the confirm is drawn here.
+    if (write) setPending({ text: `${query}\n\nVariables: ${JSON.stringify(vars, null, 2)}`, send });
+    else await send();
   }
 
   // Page field read/write through xmc.pages.updateFields, the call MetaGenerator
@@ -441,28 +448,34 @@ export function AssistSpike({ client, sitecoreContextId: ctxProp, mode = "panel"
     if (!client) return;
     const before = await gql(client, sitecoreContextId, "before", FIELD_READ, { id: pfPageId.trim(), language: pfLanguage, field: pfField });
     const beforeValue = (before.data as { item?: { field?: { value?: string } | null } } | undefined)?.item?.field?.value;
-    if (!window.confirm(`Write with xmc.pages.updateFields?\n\nPage: ${pfPageId}\nLanguage: ${pfLanguage}\nField: ${pfField}\n\nBefore: ${beforeValue ?? "(couldn't read)"}\nAfter: ${pfValue}`)) return;
-    setBusy(true);
-    const t0 = performance.now();
-    let result: unknown;
-    let threw: string | undefined;
-    try {
-      result = await client.mutate("xmc.pages.updateFields", {
-        params: {
-          path: { pageId: pfPageId.trim() },
-          body: { language: pfLanguage, fields: [{ name: pfField, value: pfValue }] },
-          ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
-        },
-      } as Parameters<ClientSDK["mutate"]>[1]);
-    } catch (err) {
-      threw = String(err);
-    }
-    const after = await gql(client, sitecoreContextId, "after", FIELD_READ, { id: pfPageId.trim(), language: pfLanguage, field: pfField });
-    const out = { mode, ms: Math.round(performance.now() - t0), before: before.data ?? before.errors, result, threw, after: after.data ?? after.errors };
-    console.info("[audit] spike updateFields", { pageId: pfPageId, language: pfLanguage, field: pfField, before: beforeValue, after: pfValue, threw });
-    setPfOut(JSON.stringify(out, null, 2));
-    add({ label: `WRITE updateFields ${pfField} on ${pfPageId} (${mode})`, capturedAt: new Date().toISOString(), page: { mode }, sections: out });
-    setBusy(false);
+    const [pageId, language, field, value] = [pfPageId.trim(), pfLanguage, pfField, pfValue];
+    const send = async () => {
+      setBusy(true);
+      const t0 = performance.now();
+      let result: unknown;
+      let threw: string | undefined;
+      try {
+        result = await client.mutate("xmc.pages.updateFields", {
+          params: {
+            path: { pageId },
+            body: { language, fields: [{ name: field, value }] },
+            ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
+          },
+        } as Parameters<ClientSDK["mutate"]>[1]);
+      } catch (err) {
+        threw = String(err);
+      }
+      const after = await gql(client, sitecoreContextId, "after", FIELD_READ, { id: pageId, language, field });
+      const out = { mode, ms: Math.round(performance.now() - t0), before: before.data ?? before.errors, result, threw, after: after.data ?? after.errors };
+      console.info("[audit] spike updateFields", { pageId, language, field, before: beforeValue, after: value, threw });
+      setPfOut(JSON.stringify(out, null, 2));
+      add({ label: `WRITE updateFields ${field} on ${pageId} (${mode})`, capturedAt: new Date().toISOString(), page: { mode }, sections: out });
+      setBusy(false);
+    };
+    setPending({
+      text: `xmc.pages.updateFields\nPage: ${pageId}\nLanguage: ${language}\nField: ${field}\n\nBefore: ${beforeValue ?? "(couldn't read)"}\nAfter: ${value}`,
+      send,
+    });
   }
 
   const json = JSON.stringify(reports, null, 2);
@@ -479,8 +492,29 @@ export function AssistSpike({ client, sitecoreContextId: ctxProp, mode = "panel"
     <section className="m-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm" aria-label="Phase 9 spike">
       <h2 className="font-bold">Phase 9 spike (temporary)</h2>
       <p className="mb-2 text-xs">
-        {mode === "panel" ? "“Run spike” sends only queries. " : ""}Writes go only through the red buttons, after a confirm. Context ID: {sitecoreContextId ? "yes" : "no"}
+        {mode === "panel" ? "“Run spike” sends only queries. " : ""}Writes go only through the red buttons, after “Send write”. Context ID: {sitecoreContextId ? "yes" : "no"}
       </p>
+      {pending && (
+        <div ref={(el) => el?.scrollIntoView({ block: "nearest" })} role="alertdialog" aria-label="Confirm write" className="mb-2 rounded border-2 border-red-500 bg-white p-2">
+          <p className="text-xs font-bold text-red-700">Send this write to Sitecore?</p>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{pending.text}</pre>
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              className="rounded bg-red-600 px-3 py-1 font-semibold text-white disabled:opacity-50"
+              disabled={busy}
+              onClick={async () => {
+                const p = pending;
+                setPending(null);
+                await p.send();
+              }}
+            >
+              Send write
+            </button>
+            <button type="button" className="rounded border bg-white px-3 py-1" onClick={() => setPending(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
       {mode === "panel" && <div className="flex flex-wrap items-center gap-2">
         <input className="min-w-0 flex-1 rounded border px-2 py-1" placeholder="Label (e.g. article)" value={label} onChange={(e) => setLabel(e.target.value)} />
         <label className="flex items-center gap-1 text-xs">
