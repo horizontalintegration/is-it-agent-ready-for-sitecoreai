@@ -19,6 +19,10 @@ export interface PageMatrixRow {
   metaTitle?: string | null;
   /** "Meta Description" (OG description fallback) from Sitecore — used as the llms.txt summary. */
   metaDescription?: string | null;
+  /** The Meta Description field's name when the page's template has it; null when it doesn't (writes need it). */
+  metaDescriptionField?: string | null;
+  /** The language the page was read in; writes go to this language's current version. */
+  language?: string;
   /** The Sitecore fields the checks read (the same fields the panel reads). */
   fields: PageFields;
   score: PageScoreSummary | null;

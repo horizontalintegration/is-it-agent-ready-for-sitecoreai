@@ -32,6 +32,8 @@ interface OverviewTabProps {
   /** "What changed since last scan". */
   changes: WhatChanged;
   onReviewPages: (issue: IssueGroup) => void;
+  /** "Generate for all" on a group the dashboard can fix in bulk (missing meta descriptions). */
+  onGenerateAll: (issue: IssueGroup) => void;
 }
 
 /** The hero sentence: what it would take, from the same numbers as Fix first. */
@@ -48,7 +50,7 @@ function heroSentence(aggregate: SiteAggregate, issues: IssueGroup[], scanning: 
   return authorIssues > 0 ? `${first} Authors can fix ${authorIssues} of the ${issues.length} issues in Page Builder.` : first;
 }
 
-export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, history, changes, onReviewPages }: OverviewTabProps) {
+export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, history, changes, onReviewPages, onGenerateAll }: OverviewTabProps) {
   const [showAll, setShowAll] = useState(false);
   const score = aggregate.overallPct === null ? null : Math.round(aggregate.overallPct);
   const scanning = aggregate.scanningCount > 0 || (isLoading && aggregate.scannedCount < aggregate.totalCount);
@@ -165,7 +167,7 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
           ) : (
             <ul className="flex flex-col">
               {shown.map((issue) => (
-                <FixFirstRow key={issue.id} issue={issue} pages={pages} siteUrl={siteUrl} onReviewPages={onReviewPages} />
+                <FixFirstRow key={issue.id} issue={issue} pages={pages} siteUrl={siteUrl} onReviewPages={onReviewPages} onGenerateAll={onGenerateAll} />
               ))}
             </ul>
           )}
@@ -221,11 +223,13 @@ function FixFirstRow({
   pages,
   siteUrl,
   onReviewPages,
+  onGenerateAll,
 }: {
   issue: IssueGroup;
   pages: PageMatrixRow[];
   siteUrl: string;
   onReviewPages: (issue: IssueGroup) => void;
+  onGenerateAll: (issue: IssueGroup) => void;
 }) {
   const [flash, setFlash] = useFlash();
   const sendToDeveloper = issue.scope === "site" || issue.owner === "developer";
@@ -242,7 +246,11 @@ function FixFirstRow({
         </span>
       </div>
       <span className="flex flex-col items-end gap-0.5">
-        {sendToDeveloper ? (
+        {issue.bulk ? (
+          <Button type="button" size="sm" className="text-sm" onClick={() => onGenerateAll(issue)}>
+            Generate for all
+          </Button>
+        ) : sendToDeveloper ? (
           <Button
             type="button"
             size="sm"

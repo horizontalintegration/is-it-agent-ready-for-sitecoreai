@@ -560,6 +560,8 @@ interface FixtureRowInput {
   daysOld: number;
   variants: Variant[];
   description?: string;
+  /** The page's template has no Meta Description field (Generate for all can't write it). */
+  noMetaField?: boolean;
 }
 
 function buildRow(input: FixtureRowInput, servesMarkdown: boolean): PageMatrixRow {
@@ -581,6 +583,8 @@ function buildRow(input: FixtureRowInput, servesMarkdown: boolean): PageMatrixRo
     lastModified: daysAgo(input.daysOld).toISOString(),
     metaTitle: input.name,
     metaDescription: input.description ?? null,
+    metaDescriptionField: input.noMetaField ? null : "MetaDescription",
+    language: "en",
     fields: data.fields,
     score: summarisePageReport(report),
     scanStatus: "scanned",
@@ -594,7 +598,7 @@ export function makeTestSitePages({ servesMarkdown = false }: { servesMarkdown?:
       variants: [notArticle, noFaq, noJsonLd, noCanonical, noDescription, commodity, age(1200)] },
     { id: "p2", name: "Legacy product page", route: "/products/legacy", daysOld: 900,
       variants: [notArticle, noFaq, noJsonLd, twoH1s, shortTitle("Legacy"), commodity, age(900)] },
-    { id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800,
+    { id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800, noMetaField: true,
       variants: [noJsonLd, noCanonical, noDescription, shortTitle("Draft"), commodity, age(800)] },
     { id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
       variants: [notArticle, noFaq, noJsonLd, noDescription, age(400)] },
@@ -747,5 +751,101 @@ export function makeTestWhatChanged(pages: PageMatrixRow[], siteScore: number | 
     scans: [prev, cur],
     access: [prevAccess, nowAccess],
     citations: [{ route: "/blog/how-to-build-an-effective-content-strategy", delta: 2, at: new Date().toISOString() }],
+  };
+}
+
+// ── AI Assist and write-back (Phase 9) ───────────────────────────────────────
+//
+// What the demo page's AI Assist tab and the dashboard's "Generate for all"
+// show in `?demo=1`, with no request: a suggestion for every section, the
+// fields each image comes from (one per kind: a page field, a page-local
+// component, a shared component, and one in rich text that is copy-only), the
+// FAQ answers' datasources, and the author names used on the site's articles.
+// Writes stay off in demo mode, with the reason shown.
+
+const DEMO_PAGE_PATH = "/sitecore/content/Example/Home/Blog/How to build an effective content strategy";
+
+export interface AssistDemo {
+  pagePath: string;
+  pageId: string;
+  /** The page item's fields, as usePageFields returns them. */
+  fieldValues: Record<string, string>;
+  fieldNames: { pageTitle: string; metaDescription: string; ogTitle: string; ogDescription: string; author: string; jsonLd: string | null };
+  faqSources: Array<{ itemId: string; path: string; question: string; answerHtml: string; answer: string; answerField: string }>;
+  imageFields: Array<{ owner: "page" | "item"; itemId: string; itemPath: string; field: string; value: string; mediaId: string; mediaPath: string; shared: boolean }>;
+  authorNames: string[];
+  meta: Record<"metaTitle" | "metaDescription" | "ogTitle" | "ogDescription", string>;
+  /** Generated meta descriptions for the dashboard's pages without one, by page URL. */
+  bulkMeta: Record<string, string>;
+  alt: Record<string, string>;
+  faqAnswers: Record<string, string>;
+  headings: Array<{ before: string; after: string }>;
+  summary: string;
+}
+
+export function makeTestAssist(): AssistDemo {
+  const page = makeTestPageData();
+  const images = page.parsedHtml!.images;
+  const faq = FAQ.map((f, i) => ({
+    itemId: `0000000${i + 1}-demo-faq0-0000-00000000000${i + 1}`,
+    path: `${DEMO_PAGE_PATH}/Data/Faq${i + 1}`,
+    question: f.question,
+    answerHtml: `<div class="ck-content"><p>${esc(f.answer)}</p></div>`,
+    answer: f.answer,
+    answerField: "content",
+  }));
+  return {
+    pagePath: DEMO_PAGE_PATH,
+    pageId: "11111111-demo-page-0000-000000000001",
+    fieldValues: {
+      pageTitle: page.authoring!.pageTitle ?? "",
+      MetaDescription: page.authoring!.metaDescription ?? "",
+      authorName: "Jane Smith",
+      image: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="Team collaborating around a whiteboard" />',
+    },
+    fieldNames: {
+      pageTitle: "pageTitle",
+      metaDescription: "MetaDescription",
+      ogTitle: "OpenGraphTitle",
+      ogDescription: "OpenGraphDescription",
+      author: "authorName",
+      jsonLd: null,
+    },
+    faqSources: faq,
+    imageFields: [
+      { owner: "page", itemId: "11111111-demo-page-0000-000000000001", itemPath: DEMO_PAGE_PATH, field: "image",
+        value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="Team collaborating around a whiteboard" />',
+        mediaId: "aaaaaaaa-0000-0000-0000-000000000001", mediaPath: "/images/hero", shared: false },
+      { owner: "item", itemId: "22222222-demo-figure-000-000000000001", itemPath: `${DEMO_PAGE_PATH}/Data/Figure 1`, field: "image",
+        value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000002" />',
+        mediaId: "aaaaaaaa-0000-0000-0000-000000000002", mediaPath: "/images/inline-figure-1", shared: false },
+      { owner: "item", itemId: "33333333-demo-shared-000-000000000001", itemPath: "/sitecore/content/Example/Data/Promos/Workflow diagram", field: "image",
+        value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000003" alt="Content workflow diagram" />',
+        mediaId: "aaaaaaaa-0000-0000-0000-000000000003", mediaPath: "/images/inline-figure-2", shared: true },
+    ],
+    authorNames: ["Daniel Osei", "Jane Smith", "Priya Raman"],
+    meta: {
+      metaTitle: "Build a Content Strategy That Works in 2026: A Practical Guide",
+      metaDescription: "Plan, audit and prioritise content that performs in search, answer engines and AI assistants, with a step-by-step framework you can start this week.",
+      ogTitle: "How to Build a Content Strategy That Works for People and AI",
+      ogDescription: "A practical, step-by-step guide to auditing your content, closing gaps and planning what to publish next, so it works across search and AI answers.",
+    },
+    bulkMeta: {
+      [`${SITE_DOMAIN}/about`]: "Who we are, what we build and how we help teams create content-led customer journeys across every channel, from search to AI assistants.",
+      [`${SITE_DOMAIN}/blog/draft`]: "A working draft on planning content for search and AI answers: the questions to ask, the pages to audit and how to decide what to write next.",
+      [`${SITE_DOMAIN}/pricing`]: "Compare plans and pricing for the platform, see what each tier includes, and find the right fit for your team's size and content goals.",
+    },
+    alt: {
+      [images[0].src]: "Four colleagues planning a content calendar on a whiteboard",
+      [images[1].src]: "Bar chart of page scores from a content audit, grouped by relevance",
+      [images[2].src]: "Diagram of a content workflow from brief to publishing and review",
+    },
+    faqAnswers: {
+      [faq[0].itemId]: "Most teams need 4 to 6 weeks: an audit of existing pages, audience research, and a first content roadmap.",
+      [faq[1].itemId]: "No. One strategy covers both: SEO and AEO reward the same useful content, with different formats such as concise answers and FAQs.",
+    },
+    headings: [{ before: "Building your audit framework", after: "How do you build a content audit framework?" }],
+    summary:
+      "A content strategy plans what to publish, for whom and why. Start with an audit of existing pages, score them for relevance, then decide what to refresh, merge or write new, so every page serves a clear goal in search and in AI answers.",
   };
 }

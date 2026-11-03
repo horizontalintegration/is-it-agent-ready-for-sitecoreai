@@ -29,15 +29,15 @@ export function FlashText({ text }: { text: string | null }) {
 interface FixButtonProps {
   row: CheckRowModel;
   pageUrl: string;
-  /** Opens the generator (AI Assist tab). */
-  onGenerate?: () => void;
+  /** Opens the check's card in the AI Assist tab (Generate, Choose author). */
+  onGenerate?: (checkId: string) => void;
   /** Opens the check's details. */
   onShowHow?: () => void;
   /** The most important action on screen gets the filled style. */
   primary?: boolean;
 }
 
-/** The verb button on a fix: Generate, Copy snippet, Send to developer or Show how. */
+/** The verb button on a fix: Generate, Choose author, Copy snippet, Send to developer or Show how. */
 export function FixButton({ row, pageUrl, onGenerate, onShowHow, primary = false }: FixButtonProps) {
   const kind = fixButton(row);
   const [flashText, flash] = useFlash();
@@ -45,7 +45,8 @@ export function FixButton({ row, pageUrl, onGenerate, onShowHow, primary = false
   const onClick = async () => {
     switch (kind) {
       case "generate":
-        onGenerate?.();
+      case "apply":
+        onGenerate?.(row.id);
         return;
       case "copy-snippet":
         flash((await copyText(row.codePreview ?? "")) ? "Copied" : "Copy failed");
@@ -59,7 +60,7 @@ export function FixButton({ row, pageUrl, onGenerate, onShowHow, primary = false
     }
   };
 
-  const filled = primary && (kind === "generate" || kind === "copy-snippet");
+  const filled = primary && (kind === "generate" || kind === "apply" || kind === "copy-snippet");
   return (
     <span className="inline-flex shrink-0 flex-col items-end gap-0.5">
       <Button

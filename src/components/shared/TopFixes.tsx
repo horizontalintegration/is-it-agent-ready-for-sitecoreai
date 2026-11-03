@@ -7,7 +7,7 @@ import { FixButton } from "./FixButton";
 interface TopFixesProps {
   fixes: CheckRowModel[];
   pageUrl: string;
-  onGenerate: () => void;
+  onGenerate: (checkId: string) => void;
   onShowHow: (id: string) => void;
 }
 

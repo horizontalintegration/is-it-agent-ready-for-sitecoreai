@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MarkdownCheckData } from "@/lib/markdown/types";
+import { FIELD_MAP } from "@/lib/sitecore/field-map";
 import type { AiResults, OrganizationInfo, ParsedHtml, PsiResult } from "@/lib/rule-engine/types";
 import type { DraftHtml, PageContext, PageFields } from "./types";
 
@@ -23,14 +24,12 @@ export function isHomeRoute(route: string | null | undefined): boolean {
   return r === "" || r === "/";
 }
 
-// Sitecore field names the checks read. Overridable per tenant (field names
-// vary between SXA and custom templates); referenced literally so Next.js
-// inlines them in the browser.
+// Sitecore field names the checks read (src/lib/sitecore/field-map.ts).
 export const SCORING_FIELD_NAMES = {
-  metaTitle: process.env.NEXT_PUBLIC_FIELD_TITLE ?? "pageTitle",
-  metaDescription: process.env.NEXT_PUBLIC_FIELD_META_DESCRIPTION ?? "MetaDescription",
-  robotsMetaTag: "robotsMetaTag",
-  updated: "__Updated",
+  metaTitle: FIELD_MAP.metaTitle,
+  metaDescription: FIELD_MAP.metaDescription,
+  robotsMetaTag: FIELD_MAP.robotsMetaTag,
+  updated: FIELD_MAP.updated,
 } as const;
 
 const clean = (v: string | null | undefined): string | null => {

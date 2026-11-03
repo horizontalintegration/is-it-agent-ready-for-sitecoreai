@@ -126,7 +126,15 @@
 <p>  - <strong>Send to developer</strong> copies a ready-to-paste note: the issue, why it matters, and the pages it affects.</p>
 <ul>
 <li><strong>Markdown for agents</strong> shows once: as <strong>Agents can get this page as Markdown</strong>, with how many pages it affects and what it adds to each, right after the site issues. Your developer fixes it once for the whole site.</li>
+<li><strong>Meta description missing</strong> lists the pages with an empty meta description. Its button, <strong>Generate for all</strong>, writes one for each page (below).</li>
 </ul>
+<h3>Generate for all: missing meta descriptions</h3>
+<p><strong>Generate for all</strong> on the "Meta description missing" row writes a description for every page that has none, in your brand voice, from each page's published content.</p>
+<p>1. A first step says how many pages it covers (up to 25 a run) and what it uses. Click <strong>Generate</strong> to start.</p>
+<p>2. Each page gets a suggestion you can edit, with its length (the target is 120–160 characters).</p>
+<p>3. <strong>Tick Approve on each one you want.</strong> Nothing is pre-ticked: every page is reviewed before anything is written.</p>
+<p>4. <strong>Write N approved</strong> shows every change before → after in one confirmation. Only <strong>Write to Sitecore</strong> saves them.</p>
+<p>The descriptions go into each page's current version and follow your workflow; <strong>nothing is published</strong>. A page whose template has no meta description field can't be written, and says so. Each saved change is recorded (old and new value), and a message confirms how many were saved. The live pages, and their scores, change after you publish. In demo mode the suggestions are examples, and nothing is sent to the AI or written.</p>
 <p>Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.</p>
 <h3>What changed since last scan</h3>
 <p>Next to Fix first, the news since the previous scan, worst first:</p>
@@ -230,6 +238,7 @@
 <li><strong>"Blocking training is your choice."</strong> Opting out of model training never costs points; blocking AI search does.</li>
 <li><strong>"One switch for every page."</strong> Serving Markdown to AI agents is a single developer change, and it shows on every page's score. On the BrandX demo site the home page is about 54,000 tokens as HTML and about 1,500 as the Markdown it now serves.</li>
 <li><strong>"Fix first, grouped by issue."</strong> One fix in a template or a firewall rule can lift dozens of pages; the dashboard shows which ones and what each is worth.</li>
+<li><strong>"Generate for all."</strong> Every missing meta description written in one go, each one reviewed and approved before it's saved, and nothing published until you say so.</li>
 <li><strong>"Every status says what it is."</strong> An icon, a colour and a word, so nobody has to decode a colour.</li>
 <li><strong>"Measured, not guessed."</strong> The citation probe asks real questions with live web search and counts who the answer actually links to: "Cited in 2 of 7, found in 5 of 7, and this competitor was cited instead." The estimate beside it says why an engine can't cite you, straight from the Agent access results.</li>
 <li><strong>"What changed since last scan."</strong> A page that dropped after a publish, a firewall that started blocking ChatGPT-User, pages that became agent-ready: the news, without comparing reports by hand.</li>

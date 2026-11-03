@@ -83,6 +83,9 @@ export const headings: CheckDef<PageContext> = {
   },
 };
 
+/** P9's detail line for a page with no meta description (the dashboard's "Generate for all" group reads it). */
+export const DESCRIPTION_MISSING = "Description: missing";
+
 /** P9 — merges seo-meta-title and seo-meta-description */
 export const titleMeta: CheckDef<PageContext> = {
   id: "understand.title-meta",
@@ -120,7 +123,7 @@ export const titleMeta: CheckDef<PageContext> = {
 
     let descriptionCredit = 0;
     if (!description) {
-      details.push("Description: missing");
+      details.push(DESCRIPTION_MISSING);
       fixes.push('Write a 120–160 character description in the "Meta Description" field that summarises the page.');
     } else {
       const len = description.length;
@@ -346,6 +349,7 @@ export const faqQuality: CheckDef<PageContext> = {
   scope: "page",
   sources: ["draft"],
   owner: "author",
+  fix: "generate",
   applies: () => true,
   run({ body: html }) {
     if (!html) return htmlNotScanned();

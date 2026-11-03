@@ -40,7 +40,7 @@ interface ScoreTabProps {
   aiStale: boolean;
   onAiScan: () => void;
   onPsiScan: () => void;
-  onGenerate: () => void;
+  onGenerate: (checkId: string) => void;
 }
 
 /** A row is listed under "Needs work" when it fails or improves, or is waiting to be run. */

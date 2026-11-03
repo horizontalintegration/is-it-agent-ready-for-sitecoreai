@@ -74,6 +74,10 @@
 <td style="text-align:left"><code>issues</code></td>
 <td style="text-align:left">every scored check that isn't passing: <code>{ id, status, gain }</code> with <code>status</code> "warning" or "fail" and <code>gain</code> = <code>maxPoints − points</code>. Empty when blocked. Feeds Fix first</td>
 </tr>
+<tr>
+<td style="text-align:left"><code>descriptionGain</code></td>
+<td style="text-align:left">points a meta description would add: half of P9's <code>maxPoints</code> when P9's details include <code>DESCRIPTION_MISSING</code>, else 0 (Phase 9; absent in summaries cached earlier, where P9's gain stands in)</td>
+</tr>
 </tbody></table>
 <p><strong>Pools:</strong> Essential checks share 80 points, Recommended 20, Bonus adds up to 5, capped at 100. N/A and not-checked results are left out of the pools. Full detail in <code>PAGE-CHECKS-TECHNICAL.md</code>.</p>
 <h3>Rating bands — <code>labelForPct</code>, <code>src/lib/score-thresholds.ts</code></h3>
@@ -122,7 +126,16 @@
 <li><strong>Page issues:</strong> <code>groupPageIssues</code> groups every page's <code>issues</code> by check ID. <code>gainEach</code> is the mean gain, rounded ("+N pts each"); groups under 1 point are dropped. The worst status wins (any <code>fail</code> → Fix). Sorted by the total gain across pages.</li>
 <li><strong>Site issues:</strong> <code>siteIssueGroups</code> turns the site checks that need work into groups that sort first ("Affects every page").</li>
 <li><strong>Markdown once</strong> (<code>fixFirstGroups</code>): S3 and P5 are the same developer fix, so once pages have been checked, P5's page group (its page count, "+N pts each" and the list of pages in the note) replaces S3's site row and comes right after the site issues. Before any page has been checked, S3's row shows.</li>
-<li><strong>Buttons:</strong> site issues and Developer page issues get <strong>Send to developer</strong>, which copies <code>issueNote</code> (the issue, why, and each page's URL; for a site issue, <code>developerNote</code> with its fix and snippet). Author page issues get <strong>Review pages</strong>, which opens the Pages tab filtered to <code>pageIds</code>. Bulk "Generate for all" is Phase 9.</li>
+<li><strong>Meta description missing</strong> (<code>metaDescriptionGroup</code>, Phase 9): the scanned, unblocked pages whose Meta Description field is empty, <code>gainEach</code> from <code>descriptionGain</code>. It sorts with the page issues by total gain and carries <code>bulk: "meta-description"</code>. It sits next to P9's own row, which also covers the title.</li>
+<li><strong>Buttons:</strong> site issues and Developer page issues get <strong>Send to developer</strong>, which copies <code>issueNote</code> (the issue, why, and each page's URL; for a site issue, <code>developerNote</code> with its fix and snippet). Author page issues get <strong>Review pages</strong>, which opens the Pages tab filtered to <code>pageIds</code>. A <code>bulk</code> group gets <strong>Generate for all</strong>.</li>
+</ul>
+<h2>Generate for all (<code>BulkMetaDialog.tsx</code>, Phase 9)</h2>
+<ul>
+<li><strong>Generate:</strong> up to <code>BULK_MAX</code> (25) pages a run, 3 at a time, each <code>POST /api/generate-meta</code> with <code>{ field: "metaDescription", pageTitle, currentValue: "", pageUrl }</code>. The route reads the published page through <code>safeFetch</code> and caches by content hash, so a second run on unchanged pages costs nothing. About 1 cent a page on Opus 5.5 at effort low.</li>
+<li><strong>Review:</strong> an editable suggestion per page with its length (target 120–160), and an <strong>Approve</strong> checkbox, unticked by default. A page can't be approved when <code>writeDisabledReason</code> gives a reason (demo, no client, or no Meta Description field on its template: <code>PageMatrixRow.metaDescriptionField</code> is null when <code>field(name)</code> came back null in the page-list query).</li>
+<li><strong>Write:</strong> one confirm (<code>useConfirmWrite</code>) lists every approved change before → after; then <code>writeField</code> per page with <code>xmc.pages.updateFields</code> (page ID in <code>normalizeItemId</code> form, <code>PageMatrixRow.language</code>, the Context ID from <code>useSitePages().siteContext.sitecoreContextId</code>), each with its <code>[audit]</code> line, a toast with the count, and ✓ / ✕ with the reason on each row. Nothing is published, so the scores change after publishing and a rescan.</li>
+<li><strong>No client, no writes:</strong> demo mode answers from <code>makeTestAssist().bulkMeta</code> with no request, and every Approve is off with "Demo: nothing is written to Sitecore." The standalone <code>?domain=</code> dashboard has no page list, so no such row.</li>
+<li>Write rules, the audit line and the confirm dialog: <code>PAGE-CHECKS-TECHNICAL.md</code>, "AI Assist and write-back".</li>
 <li>The hero sentence comes from the same groups: the number of site issues, or the biggest page issue, and how many issues authors can fix.</li>
 </ul>
 <h2>History (<code>useScoreHistory.ts</code>, <code>useWhatChanged.ts</code>)</h2>

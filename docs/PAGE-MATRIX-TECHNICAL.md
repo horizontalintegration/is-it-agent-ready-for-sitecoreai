@@ -27,6 +27,7 @@ Each page is scored by `runPageChecks` with a context from `buildPageContext` �
 | `blocked`, `gateReason` | the gate (P1): Sitecore Robots Meta Tag field, or a rendered noindex / nosnippet / max-snippet:0 |
 | `categories` | earned and max points for `reach`, `read`, `understand`, `trust` (max 0 when nothing in that category was scored) |
 | `issues` | every scored check that isn't passing: `{ id, status, gain }` with `status` "warning" or "fail" and `gain` = `maxPoints − points`. Empty when blocked. Feeds Fix first |
+| `descriptionGain` | points a meta description would add: half of P9's `maxPoints` when P9's details include `DESCRIPTION_MISSING`, else 0 (Phase 9; absent in summaries cached earlier, where P9's gain stands in) |
 
 **Pools:** Essential checks share 80 points, Recommended 20, Bonus adds up to 5, capped at 100. N/A and not-checked results are left out of the pools. Full detail in `PAGE-CHECKS-TECHNICAL.md`.
 
@@ -67,7 +68,16 @@ Summaries are cached in localStorage under **`aiDiscovery:scores:v6:<siteId>`**,
 - **Page issues:** `groupPageIssues` groups every page's `issues` by check ID. `gainEach` is the mean gain, rounded ("+N pts each"); groups under 1 point are dropped. The worst status wins (any `fail` → Fix). Sorted by the total gain across pages.
 - **Site issues:** `siteIssueGroups` turns the site checks that need work into groups that sort first ("Affects every page").
 - **Markdown once** (`fixFirstGroups`): S3 and P5 are the same developer fix, so once pages have been checked, P5's page group (its page count, "+N pts each" and the list of pages in the note) replaces S3's site row and comes right after the site issues. Before any page has been checked, S3's row shows.
-- **Buttons:** site issues and Developer page issues get **Send to developer**, which copies `issueNote` (the issue, why, and each page's URL; for a site issue, `developerNote` with its fix and snippet). Author page issues get **Review pages**, which opens the Pages tab filtered to `pageIds`. Bulk "Generate for all" is Phase 9.
+- **Meta description missing** (`metaDescriptionGroup`, Phase 9): the scanned, unblocked pages whose Meta Description field is empty, `gainEach` from `descriptionGain`. It sorts with the page issues by total gain and carries `bulk: "meta-description"`. It sits next to P9's own row, which also covers the title.
+- **Buttons:** site issues and Developer page issues get **Send to developer**, which copies `issueNote` (the issue, why, and each page's URL; for a site issue, `developerNote` with its fix and snippet). Author page issues get **Review pages**, which opens the Pages tab filtered to `pageIds`. A `bulk` group gets **Generate for all**.
+
+## Generate for all (`BulkMetaDialog.tsx`, Phase 9)
+
+- **Generate:** up to `BULK_MAX` (25) pages a run, 3 at a time, each `POST /api/generate-meta` with `{ field: "metaDescription", pageTitle, currentValue: "", pageUrl }`. The route reads the published page through `safeFetch` and caches by content hash, so a second run on unchanged pages costs nothing. About 1 cent a page on Opus 5.5 at effort low.
+- **Review:** an editable suggestion per page with its length (target 120–160), and an **Approve** checkbox, unticked by default. A page can't be approved when `writeDisabledReason` gives a reason (demo, no client, or no Meta Description field on its template: `PageMatrixRow.metaDescriptionField` is null when `field(name)` came back null in the page-list query).
+- **Write:** one confirm (`useConfirmWrite`) lists every approved change before → after; then `writeField` per page with `xmc.pages.updateFields` (page ID in `normalizeItemId` form, `PageMatrixRow.language`, the Context ID from `useSitePages().siteContext.sitecoreContextId`), each with its `[audit]` line, a toast with the count, and ✓ / ✕ with the reason on each row. Nothing is published, so the scores change after publishing and a rescan.
+- **No client, no writes:** demo mode answers from `makeTestAssist().bulkMeta` with no request, and every Approve is off with "Demo: nothing is written to Sitecore." The standalone `?domain=` dashboard has no page list, so no such row.
+- Write rules, the audit line and the confirm dialog: `PAGE-CHECKS-TECHNICAL.md`, "AI Assist and write-back".
 - The hero sentence comes from the same groups: the number of site issues, or the biggest page issue, and how many issues authors can fix.
 
 ## History (`useScoreHistory.ts`, `useWhatChanged.ts`)

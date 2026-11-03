@@ -477,7 +477,7 @@
 <li><strong>Top fixes:</strong> <code>rankedFixes</code> keeps Improve and Fix rows worth at least 1 point, sorted by gain, then Essential first, then author fixes first. <code>topFixes</code> takes three.</li>
 <li><strong>Verdict:</strong> <code>pageVerdict</code> gives the label from <code>labelForPct</code> and one sentence. <code>fixesToReady</code> adds the biggest gains to the score until it reaches 80: "N fixes would make this page agent-ready". If even every fix wouldn't, it says how many checks need work; at 80+ it says how many could still improve.</li>
 <li><strong>Fix buttons:</strong> <code>fixButton</code>: <strong>Generate</strong> for P9 and P11 (the generator's fields; other <code>generate</code> fixes wait for Phase 9), <strong>Copy snippet</strong> for a <code>copy-snippet</code> fix with a <code>codePreview</code>, <strong>Send to developer</strong> for developer-owned fixes (copies <code>developerNote</code>: title, page URL, why, what we found, fix, details, code), otherwise <strong>Show how</strong> (opens and scrolls to the row). Copying uses <code>src/lib/clipboard.ts</code>, which falls back to <code>execCommand</code> because the Marketplace iframe doesn't delegate <code>clipboard-write</code>.</li>
-<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (<code>AgentViewTab</code>, below) / AI Assist (<code>MetaGenerator</code>). The tabs are force-mounted, so the generator keeps its state. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.</li>
+<li><strong>Panel</strong> (<code>src/app/pages-contextpanel-extension/page.tsx</code>, <code>src/components/panel/</code>): header with the Draft/Live chip (Draft when <code>getPageHTML</code> gave a draft) and Re-scan; Radix tabs Score / Agent View (<code>AgentViewTab</code>, below) / AI Assist (<code>AssistTab</code>, below). The tabs are force-mounted, so AI Assist keeps its suggestions when you switch tabs. <code>ScoreTab</code> holds the banner, <code>VerdictCard</code>, <code>CategoryBars</code> (toggle buttons that filter the list), <code>TopFixes</code> and the check groups (<code>CheckRow</code>), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a <strong>Run</strong> button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.</li>
 <li><strong>Agent View</strong> (<code>src/components/panel/AgentViewTab.tsx</code>, mockup <code>PanelAgentView</code>): from <code>useMarkdownCheck</code> (<code>/api/markdown-check</code> on page change and Re-scan; a Re-scan keeps the last result until the new one is in, and rows show "Scanning…" while it loads, since P5 is Essential). Top to bottom:</li>
 </ul>
 <p>  - "What AI agents receive" and one line (sends Markdown / some setup missing / sends the full HTML).</p>
@@ -494,16 +494,96 @@
 <li><strong>Dashboard:</strong> <code>summarisePageReport</code> → <code>PageScoreSummary</code> (adds <code>issues</code> for Fix first) and <code>groupPageIssues</code> / <code>siteIssueGroups</code> / <code>issueNote</code>. See PAGE-MATRIX-TECHNICAL.</li>
 </ul>
 <hr/>
-<h2>Meta &amp; social generator</h2>
-<p><code>src/components/MetaGenerator.tsx</code> (the panel's AI Assist tab) → <code>POST /api/generate-meta</code> (<code>{ field, pageTitle, bodyText, currentValue }</code> → <code>{ value, maxChars, overLimit }</code>), then <code>xmc.pages.updateFields</code> on <strong>Populate field</strong>. The logic is in <code>src/lib/server/generate-meta.ts</code>.</p>
+<h2>AI Assist and write-back (Phase 9)</h2>
+<p>The panel's AI Assist tab (<code>src/components/panel/AssistTab.tsx</code>, cards in <code>src/components/panel/assist/</code>) replaces <code>MetaGenerator</code>. Each card shows "Now: …" and an editable suggestion, then <strong>Apply</strong> (through the confirm dialog) or <strong>Copy</strong>. Cards are ordered by the gain of their check (<code>gainPts</code>); the summary card comes last. <strong>Generate</strong> on a Score-tab row passes the check ID (<code>onGenerate(checkId)</code>), so the tab opens scrolled to that card. P12, P13 and P15 now have <code>fix: "generate"</code>; P17 has <code>fix: "apply-field"</code>, shown as <strong>Choose author</strong> (<code>fixButton</code> in <code>view-model.ts</code>).</p>
+<table><thead><tr>
+<th style="text-align:left">Card</th>
+<th style="text-align:left">Check</th>
+<th style="text-align:left">AI</th>
+<th style="text-align:left">Writes to</th>
+<th style="text-align:left">Call</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Title, description and social</td>
+<td style="text-align:left">P9, P11</td>
+<td style="text-align:left"><code>/api/generate-meta</code>, effort low</td>
+<td style="text-align:left">the page's <code>pageTitle</code>, <code>MetaDescription</code>, <code>OpenGraphTitle</code>, <code>OpenGraphDescription</code></td>
+<td style="text-align:left"><code>xmc.pages.updateFields</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Quotable FAQ answers</td>
+<td style="text-align:left">P12</td>
+<td style="text-align:left"><code>/api/assist</code> <code>faq-answers</code>, low</td>
+<td style="text-align:left">the AccordionItem datasource's <code>content</code> (rich text; the <code>ck-content</code> wrapper is kept)</td>
+<td style="text-align:left">authoring <code>updateItem</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Image alt text</td>
+<td style="text-align:left">P15</td>
+<td style="text-align:left"><code>/api/assist</code> <code>alt</code> (vision, image by URL), low</td>
+<td style="text-align:left"><code>alt</code> on the image field of the page item or the component datasource; never the media item</td>
+<td style="text-align:left"><code>updateFields</code> (page) or <code>updateItem</code> (datasource)</td>
+</tr>
+<tr>
+<td style="text-align:left">Author byline</td>
+<td style="text-align:left">P17</td>
+<td style="text-align:left">none</td>
+<td style="text-align:left">the page's <code>authorName</code></td>
+<td style="text-align:left"><code>updateFields</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Structured data</td>
+<td style="text-align:left">P10</td>
+<td style="text-align:left">none: P10's <code>codePreview</code></td>
+<td style="text-align:left">the field in <code>NEXT_PUBLIC_FIELD_JSON_LD</code> when set and on the template; copy-only otherwise (BrandX has none)</td>
+<td style="text-align:left"><code>updateFields</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Question headings</td>
+<td style="text-align:left">P13</td>
+<td style="text-align:left"><code>/api/assist</code> <code>question-headings</code>, medium</td>
+<td style="text-align:left">copy-only</td>
+<td style="text-align:left">—</td>
+</tr>
+<tr>
+<td style="text-align:left">Summary paragraph</td>
+<td style="text-align:left">—</td>
+<td style="text-align:left"><code>/api/assist</code> <code>summary</code>, low</td>
+<td style="text-align:left">copy-only</td>
+<td style="text-align:left">—</td>
+</tr>
+</tbody></table>
+<p><strong>Writes</strong> (<code>src/lib/sitecore/write.ts</code>; findings in <code>SPIKE-FINDINGS.md</code> section 9):</p>
+<ul>
+<li><code>writeField(client, contextId, request)</code> is the only write path: <code>updateFields</code> for page fields, and <code>updateItem(input: { itemId, language, fields: [{ name, value }] })</code> (with <code>$id: ID!</code>) for datasource items. Both write the current version in place, in the page's language, and never publish. Item IDs go out in <code>normalizeItemId</code> form.</li>
+<li><strong>Any GraphQL <code>errors</code> entry is a failed write</strong>, even with data alongside. A host refusal (<code>isHostAuthError</code>) shows <code>HOST_AUTH_WRITE_MESSAGE</code>.</li>
+<li>The value is read back (<code>updateFields</code> returns no field values; <code>updateItem</code> returns the item). A value that didn't stick is a failure.</li>
+<li><strong>Audit:</strong> one console line per write, success or not (<code>auditLine</code>): <code>[audit] wrote: &lt;label&gt; on &lt;item&gt; (&lt;id&gt;, field "&lt;name&gt;", &lt;language&gt;, &lt;call&gt;): "&lt;before&gt;" → "&lt;after&gt;", version N, M ms, not published</code>, with the full request as a second argument. The UI adds a toast (Blok sonner).</li>
+<li><strong>Confirm:</strong> <code>WriteConfirmProvider</code> and <code>useConfirmWrite()</code> (<code>src/components/shared/WriteConfirm.tsx</code>, Blok alert-dialog) list each change: label, item, field, language, before → after (<code>display</code> holds the readable text when the raw value is markup), and a shared-component warning. Only <strong>Write to Sitecore</strong> sends. It's an in-page dialog because Page Builder's iframe blocks <code>window.confirm</code>.</li>
+<li><strong>Why Apply is off</strong> (<code>writeDisabledReason</code>), shown next to the button: demo mode; no Marketplace client; no field configured; the item's template doesn't have the field; <code>workflow.canEdit</code> is false.</li>
+<li><strong>Shared components:</strong> a datasource outside the page's own item path (e.g. <code>Data/Feature/Home - Advisor</code>) is shared (<code>isSharedDatasource</code>); the confirm says the change shows on every page that uses it.</li>
+<li>After a successful write the panel re-reads the fields (<code>usePageFields().refetch</code>) and the draft (<code>usePageHtml().refresh</code>).</li>
+</ul>
+<p><strong>Field mapping</strong> (<code>src/lib/sitecore/field-map.ts</code>, <code>FIELD_MAP</code>): every field name the app reads or writes, each overridable with a <code>NEXT_PUBLIC_FIELD_*</code> variable (<code>TITLE</code>, <code>META_DESCRIPTION</code>, <code>OG_TITLE</code>, <code>OG_DESCRIPTION</code>, <code>AUTHOR</code>, <code>JSON_LD</code>, <code>FAQ_QUESTION</code>, <code>FAQ_ANSWER</code>). <code>SCORING_FIELD_NAMES</code> and <code>usePageFields</code> read it. <code>PageWriteContext.fieldNames</code> holds each field's name as the page item spells it, or null when the template lacks it.</p>
+<p><strong>Where the data comes from:</strong></p>
+<ul>
+<li><strong>FAQ:</strong> <code>usePageFields</code> keeps each AccordionItem pair with its datasource item (<code>faqSources</code>: item ID, path, question, raw answer, answer field name), which settles plan section 13, item 4. Without datasource pairs the card uses the draft's Q&amp;A pairs, copy-only.</li>
+<li><strong>Images</strong> (<code>src/lib/assist/images.ts</code>; <code>useImageFields</code> in <code>src/hooks/useAssistSources.ts</code>, run when the tab opens): the image fields on the page item and on every datasource in the page's layout (one aliased GraphQL query), then their media paths (<code>mediaItem(where: { mediaItemId })</code>, one aliased query). A draft <code>&lt;img src&gt;</code> (<code>…/-/media/&lt;mediaPath&gt;.jpg</code>) is matched to its field by media path; images in rich text, or with no field, are copy-only. <code>altStatus</code> flags a missing alt and a file-name alt (no spaces with <code>-</code> or <code>_</code>, the file's own name, <code>IMG_123</code>).</li>
+<li><strong>Authors</strong> (<code>useAuthorNames</code>): the distinct <code>authorName</code> values on the page's sibling items. BrandX has no Authors folder (SPIKE-FINDINGS section 9.3).</li>
+</ul>
+<p><strong><code>/api/assist</code></strong> (<code>src/lib/server/assist.ts</code>): <code>{ kind, pageTitle, mainText, … }</code>, validated with zod, answers <code>AssistData</code>. The brand voice (system) and the page text (first user block) are cache breakpoints, and the task follows them. Structured outputs, <code>fallbacks: "default"</code>, effort low (medium for question headings). Results are cached in server memory by SHA-256 of the inputs (<code>ASSIST_VERSION</code>, kind, model, text, inputs); a hit answers with <code>cached: true</code>.</p>
+<ul>
+<li><strong>Alt text</strong> sends the image as <code>{ type: "image", source: { type: "url" } }</code> (Sitecore media URLs get <code>mw=1024</code>). If Claude can't fetch it (<code>BadRequestError</code>, e.g. a CM media URL behind a login), it retries from the file name and the page text and returns <code>sawImage: false</code>, and the card says so.</li>
+<li>FAQ answers are checked against 40–300 characters (<code>inRange</code>), alt text against 125 (<code>overLimit</code>).</li>
+</ul>
+<p><strong><code>/api/generate-meta</code></strong> (<code>src/lib/server/generate-meta.ts</code>): <code>{ field, pageTitle, bodyText, currentValue }</code> answers <code>{ value, maxChars, overLimit }</code>, unchanged for the panel. The dashboard sends <code>pageUrl</code> instead of <code>bodyText</code>: the route reads the published page through <code>safeFetch</code> (<code>readPageForQuestions</code>) and caches the result by content hash (<code>cached: true</code> on a hit). The panel's Regenerate always asks again.</p>
 <ul>
 <li><strong>Model:</strong> <code>ANTHROPIC_MODEL</code> (default <code>claude-opus-5-5</code>), effort <code>low</code>, structured output <code>{ value }</code>.</li>
-<li><strong>Length limits</strong> (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with <code>overLimit: true</code>, and the UI shows the count in amber. Values are never cut off.</li>
-<li><strong>Prompt caching:</strong> the brand voice (system prompt) and the page title and text (first user block) carry <code>cache_control</code>, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows <code>cache_read=N</code> on each <code>[anthropic] generate-meta:&lt;field&gt;</code> line.</li>
-<li><strong>Body:</strong> <code>bodyText</code> is the same text the uniqueness check judges: the draft's <code>mainText</code>, so unpublished edits are included, or live's without a draft. <strong>Generate</strong> is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.</li>
-<li><strong>Brand voice:</strong> <code>getBrandVoice()</code> (<code>src/lib/brand/brand-voice.ts</code>, server only) reads the Markdown file named by <code>BRAND_VOICE_FILE</code> (relative to the project root, read once per server instance) and the name in <code>BRAND_NAME</code>. With neither set, or if the file can't be read, it uses a neutral default voice. <code>brand/brandx.md</code> is the BrandX demo voice, and <code>next.config.ts</code> (<code>outputFileTracingIncludes</code>) bundles <code>brand/</code> into the Vercel function.</li>
-<li><strong>Log:</strong> <code>[generate-meta] &lt;field&gt;: N chars of body text, brand voice: &lt;source&gt;</code>.</li>
+<li><strong>Length limits</strong> (title 60, description 155, OG title 70, OG description 200): an overrun gets one retry with the count fed back; still over gives <code>overLimit: true</code> and an amber count. Values are never cut off.</li>
+<li><strong>Prompt caching:</strong> the brand voice and the page text carry <code>cache_control</code>, and the field instruction comes after them. The server log shows <code>cache_read=N</code> on each <code>[anthropic] generate-meta:&lt;field&gt;</code> line.</li>
+<li><strong>Brand voice:</strong> <code>getBrandVoice()</code> (<code>src/lib/brand/brand-voice.ts</code>) reads <code>BRAND_VOICE_FILE</code> and <code>BRAND_NAME</code>, else a neutral default. <code>brand/brandx.md</code> is the BrandX demo voice. The SitecoreAI brand kit stays out of scope (plan section 11).</li>
 </ul>
+<p><strong>Demo mode</strong> (<code>?demo=1</code>): <code>makeTestAssist()</code> (<code>test-fixture.ts</code>) holds a suggestion for every card, the page's fields, FAQ datasources, three image fields (a page field, a page-local component and a shared component) and author names. <code>demoAnswers()</code> (<code>src/lib/assist/demo.ts</code>) answers <code>requestAssist</code> and <code>requestMeta</code> with no request, and image previews aren't loaded. Every Apply is off with "Demo: nothing is written to Sitecore."</p>
 <hr/>
 <h2>Server-side fetching (SSRF protection)</h2>
 <p>Every server route that fetches a caller-supplied URL (<code>preview-fetch</code>, <code>agent-access</code>, <code>markdown-check</code>, <code>citation-probe</code> for the page it suggests questions from, and <code>psi-check</code> for its Google call) uses <code>safeFetch</code> from <code>src/lib/server/safe-fetch.ts</code>. Phase 6 removed <code>robots-check</code> and <code>footer-check</code>; <code>agent-access</code> does both.</p>
@@ -669,6 +749,26 @@
 <tr>
 <td style="text-align:left"><code>src/lib/checks/view-model.ts</code></td>
 <td style="text-align:left">Reports → rows, Top fixes, verdicts, fix buttons, developer notes, dashboard summaries and Fix first</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/sitecore/write.ts</code>, <code>field-map.ts</code></td>
+<td style="text-align:left">Every write to Sitecore (confirmed in the UI first), the audit line, why Apply is off, image-field and rich-text values; the field names</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/components/shared/WriteConfirm.tsx</code></td>
+<td style="text-align:left">The confirm dialog (before → after) and the toast, for the panel and the dashboard</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/components/panel/AssistTab.tsx</code>, <code>src/components/panel/assist/</code></td>
+<td style="text-align:left">The AI Assist tab and its cards</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/assist/</code>, <code>src/hooks/useAssistSources.ts</code></td>
+<td style="text-align:left">Image-to-field matching, the browser calls (and their demo answers), the image fields and author names</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/assist.ts</code>, <code>src/app/api/assist/route.ts</code></td>
+<td style="text-align:left">Alt text, FAQ answers, question headings and the summary (Claude)</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/lib/rule-engine/helpers.ts</code></td>

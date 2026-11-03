@@ -220,7 +220,7 @@ The panel reads the same scan through `useAgentAccess` (cached an hour per domai
 - **Top fixes:** `rankedFixes` keeps Improve and Fix rows worth at least 1 point, sorted by gain, then Essential first, then author fixes first. `topFixes` takes three.
 - **Verdict:** `pageVerdict` gives the label from `labelForPct` and one sentence. `fixesToReady` adds the biggest gains to the score until it reaches 80: "N fixes would make this page agent-ready". If even every fix wouldn't, it says how many checks need work; at 80+ it says how many could still improve.
 - **Fix buttons:** `fixButton`: **Generate** for P9 and P11 (the generator's fields; other `generate` fixes wait for Phase 9), **Copy snippet** for a `copy-snippet` fix with a `codePreview`, **Send to developer** for developer-owned fixes (copies `developerNote`: title, page URL, why, what we found, fix, details, code), otherwise **Show how** (opens and scrolls to the row). Copying uses `src/lib/clipboard.ts`, which falls back to `execCommand` because the Marketplace iframe doesn't delegate `clipboard-write`.
-- **Panel** (`src/app/pages-contextpanel-extension/page.tsx`, `src/components/panel/`): header with the Draft/Live chip (Draft when `getPageHTML` gave a draft) and Re-scan; Radix tabs Score / Agent View (`AgentViewTab`, below) / AI Assist (`MetaGenerator`). The tabs are force-mounted, so the generator keeps its state. `ScoreTab` holds the banner, `VerdictCard`, `CategoryBars` (toggle buttons that filter the list), `TopFixes` and the check groups (`CheckRow`), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a **Run** button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.
+- **Panel** (`src/app/pages-contextpanel-extension/page.tsx`, `src/components/panel/`): header with the Draft/Live chip (Draft when `getPageHTML` gave a draft) and Re-scan; Radix tabs Score / Agent View (`AgentViewTab`, below) / AI Assist (`AssistTab`, below). The tabs are force-mounted, so AI Assist keeps its suggestions when you switch tabs. `ScoreTab` holds the banner, `VerdictCard`, `CategoryBars` (toggle buttons that filter the list), `TopFixes` and the check groups (`CheckRow`), with a Needs work / All switch. Needs work also lists not-checked AI and PageSpeed rows, which have a **Run** button. N/A rows are listed under "Doesn't apply to this page". On the home page a Site check group shows S7, and a red site-issues strip (S1, S2) sits above Top fixes when agents are blocked site-wide.
 - **Agent View** (`src/components/panel/AgentViewTab.tsx`, mockup `PanelAgentView`): from `useMarkdownCheck` (`/api/markdown-check` on page change and Re-scan; a Re-scan keeps the last result until the new one is in, and rows show "Scanning…" while it loads, since P5 is Essential). Top to bottom:
   - "What AI agents receive" and one line (sends Markdown / some setup missing / sends the full HTML).
   - Four status tiles from `negotiationTiles` (`markdown-negotiation.ts`): Markdown response, HTML fallback, Vary: Accept, Distinct versions (grey "Checked once Markdown is served" without Markdown).
@@ -236,16 +236,48 @@ The panel reads the same scan through `useAgentAccess` (cached an hour per domai
 
 ---
 
-## Meta & social generator
+## AI Assist and write-back (Phase 9)
 
-`src/components/MetaGenerator.tsx` (the panel's AI Assist tab) → `POST /api/generate-meta` (`{ field, pageTitle, bodyText, currentValue }` → `{ value, maxChars, overLimit }`), then `xmc.pages.updateFields` on **Populate field**. The logic is in `src/lib/server/generate-meta.ts`.
+The panel's AI Assist tab (`src/components/panel/AssistTab.tsx`, cards in `src/components/panel/assist/`) replaces `MetaGenerator`. Each card shows "Now: …" and an editable suggestion, then **Apply** (through the confirm dialog) or **Copy**. Cards are ordered by the gain of their check (`gainPts`); the summary card comes last. **Generate** on a Score-tab row passes the check ID (`onGenerate(checkId)`), so the tab opens scrolled to that card. P12, P13 and P15 now have `fix: "generate"`; P17 has `fix: "apply-field"`, shown as **Choose author** (`fixButton` in `view-model.ts`).
 
+| Card | Check | AI | Writes to | Call |
+|---|---|---|---|---|
+| Title, description and social | P9, P11 | `/api/generate-meta`, effort low | the page's `pageTitle`, `MetaDescription`, `OpenGraphTitle`, `OpenGraphDescription` | `xmc.pages.updateFields` |
+| Quotable FAQ answers | P12 | `/api/assist` `faq-answers`, low | the AccordionItem datasource's `content` (rich text; the `ck-content` wrapper is kept) | authoring `updateItem` |
+| Image alt text | P15 | `/api/assist` `alt` (vision, image by URL), low | `alt` on the image field of the page item or the component datasource; never the media item | `updateFields` (page) or `updateItem` (datasource) |
+| Author byline | P17 | none | the page's `authorName` | `updateFields` |
+| Structured data | P10 | none: P10's `codePreview` | the field in `NEXT_PUBLIC_FIELD_JSON_LD` when set and on the template; copy-only otherwise (BrandX has none) | `updateFields` |
+| Question headings | P13 | `/api/assist` `question-headings`, medium | copy-only | — |
+| Summary paragraph | — | `/api/assist` `summary`, low | copy-only | — |
+
+**Writes** (`src/lib/sitecore/write.ts`; findings in `SPIKE-FINDINGS.md` section 9):
+- `writeField(client, contextId, request)` is the only write path: `updateFields` for page fields, and `updateItem(input: { itemId, language, fields: [{ name, value }] })` (with `$id: ID!`) for datasource items. Both write the current version in place, in the page's language, and never publish. Item IDs go out in `normalizeItemId` form.
+- **Any GraphQL `errors` entry is a failed write**, even with data alongside. A host refusal (`isHostAuthError`) shows `HOST_AUTH_WRITE_MESSAGE`.
+- The value is read back (`updateFields` returns no field values; `updateItem` returns the item). A value that didn't stick is a failure.
+- **Audit:** one console line per write, success or not (`auditLine`): `[audit] wrote: <label> on <item> (<id>, field "<name>", <language>, <call>): "<before>" → "<after>", version N, M ms, not published`, with the full request as a second argument. The UI adds a toast (Blok sonner).
+- **Confirm:** `WriteConfirmProvider` and `useConfirmWrite()` (`src/components/shared/WriteConfirm.tsx`, Blok alert-dialog) list each change: label, item, field, language, before → after (`display` holds the readable text when the raw value is markup), and a shared-component warning. Only **Write to Sitecore** sends. It's an in-page dialog because Page Builder's iframe blocks `window.confirm`.
+- **Why Apply is off** (`writeDisabledReason`), shown next to the button: demo mode; no Marketplace client; no field configured; the item's template doesn't have the field; `workflow.canEdit` is false.
+- **Shared components:** a datasource outside the page's own item path (e.g. `Data/Feature/Home - Advisor`) is shared (`isSharedDatasource`); the confirm says the change shows on every page that uses it.
+- After a successful write the panel re-reads the fields (`usePageFields().refetch`) and the draft (`usePageHtml().refresh`).
+
+**Field mapping** (`src/lib/sitecore/field-map.ts`, `FIELD_MAP`): every field name the app reads or writes, each overridable with a `NEXT_PUBLIC_FIELD_*` variable (`TITLE`, `META_DESCRIPTION`, `OG_TITLE`, `OG_DESCRIPTION`, `AUTHOR`, `JSON_LD`, `FAQ_QUESTION`, `FAQ_ANSWER`). `SCORING_FIELD_NAMES` and `usePageFields` read it. `PageWriteContext.fieldNames` holds each field's name as the page item spells it, or null when the template lacks it.
+
+**Where the data comes from:**
+- **FAQ:** `usePageFields` keeps each AccordionItem pair with its datasource item (`faqSources`: item ID, path, question, raw answer, answer field name), which settles plan section 13, item 4. Without datasource pairs the card uses the draft's Q&A pairs, copy-only.
+- **Images** (`src/lib/assist/images.ts`; `useImageFields` in `src/hooks/useAssistSources.ts`, run when the tab opens): the image fields on the page item and on every datasource in the page's layout (one aliased GraphQL query), then their media paths (`mediaItem(where: { mediaItemId })`, one aliased query). A draft `<img src>` (`…/-/media/<mediaPath>.jpg`) is matched to its field by media path; images in rich text, or with no field, are copy-only. `altStatus` flags a missing alt and a file-name alt (no spaces with `-` or `_`, the file's own name, `IMG_123`).
+- **Authors** (`useAuthorNames`): the distinct `authorName` values on the page's sibling items. BrandX has no Authors folder (SPIKE-FINDINGS section 9.3).
+
+**`/api/assist`** (`src/lib/server/assist.ts`): `{ kind, pageTitle, mainText, … }`, validated with zod, answers `AssistData`. The brand voice (system) and the page text (first user block) are cache breakpoints, and the task follows them. Structured outputs, `fallbacks: "default"`, effort low (medium for question headings). Results are cached in server memory by SHA-256 of the inputs (`ASSIST_VERSION`, kind, model, text, inputs); a hit answers with `cached: true`.
+- **Alt text** sends the image as `{ type: "image", source: { type: "url" } }` (Sitecore media URLs get `mw=1024`). If Claude can't fetch it (`BadRequestError`, e.g. a CM media URL behind a login), it retries from the file name and the page text and returns `sawImage: false`, and the card says so.
+- FAQ answers are checked against 40–300 characters (`inRange`), alt text against 125 (`overLimit`).
+
+**`/api/generate-meta`** (`src/lib/server/generate-meta.ts`): `{ field, pageTitle, bodyText, currentValue }` answers `{ value, maxChars, overLimit }`, unchanged for the panel. The dashboard sends `pageUrl` instead of `bodyText`: the route reads the published page through `safeFetch` (`readPageForQuestions`) and caches the result by content hash (`cached: true` on a hit). The panel's Regenerate always asks again.
 - **Model:** `ANTHROPIC_MODEL` (default `claude-opus-5-5`), effort `low`, structured output `{ value }`.
-- **Length limits** (title 60, description 155, OG title 70, OG description 200): structured outputs can't enforce a maximum length, so the route checks it. An overrun gets one retry that tells the model the count ("62 characters, over the 60-character limit"). If the retry is still too long, it returns the value with `overLimit: true`, and the UI shows the count in amber. Values are never cut off.
-- **Prompt caching:** the brand voice (system prompt) and the page title and text (first user block) carry `cache_control`, and the field instruction comes after them. Generating the other fields, or regenerating within 5 minutes, reads the cached prefix. All four fields use one output schema, so the cache is shared. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
-- **Body:** `bodyText` is the same text the uniqueness check judges: the draft's `mainText`, so unpublished edits are included, or live's without a draft. **Generate** is disabled while the scan is still reading it. If the scan finishes without text, the panel says so and generation falls back to the title and current values. The prompt tells the model to write from the page content and not copy the current value.
-- **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`, server only) reads the Markdown file named by `BRAND_VOICE_FILE` (relative to the project root, read once per server instance) and the name in `BRAND_NAME`. With neither set, or if the file can't be read, it uses a neutral default voice. `brand/brandx.md` is the BrandX demo voice, and `next.config.ts` (`outputFileTracingIncludes`) bundles `brand/` into the Vercel function.
-- **Log:** `[generate-meta] <field>: N chars of body text, brand voice: <source>`.
+- **Length limits** (title 60, description 155, OG title 70, OG description 200): an overrun gets one retry with the count fed back; still over gives `overLimit: true` and an amber count. Values are never cut off.
+- **Prompt caching:** the brand voice and the page text carry `cache_control`, and the field instruction comes after them. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
+- **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`) reads `BRAND_VOICE_FILE` and `BRAND_NAME`, else a neutral default. `brand/brandx.md` is the BrandX demo voice. The SitecoreAI brand kit stays out of scope (plan section 11).
+
+**Demo mode** (`?demo=1`): `makeTestAssist()` (`test-fixture.ts`) holds a suggestion for every card, the page's fields, FAQ datasources, three image fields (a page field, a page-local component and a shared component) and author names. `demoAnswers()` (`src/lib/assist/demo.ts`) answers `requestAssist` and `requestMeta` with no request, and image previews aren't loaded. Every Apply is off with "Demo: nothing is written to Sitecore."
 
 ---
 
@@ -310,6 +342,11 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-a
 | `src/hooks/useScoreHistory.ts` | "Since last scan" (panel) and the last 8 site scores (dashboard) |
 | `src/lib/checks/json-ld.ts`, `schema-org-types.ts` | JSON-LD parsing and the schema.org subtype lists |
 | `src/lib/checks/view-model.ts` | Reports → rows, Top fixes, verdicts, fix buttons, developer notes, dashboard summaries and Fix first |
+| `src/lib/sitecore/write.ts`, `field-map.ts` | Every write to Sitecore (confirmed in the UI first), the audit line, why Apply is off, image-field and rich-text values; the field names |
+| `src/components/shared/WriteConfirm.tsx` | The confirm dialog (before → after) and the toast, for the panel and the dashboard |
+| `src/components/panel/AssistTab.tsx`, `src/components/panel/assist/` | The AI Assist tab and its cards |
+| `src/lib/assist/`, `src/hooks/useAssistSources.ts` | Image-to-field matching, the browser calls (and their demo answers), the image fields and author names |
+| `src/lib/server/assist.ts`, `src/app/api/assist/route.ts` | Alt text, FAQ answers, question headings and the summary (Claude) |
 | `src/lib/rule-engine/helpers.ts` | ARI, word counts, anchor blocklist, dates, snippet builders |
 | `src/lib/rule-engine/types.ts` | Input types (`ParsedHtml`, `AiResults`, `PageData`, …) |
 | `src/lib/rule-engine/test-fixture.ts` | Demo data for `?demo=1`, including the panel's demo draft (`makeTestDraft`: one edited heading, client-rendered Related Articles cards). Demo mode never starts the Marketplace client and doesn't auto-scan, so it makes no SitecoreAI or paid calls on load (`useDemoMode.ts`, `useMarketplaceClient.ts`) |

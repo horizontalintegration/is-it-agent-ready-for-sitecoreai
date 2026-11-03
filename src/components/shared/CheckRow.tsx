@@ -22,7 +22,7 @@ interface CheckRowProps {
   stale?: boolean;
   /** Runs the on-demand scan (AI or PageSpeed) this check needs. */
   onRun?: () => void;
-  onGenerate?: () => void;
+  onGenerate?: (checkId: string) => void;
 }
 
 /** One check: status icon, outcome title, source chip and status word. Expands to why, evidence and fix. */

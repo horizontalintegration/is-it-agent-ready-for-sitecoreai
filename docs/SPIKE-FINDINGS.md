@@ -554,14 +554,14 @@ Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | `updateItem(input: UpdateItemInput!): UpdateItemPayload` exists (run 1). Its input shape: — | **Open** (input shape) |
-| a2 | A media item's Alt field: its name, and whether the image field value can carry its own `alt` (a per-use override) | — | **Open** |
-| a3 | Is the media item used by other pages, and can the app find out (link lookups or search)? | — | **Open** |
-| a4 | Does a write go into the current version and keep the workflow state (no new version, no publish)? | — | **Open** |
-| b1 | Where author items live (the Authors folder) and their template | — | **Open** |
-| b2 | The byline field on article pages: its name, type and stored value | — | **Open** |
+| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | `updateItem(input: { itemId (ID) or path, language, version, fields: [{ name, value, reset }] })` (9.2); page fields also through `xmc.pages.updateFields` (9.4) | **Confirmed** |
+| a2 | A media item's Alt field: its name, and whether the image field value can carry its own `alt` (a per-use override) | The media item's alt is `mediaItem.alt`; an image field can carry its own `alt`, and that one wins in the rendered page (9.2, 9.4). Phase 9 writes the field-level alt. | **Confirmed** |
+| a3 | Is the media item used by other pages, and can the app find out (link lookups or search)? | Not needed: the app never writes a media item. A shared component datasource is recognised by its path (9.3). | **Resolved by design** |
+| a4 | Does a write go into the current version and keep the workflow state (no new version, no publish)? | Yes: both calls write the current version in place, no new version, nothing published (9.4). BrandX items have no workflow. | **Confirmed** |
+| b1 | Where author items live (the Authors folder) and their template | There is no Authors folder; the names in use come from the articles' `authorName` (9.3) | **Confirmed** |
+| b2 | The byline field on article pages: its name, type and stored value | `authorName`, single-line text, rendered as `<meta name="author">` and Article JSON-LD `author.name` (9.2) | **Confirmed** |
 | c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | One local datasource per question (`local:/Data/Faq1` … `Faq8`, template `AccordionItem`, rendering `286d51ef-…`). Fields: `heading` (plain text, the question) and `content` (rich text, `<div class="ck-content"><p>…</p></div>`). See run 1. | **Confirmed** |
-| c2 | Does any template have a JSON-LD / structured-data field? | — | **Open** |
+| c2 | Does any template have a JSON-LD / structured-data field? | No (9.2) | **Confirmed** |
 
 **How to run the spike** (in Page Builder, on production after deployment):
 
@@ -605,3 +605,19 @@ Pages: the Banking article and /Contact-and-Support/FAQs (site `BrandKS`, langua
 - **Reads can return partial data with errors.** One child of `Data` has a missing template, so its node is `null` with an error, while the rest of the data came back. Reads keep tolerating that; a write treats any `errors` entry as a failure.
 - **a3 no longer matters:** the app never writes a media item's Alt field (decision, 2026-11-03), so whether a media item is shared doesn't change anything. A component datasource that isn't under the page's own `Data` folder (for example `Data/Feature/Home - Advisor`) is shared, and its path shows that. The confirmation says such a change affects every page that uses the component.
 - **Confirmed: the Page Builder panel's iframe blocks `window.confirm`.** The spike box's "Run write…" did nothing in Page Builder: the sandboxed iframe drops the browser dialog, so `confirm()` returns `false` without showing anything. Every confirmation in the app must be an in-page dialog (Phase 9 uses Blok's dialog). The spike box now shows its own "Send write" panel.
+
+### 9.4 Test writes (2026-11-03, production)
+
+Approved by the user, run by the user from the spike box (panel and dashboard), each with the in-page confirm.
+
+| # | Where | Call | Item, field | Result |
+|---|---|---|---|---|
+| 1 | Panel | `updateItem` by `path`, `language: "en"`, no `version` | `…/FAQs/Data/Faq1`, `content` (a page-local datasource) | Written; response `version: 1`, `workflow: null`, no `errors`. |
+| 2 | Panel | `xmc.pages.updateFields` | Banking article, `image` → `<image mediaid="C61FE8F9-…" alt="spike test" />` | Written; read back `version: 1`, `workflow: null`. |
+| 3 | Dashboard | `xmc.pages.updateFields` (page ID lower case, no braces) | Banking article, `MetaDescription` + " (spike test)" | Written in 620 ms, then **reverted** to the exact old value (756 ms). `version: 1` before and after, `workflow: null`. |
+
+- **Confirmed (a1, a4):** both calls write the item's current version in place. No new version, no workflow change (these items have no workflow), nothing published. `updateItem` answers with the item (`version`, the new field value); `updateFields` answers `{ data: { pageId, name, displayName, path } }` with no field values, so the app reads the field back to confirm.
+- **Confirmed: the dashboard host can write.** After Sitecore's fix (CS0746928) a confirmed `updateFields` from the dashboard widget works, with the page ID in `normalizeItemId` form (lower case, no braces).
+- **Confirmed (a2, storage):** `updateFields` stores an `alt` attribute on a page's image field.
+- **Confirmed (a2, rendering):** after write 2, the hero `<img>` in the Page Builder canvas reads `alt="spike test"` (the user inspected it after reloading). So an `alt` on the image field overrides the media item's Alt in the rendered page, and Phase 9 writes alt text there.
+- **Left in Sitecore, by the user's choice (2026-11-03):** the Banking article's `image` field keeps `alt="spike test"` (unpublished, so the replica still shows the old alt). It's a handy test case for the alt card. Publishing the article would put "spike test" on the live page. The FAQ answer (write 1) was reverted by hand in Page Builder.
