@@ -8,7 +8,9 @@
 //     &sc_lang=en&sc_site=<site>&sc_version=<n>
 //
 // Every param is sourced from the Marketplace SDK:
-//   tenantName   ← application.context → resourceAccess[].tenantName
+//   tenantName   ← application.context → resourceAccess[].tenantName, or
+//                  host.state → xmCloudTenantInfo.name when that's empty
+//                  (the dashboard's host since 2026-11)
 //   organization ← application.context → organizationId
 //   sc_itemid    ← the page's Sitecore itemId (normalised here)
 //   sc_lang      ← site language ("en")
@@ -18,9 +20,16 @@
 
 const PAGES_EDITOR_BASE = "https://pages.sitecorecloud.io/editor";
 
-/** GraphQL itemIds may arrive as "{GUID}" or upper-case; Pages wants lower-case, no braces. */
+/**
+ * GraphQL itemIds may arrive as "{GUID}", upper-case or without dashes
+ * ("c3de83d8…"); Pages uses lower-case, dashed, no braces
+ * ("374014ce-7840-4fe8-835e-5a600c20e7b2").
+ */
 export function normalizeItemId(id: string): string {
-  return id.replace(/[{}]/g, "").trim().toLowerCase();
+  const bare = id.replace(/[{}]/g, "").trim().toLowerCase();
+  const hex = bare.replace(/-/g, "");
+  if (!/^[0-9a-f]{32}$/.test(hex)) return bare;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export interface PagesEditorParams {

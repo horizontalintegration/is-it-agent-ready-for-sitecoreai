@@ -206,9 +206,13 @@ export default function PagesContextPanel() {
   );
 
   // Opens the dashboard on its Agent access tab (it reads the tab from the hash).
+  // The link opens the app's route in a new tab, outside the Sitecore host, so
+  // it passes the site as `?domain=` for the standalone dashboard (plan
+  // section 13, item 10).
   const openDashboard = async () => {
     const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-    const url = `${base}/dashboard-widget-extension${fixture ? "?demo=1" : ""}#agent-access`;
+    const query = fixture ? "?demo=1" : siteDomain ? `?domain=${encodeURIComponent(siteDomain)}` : "";
+    const url = `${base}/dashboard-widget-extension${query}#agent-access`;
     try {
       if (client && !fixture) await client.navigateToExternalUrl(url, true);
       else window.open(url, "_blank", "noopener");
