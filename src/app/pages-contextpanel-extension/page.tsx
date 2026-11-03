@@ -24,6 +24,7 @@ import { AgentViewTab } from "@/components/panel/AgentViewTab";
 import { ScoreTab } from "@/components/panel/ScoreTab";
 import { ScanNote } from "@/components/panel/ScanNote";
 import { MetaGenerator } from "@/components/MetaGenerator";
+import { AssistSpike, useAssistSpikeEnabled } from "@/components/spike/AssistSpike";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -217,6 +218,8 @@ export default function PagesContextPanel() {
   };
 
   const showSkeleton = !fixture && isLoading;
+  // TEMPORARY (Phase 9 spikes): `?spike=9` or localStorage iiar-spike=9.
+  const showSpike = useAssistSpikeEnabled();
   const [tab, setTab] = useState<PanelTab>("score");
 
   // "▲ N since last scan": recorded once the page, its draft and the on-demand
@@ -266,6 +269,12 @@ export default function PagesContextPanel() {
             <Icon path={mdiRefresh} aria-hidden className={cn("size-5", isScanning && "animate-spin")} />
           </Button>
         </header>
+
+        {showSpike && !fixture && (
+          <div className="max-h-[55vh] shrink-0 overflow-y-auto border-b">
+            <AssistSpike client={client} sitecoreContextId={writeContext.sitecoreContextId} />
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="min-h-0 flex-1 gap-0">
           <TabsList aria-label="Panel sections" className="h-auto w-full shrink-0 justify-start gap-1 border-b px-2">

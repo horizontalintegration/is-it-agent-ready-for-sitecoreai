@@ -543,3 +543,27 @@ Deployed to the replica's production in three steps: ksorthiya/hztl-xcelerate-bl
 3. On Vercel, make the handler read `?path=` before `x-matched-path` (8.3).
 
 Then test it with the site's own redirects and personalisation. The fix card and P5's developer note list these steps. Redirects and personalisation stay untested here (not configured on the replica).
+
+## 9. Phase 9: write-back to Sitecore (plan section 10, Phase 9)
+
+Date: 2026-11-02 · Branch: `feature/v2-phase-9-ai-assist`
+
+| # | Question | Answer | Status |
+|---|---|---|---|
+| a1 | The authoring GraphQL mutation that writes a field on a datasource or media item (name, input shape) | — | **Open** |
+| a2 | A media item's Alt field: its name, and whether the image field value can carry its own `alt` (a per-use override) | — | **Open** |
+| a3 | Is the media item used by other pages, and can the app find out (link lookups or search)? | — | **Open** |
+| a4 | Does a write go into the current version and keep the workflow state (no new version, no publish)? | — | **Open** |
+| b1 | Where author items live (the Authors folder) and their template | — | **Open** |
+| b2 | The byline field on article pages: its name, type and stored value | — | **Open** |
+| c1 | How FAQ answers are stored: the AccordionItem datasource fields (plan section 13, item 4) | — | **Open** |
+| c2 | Does any template have a JSON-LD / structured-data field? | — | **Open** |
+
+**How to run the spike** (in Page Builder, on production after deployment):
+
+1. Turn the box on in the panel's iframe: open the browser's developer tools, pick the extension's frame in the console's context menu, run `localStorage.setItem("iiar-spike", "9")`, and reload the panel. (Or add `?spike=9` to the panel's URL.) An amber "Phase 9 spike" box appears under the panel header.
+2. Open the article page (…/Banking-Sector-Earnings-Point-to-Resilience), label the run `article`, keep **Schema** ticked, and click **Run spike**. Then open /Contact-and-Support/FAQs, label it `faq`, untick **Schema**, and run it again.
+3. Click **Copy N reports** and paste the JSON into the session. Each run is also logged with `console.groupCollapsed("[spike:assist] …")`.
+4. "Run spike" only reads. The free-form box refuses a mutation unless **Run write…** is used, which shows the full text in a confirm first. The one test write (a4) is sent only after the user agrees to the item and the value, and the old value is written back straight after.
+
+Implementation: `src/components/spike/AssistSpike.tsx` (temporary; removed before Phase 9 is merged).
