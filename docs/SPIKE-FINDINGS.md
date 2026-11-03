@@ -306,11 +306,11 @@ Confirmed with a local `next dev` run against the BrandX article *Banking Sector
 - **One `ogDescription` call took 61 s** for 57 output tokens. That looks like one attempt hitting the SDK's 60 s timeout and the internal retry then finishing in about 1 s. The timeout is now 30 s with one retry, so a stalled call is capped at about a minute.
 - **Confirmed:** after deploy (2026-10-31), the panel console showed `[ai-cache] hit` on the second visit to an unchanged page.
 
-## 7. Dashboard authorization (open item 1, 2026-11-01)
+## 7. Dashboard authorization (item 1, 2026-11-01; closed 2026-11-03)
 
-Plan section 13, item 1. Every `xmc.*` call from the dashboard widget fails with `[HostSDK] … Authentication required but getAccessToken method not provided`. The Page builder panel makes the same calls with built-in authorization and they work. Sitecore support ticket **CS0746928** is open.
+Plan section 13, item 1. Every `xmc.*` call from the dashboard widget failed with `[HostSDK] … Authentication required but getAccessToken method not provided`. The Page builder panel made the same calls with built-in authorization and they worked. Sitecore support ticket **CS0746928**.
 
-**Status (2026-11-03): Sitecore deployed their fix** and the authorization error is gone (7.6). The next call, the page-list query, then failed on an app bug that only now ran: it's fixed in the app (7.6). Built-in authorization stays. The custom-authorization contingency (7.4) is shelved.
+**Status (2026-11-03): closed.** Sitecore fixed the cause on their side and deployed it to production. The page-list query then failed on an app bug that had never run before, fixed in PR #22. The dashboard now loads pages in Sitecore (7.6). Built-in authorization stays. The custom-authorization contingency (7.4) is shelved.
 
 App changes made alongside the investigation (built-in authorization kept):
 
@@ -469,18 +469,19 @@ The call shape differs: built-in takes `{ params: { path, query, body } }`, the 
 | 2026-11-01 | Diagnostics from 7.1 prepared for the engineer: June machine-token evidence, the same `_fetch` in client 0.3.2 and 0.4.1, the Context ID present, the `host.state` comparison, and the `contextId` question. |
 | 2026-11-02 | Engineer: "We have identified the root cause of the issue and are currently completing the final validation and testing before deploying the fix to production." The production deploy is targeted for the middle of that week. They'll confirm once it's deployed. |
 | 2026-11-03 | Sitecore deployed the fix to production; the authorization error is gone. They also saw the next error, `Could not load pages: GraphQL errors with no usable data: The specified value type of field itemId does not match the field type`, and asked whether it needs a separate investigation. It doesn't: it's an app bug (below). |
+| 2026-11-03 | The user replied: the authorization issue is resolved, and the `itemId` error is in the app and fixed on our side. |
 
-Sitecore hasn't said what the root cause was. Ask, and record it here.
+**Sitecore's account of the cause:** "We have identified the root cause of the issue" (2026-11-02), then "The fix for the 'Authentication required but getAccessToken method not provided' error has been deployed to Production" (2026-11-03). They didn't say what the root cause was. From the evidence in 7.1, it was on the Sitecore host side: the dashboard host's HostSDK had no `getAccessToken`, with no change in the app or the SDK.
 
 **The `itemId` error (app bug, fixed 2026-11-03).** The page-list query looks up the site's Home item by the `homePageId` that `xmc.sites.retrieveSite` returns, or by content path when there isn't one. It declared both variables `String!`, but the authoring schema types `ItemQueryInput.itemId` as `ID` (`path` is `String`; checked with an `__type(name: "ItemQueryInput")` query from the dashboard widget's console). HotChocolate rejects a `String!` variable in an `ID` position. The by-ID lookup had existed since `48b4f9c` (2026-06-01) but never ran in production: in June `retrieveSite` returned a 401, so the dashboard always took the path lookup. With Sitecore's fix, `retrieveSite` succeeds, so the by-ID lookup ran for the first time. The fix declares `$rootItemId: ID!` in `buildSitePagesQuery` (`src/hooks/useSitePages.ts`), with a test. The Phase 9 spike box (`src/components/spike/AssistSpike.tsx`) declares its `itemId` variables `String!` too and needs the same fix in that workstream.
 
-**After Sitecore's deploy** (all **Open** until the app fix is deployed):
+**After Sitecore's deploy** (checked by the user in Sitecore on 2026-11-03, after PR #22):
 
-- [ ] The dashboard Overview lists pages, with no "Sitecore didn't authorize…" message and no `itemId` error.
-- [ ] Check the console for `retrieveSite`. On 2026-11-03 it seems to succeed (the by-ID lookup ran). If it returns a 401 as in June, the dashboard falls back to the content-tree walk and still loads pages, so it isn't a blocker.
-- [ ] Panel regression: fields load, and Generate → Populate still writes.
-- [ ] Plan section 13, item 2: the parity check between panel and dashboard for the same page.
-- [ ] Record the root cause and these results here, then close plan item 1.
+- [x] The dashboard Overview lists pages, with no "Sitecore didn't authorize…" message and no `itemId` error.
+- [x] `retrieveSite` succeeds (no "retrieveSite API error" in the console), so the Home item is looked up by ID.
+- [x] Plan section 13, item 2: the panel and the dashboard show the same score for the same page.
+- [x] Sitecore's response recorded above; plan item 1 closed.
+- Moved to Phase 9's acceptance: the panel regression (fields load, and Generate → Populate still writes), because Phase 9 is changing that code.
 
 ### 7.7 Sources
 
