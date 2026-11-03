@@ -504,14 +504,15 @@ Sitecore hasn't said what the root cause was. Ask when they confirm the deploy, 
 
 ### 8.3 On the deployed replica
 
-**Open:** waiting for `feature/accept-md` (PR ksorthiya/hztl-xcelerate-blueprint-copy#4) on the replica's production URL. To check, through `/api/markdown-check` and plain requests:
+Merged to the replica's `develop` and deployed to production in ksorthiya/hztl-xcelerate-blueprint-copy#4 and #5 (the build fixes in 8.2). Tested on 2026-11-02 through `/api/markdown-check` and plain requests (13 requests, plus one agent-access scan: 43 requests in 2.6 s).
 
-- [ ] A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4). Tested on the replica's production URL once PR #4 is deployed.
-- [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite).
+- [ ] **A page serves Markdown with `Vary: Accept` and the HTML fallback (P5 4/4). Fails with accept-md 5.0.2 as generated.** `/`, `/services` and `/contact-and-support` each answer `Accept: text/markdown` with **`404 {"error":"Not found"}`** (`application/json`, no `Vary`); browsers still get the HTML (214 KB, 214 KB and 171 KB). So the rewrite reaches the handler, but the handler refuses the request. Cause: it reads the page path from `x-accept-md-path`, then from the matched-path headers, then from the rewrite's `?path=`. On Vercel `x-matched-path` is the route that matched, `/api/accept-md`, so the path starts with `/api/` and its "Exclude /api and /_next paths" branch answers 404 (the only place that body comes from). Fix in ksorthiya/hztl-xcelerate-blueprint-copy#6: `?path=` first whenever it's present (`''` for the home page). **Open** until that's deployed and re-tested.
+- [ ] Multisite: the Markdown is the right site's page (the multisite middleware rewrites `/path` to `/_site_<name>/path` before the accept-md rewrite). Waits for the fix above.
 - [ ] A Sitecore redirect still answers a Markdown request with the redirect. **Not configured on the replica's site** (user, 2026-11-02): the redirects middleware passes every request through, so this stays untested unless a test redirect is added.
 - [ ] A personalised page: the Markdown is the variant the visitor's cookies select, or the default. **Not configured on the replica's site** (user, 2026-11-02): untested here. Customers who personalise pages should check it.
-- [ ] A missing page: the Markdown request returns an error, not a 200.
-- [ ] Media (`/-/media/…`) and `/sitecore/api` still work.
+- [ ] A missing page: the Markdown request returns an error, not a 200. So far `404` (the handler's refusal above), so it waits for the fix. The browser request returns a 200 "not found" page of 2.6 KB, the soft 404 S8 already reports; `/es-MX/services` returns the same 2.6 KB page (no Spanish content on this site).
+- [x] **Sitecore's rewrites still work:** `/healthz` 200, `/robots.txt` 200, `/sitemap.xml` 200 (117 KB, 149 URLs).
+- [x] **Agent access unchanged:** every search and user agent 200 on all three pages; S3 sees the same 404 for Markdown, so it still fails.
 
 ### 8.4 Recommendation
 

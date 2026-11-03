@@ -56,10 +56,13 @@ export function gradeNegotiation({ markdown, html }: NegotiationInput): Negotiat
   };
 }
 
-/** What the Markdown request got back, in words: "text/html", "HTTP 404" or "no response (timeout)". */
+/** What the Markdown request got back, in words: "text/html", "HTTP 404 (application/json)" or "no response (timeout)". */
 export function markdownResponseType(markdown: { status: number | null; contentType: string | null; error?: string | null }): string {
   if (markdown.status === null) return `no response (${markdown.error ?? "failed"})`;
-  return mediaType(markdown.contentType) || `HTTP ${markdown.status}`;
+  const type = mediaType(markdown.contentType);
+  // An endpoint that's there but fails (accept-md on Vercel answered 404 JSON) shouldn't read as a content type.
+  if (markdown.status !== 200) return type ? `HTTP ${markdown.status} (${type})` : `HTTP ${markdown.status}`;
+  return type || `HTTP ${markdown.status}`;
 }
 
 export interface NegotiationTile {

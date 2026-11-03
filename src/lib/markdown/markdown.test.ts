@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks, runSiteChecks } from "@/lib/checks/engine";
-import { gradeNegotiation, negotiationTiles } from "@/lib/checks/markdown-negotiation";
+import { gradeNegotiation, markdownResponseType, negotiationTiles } from "@/lib/checks/markdown-negotiation";
 import { makeParsedHtml, makeTestDraft, makeTestMarkdownCheck, makeTestPageData, makeTestSiteContext, makeTestSitePages } from "@/lib/rule-engine/test-fixture";
 import { fixFirstGroups } from "@/lib/checks/view-model";
 import { estimateTokens, frontMatter, toAgentMarkdown } from "./convert";
@@ -163,5 +163,13 @@ describe("Fix first lists Markdown once", () => {
     expect(fixFirstGroups(runSiteChecks(makeTestSiteContext()).outcomes, []).map((g) => g.id)).toContain("read.markdown-site");
     const served = fixFirstGroups(runSiteChecks(makeTestSiteContext({ servesMarkdown: true })).outcomes, makeTestSitePages({ servesMarkdown: true }));
     expect(served.map((g) => g.id).filter((id) => id.startsWith("read.markdown"))).toEqual([]);
+  });
+});
+
+describe("markdownResponseType", () => {
+  it("names the status when the Markdown request fails (accept-md 5.0.2 on Vercel: 404 JSON)", () => {
+    expect(markdownResponseType({ status: 404, contentType: "application/json; charset=utf-8" })).toBe("HTTP 404 (application/json)");
+    expect(markdownResponseType({ status: 200, contentType: "text/html; charset=utf-8" })).toBe("text/html");
+    expect(markdownResponseType({ status: null, contentType: null, error: "timeout" })).toBe("no response (timeout)");
   });
 });
