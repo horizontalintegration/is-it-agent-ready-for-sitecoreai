@@ -11,6 +11,7 @@ import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/view-model";
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
+import { tenantNameFromHostState } from "@/lib/pages-editor-url";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -643,15 +644,13 @@ export function useSitePages(
       // ("xmc:xmapps"), { organizationId, xmCloudTenantInfo, userInfo } for the
       // Pages-style host the dashboard runs in since 2026-11. That host's
       // application.context has no tenantName, so the Pages editor deep-link
-      // takes it from xmCloudTenantInfo.name. Only keys and named fields are logged.
+      // takes it from host.state (tenantNameFromHostState). Only keys and named
+      // fields are logged: userInfo holds the user's profile.
       try {
         const hostRes = await client.query("host.state");
         const state = (hostRes as { data?: unknown })?.data;
-        const s = state as
-          | { environment?: unknown; language?: unknown; xmCloudTenantInfo?: { name?: unknown } }
-          | null
-          | undefined;
-        const hostTenantName = typeof s?.xmCloudTenantInfo?.name === "string" ? s.xmCloudTenantInfo.name : "";
+        const s = state as { environment?: unknown; language?: unknown } | null | undefined;
+        const hostTenantName = tenantNameFromHostState(state);
         console.log("[sitePages] host.state →", {
           isNull: state === null,
           keys: state && typeof state === "object" ? Object.keys(state) : [],

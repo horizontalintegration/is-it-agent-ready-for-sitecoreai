@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { buildPagesEditorUrl, normalizeItemId } from "@/lib/pages-editor-url";
+import { buildPagesEditorUrl, normalizeItemId, tenantNameFromHostState } from "@/lib/pages-editor-url";
+
+describe("tenantNameFromHostState", () => {
+  const CLAIM = "https://auth.sitecorecloud.io/claims/tenant_name";
+
+  it("reads the user's tenant_name claim (the dashboard's host, 2026-11-03)", () => {
+    const state = { organizationId: "org_x", xmCloudTenantInfo: { url: "https://cm" }, userInfo: { [CLAIM]: "tenant-a" } };
+    expect(tenantNameFromHostState(state)).toBe("tenant-a");
+  });
+
+  it("prefers xmCloudTenantInfo.name when it's there", () => {
+    expect(tenantNameFromHostState({ xmCloudTenantInfo: { name: "tenant-b" }, userInfo: { [CLAIM]: "tenant-a" } })).toBe("tenant-b");
+  });
+
+  it("returns empty when neither holds a string", () => {
+    expect(tenantNameFromHostState({ xmCloudTenantInfo: { name: "" }, userInfo: { [CLAIM]: ["a", "b"] } })).toBe("");
+    expect(tenantNameFromHostState(null)).toBe("");
+    expect(tenantNameFromHostState(undefined)).toBe("");
+  });
+});
 
 describe("normalizeItemId", () => {
   it("dashes the undashed IDs the authoring API returns (2026-11-03)", () => {

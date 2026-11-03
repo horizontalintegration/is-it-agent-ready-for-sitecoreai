@@ -37,7 +37,7 @@ import { runSiteChecks } from "@/lib/checks/engine";
 import { fixFirstGroups, type IssueGroup } from "@/lib/checks/view-model";
 import type { SiteType } from "@/lib/checks/types";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
-import { buildPagesEditorUrl } from "@/lib/pages-editor-url";
+import { buildPagesEditorUrl, tenantNameFromHostState } from "@/lib/pages-editor-url";
 import { timeAgo } from "@/lib/relative-time";
 import type { PageMatrixRow } from "@/types/dashboard";
 
@@ -171,15 +171,25 @@ export default function DashboardWidgetPage() {
   // Hand off to the Pages editor for the chosen item. Falls back to the public
   // page URL when the deep-link params aren't available (e.g. demo mode).
   const handleOpenPage = async (row: PageMatrixRow) => {
+    // The host may fill in host.state after the dashboard's first read, so
+    // ask again when the tenant name is still missing.
+    let tenantName = siteContext.tenantName;
+    if (!tenantName && client && !useFixture) {
+      try {
+        tenantName = tenantNameFromHostState((await client.query("host.state"))?.data);
+      } catch (err) {
+        console.warn("[openPage] host.state query failed:", err);
+      }
+    }
     const editorUrl = buildPagesEditorUrl({
-      tenantName: siteContext.tenantName,
+      tenantName,
       organization: siteContext.organization,
       itemId: row.id,
       site: siteContext.name,
       lang: "en",
     });
     console.log("[openPage] deep-link params →", {
-      tenantName: siteContext.tenantName,
+      tenantName,
       organization: siteContext.organization,
       site: siteContext.name,
       itemId: row.id,
