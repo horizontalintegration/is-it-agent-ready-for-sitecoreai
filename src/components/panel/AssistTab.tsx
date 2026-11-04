@@ -59,7 +59,7 @@ export function AssistTab(props: AssistTabProps) {
   const env: AssistEnv = {
     demo: demo?.answers ?? null,
     hasClient: Boolean(client),
-    writeContext: demo ? { ...writeContext, pageId: demo.data.pageId, pagePath: demo.data.pagePath, pageName: "How to build an effective content strategy", fieldNames: demo.data.fieldNames } : writeContext,
+    writeContext: demo ? { ...writeContext, pageId: demo.data.pageId, pagePath: demo.data.pagePath, pageName: "Retirement planning in your 40s", fieldNames: demo.data.fieldNames } : writeContext,
     pageTitle: props.pageTitle,
     mainText: props.mainText,
     bodyPending: props.bodyPending,
@@ -132,7 +132,7 @@ export function AssistTab(props: AssistTabProps) {
       <SummaryCard env={env} />
       <p className="text-sm leading-snug text-subtle-text">
         Changes are saved to this page&apos;s current version and follow your workflow. Nothing is published automatically.
-        {demo && " Demo: suggestions are examples and nothing is written."}
+        {demo && " Demo: suggestions are examples, and Apply shows the confirm step but writes nothing."}
       </p>
     </div>
   );

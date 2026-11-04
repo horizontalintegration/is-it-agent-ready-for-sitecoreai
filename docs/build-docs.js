@@ -167,6 +167,7 @@ const docs = [
   { md: 'PAGE-CHECKS-TECHNICAL.md', html: 'PAGE-CHECKS-TECHNICAL.html', title: 'Page Checks — Technical Reference' },
   { md: 'PAGE-MATRIX-EXPLAINED.md', html: 'PAGE-MATRIX-EXPLAINED.html', title: 'Page Matrix Explained — For Marketers' },
   { md: 'PAGE-MATRIX-TECHNICAL.md', html: 'PAGE-MATRIX-TECHNICAL.html', title: 'Page Matrix — Technical Reference' },
+  { md: 'SYMPOSIUM-DEMO-SCRIPT.md', html: 'SYMPOSIUM-DEMO-SCRIPT.html', title: 'Is It Agent-Ready? — Symposium Demo Script' },
 ];
 
 const dir = __dirname;

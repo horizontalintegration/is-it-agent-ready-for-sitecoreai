@@ -46,7 +46,7 @@ describe("toAgentMarkdown (the local preview)", () => {
 
   it("converts the demo draft, unpublished edits included", () => {
     const md = toAgentMarkdown(makeTestDraft().source, { title: "T", description: null, url: "https://example.com/x" });
-    expect(md).toContain("## Why does a content strategy matter?");
+    expect(md).toContain("## Why do your 40s matter for retirement?");
     expect(md).toContain("## Related articles");
     expect(md).not.toContain("Privacy policy");
   });

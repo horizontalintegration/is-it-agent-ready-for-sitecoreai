@@ -135,7 +135,7 @@ export function BulkMetaDialog({
             {pages.length > BULK_MAX && <p>This run takes the first {BULK_MAX}; run it again for the rest.</p>}
             <p className="text-subtle-text">
               {demo
-                ? "Demo: the suggestions are examples, nothing is sent to Claude, and nothing is written."
+                ? "Demo: the suggestions are examples and nothing is sent to Claude. Write shows the confirm step but writes nothing."
                 : `${batch.length} request${batch.length > 1 ? "s" : ""} to Claude, about 1 cent each. Pages that haven't changed since the last run are answered from the cache at no cost.`}
             </p>
           </div>

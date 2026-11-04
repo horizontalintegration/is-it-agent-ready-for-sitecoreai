@@ -301,11 +301,13 @@ The **AI Assist** tab collects the fixes the panel can make for you, ordered by 
 - **Length limits** are shown under each suggestion (60 characters for the meta title, 120–160 for the meta description, 40–300 for FAQ answers, 125 for alt text). The count turns amber when a suggestion is outside the range, so you can trim it first.
 - Asking again for the same page text costs nothing: the answer is remembered until the text changes.
 
-**In demo mode** (`?demo=1`), every fix shows an example suggestion, and nothing is sent to the AI or written to Sitecore. **Apply** says "Demo: nothing is written to Sitecore."
+**In demo mode** (`?demo=1`), every fix shows an example suggestion, and nothing is sent to the AI. **Apply** opens the same confirmation box, but **Write to Sitecore** only says "Demo: nothing was written to Sitecore."
 
 ---
 
 ## Demo talking points (the big picture)
+
+For the full 5-minute walk-through with demo data, see **SYMPOSIUM-DEMO-SCRIPT**.
 
 - **"Four plain questions."** Can AI agents get to it, read it, understand it, and trust it? Every check answers one of them.
 - **"Answer first."** One verdict and one sentence: what it would take to make this page agent-ready.

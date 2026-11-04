@@ -88,6 +88,6 @@ describe("whatChanged", () => {
     expect(items.map((i) => i.badge)).toEqual(["▼ 18", "New", "▲ 2", "▲"]);
     expect(text(items[0])).toMatch(/dropped after the .+ publish\. Now needs work: /);
     expect(text(items[1])).toBe("ChatGPT-User now gets 403 from your firewall (it got 200 last time).");
-    expect(text(items[3])).toBe("Cited in 2 AI answers more for /blog/how-to-build-an-effective-content-strategy.");
+    expect(text(items[3])).toBe("Cited in 2 AI answers more for /insights/retirement-planning-in-your-40s.");
   });
 });

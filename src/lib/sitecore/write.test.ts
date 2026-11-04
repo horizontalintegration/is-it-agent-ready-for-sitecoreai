@@ -131,8 +131,13 @@ describe("auditLine", () => {
 describe("writeDisabledReason", () => {
   const ok = { hasClient: true, demo: false, configuredField: "MetaDescription", fieldOnItem: "MetaDescription" };
   it("allows a write when everything is in place", () => expect(writeDisabledReason(ok)).toBeNull());
+  it("keeps Apply on in demo mode (the confirm dialog writes nothing), but still checks the field", () => {
+    const demo = { ...ok, hasClient: false, demo: true };
+    expect(writeDisabledReason(demo)).toBeNull();
+    expect(writeDisabledReason({ ...demo, fieldOnItem: null })).toBe(`This page's template has no "MetaDescription" field.`);
+    expect(writeDisabledReason({ ...demo, configuredField: null, fieldOnItem: null })).toMatch(/copy it instead/);
+  });
   it("explains each reason", () => {
-    expect(writeDisabledReason({ ...ok, demo: true })).toBe("Demo: nothing is written to Sitecore.");
     expect(writeDisabledReason({ ...ok, hasClient: false })).toMatch(/Open this in SitecoreAI/);
     expect(writeDisabledReason({ ...ok, configuredField: null, fieldOnItem: null })).toMatch(/copy it instead/);
     expect(writeDisabledReason({ ...ok, fieldOnItem: null })).toBe(`This page's template has no "MetaDescription" field.`);

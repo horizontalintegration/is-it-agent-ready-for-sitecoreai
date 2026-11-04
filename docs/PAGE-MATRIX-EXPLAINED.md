@@ -82,7 +82,7 @@ The issues worth fixing, **grouped by issue rather than by page**, biggest gain 
 3. **Tick Approve on each one you want.** Nothing is pre-ticked: every page is reviewed before anything is written.
 4. **Write N approved** shows every change before → after in one confirmation. Only **Write to Sitecore** saves them.
 
-The descriptions go into each page's current version and follow your workflow; **nothing is published**. A page whose template has no meta description field can't be written, and says so. Each saved change is recorded (old and new value), and a message confirms how many were saved. The live pages, and their scores, change after you publish. In demo mode the suggestions are examples, and nothing is sent to the AI or written.
+The descriptions go into each page's current version and follow your workflow; **nothing is published**. A page whose template has no meta description field can't be written, and says so. Each saved change is recorded (old and new value), and a message confirms how many were saved. The live pages, and their scores, change after you publish. In demo mode the suggestions are examples and nothing is sent to the AI; the confirmation still shows, but nothing is written.
 
 Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.
 
@@ -147,7 +147,7 @@ Will AI answers cite this page? Pick a page from the list, or type the address o
 2. **Run probe** asks each question. It takes about 20 seconds, and the rows fill in as answers arrive.
 3. For each question: **Found** means your site was in the search results Claude saw; **Cited** means the answer linked to it; **Cited instead** lists the other sites the answer linked to. "(this page)" means the exact page, not just your site. Click a question for the answer's start, what Claude searched for, and what it means.
 
-The totals read like **"Cited in the answer: 2 of 7 · Found in search results: 5 of 7 · Most cited instead: contentmarketinghub.example"**, with **▲ N since last run** when the same questions were asked before. These are counted from the search results and the answer's links, never by asking the AI whether it cited you.
+The totals read like **"Cited in the answer: 2 of 7 · Found in search results: 5 of 7 · Most cited instead: retirementwise.example"**, with **▲ N since last run** when the same questions were asked before. These are counted from the search results and the answer's links, never by asking the AI whether it cited you.
 
 Sometimes Claude answers from memory without searching, even when asked to search. We then ask once more; if it still doesn't search, the question shows **Not searched** and is left out of the totals, because it says nothing about your site.
 
@@ -177,6 +177,8 @@ The caveat under the results says it plainly: **AI answers vary by time, locatio
 ---
 
 ## Demo talking points
+
+For the full 5-minute walk-through with demo data, see **SYMPOSIUM-DEMO-SCRIPT**.
 
 - **"Four questions, one scorecard."** Reach, Read, Understand, Trust — anyone can scan it and know which pages need help.
 - **"One set of rules in the panel and the dashboard."** The dashboard shows what's live; the panel shows your draft before you publish.

@@ -9,23 +9,23 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("demo mode makes no requests", () => {
   const demo = demoAnswers(makeTestAssist());
-  const page = { pageTitle: "Content strategy", mainText: "…" };
+  const page = { pageTitle: "Retirement planning in your 40s", mainText: "…" };
 
   it("answers every AI Assist kind and the bulk meta from the fixture", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const src = makeTestPageData().parsedHtml!.images[1].src;
     const alt = await requestAssist({ kind: "alt", ...page, image: { src, currentAlt: null } }, demo);
     const faq = await requestAssist({ kind: "faq-answers", ...page, pairs: makeTestAssist().faqSources.map((s) => ({ id: s.itemId, question: s.question, answer: s.answer })) }, demo);
-    const headings = await requestAssist({ kind: "question-headings", ...page, headings: ["Building your audit framework", "What is a content strategy?"] }, demo);
+    const headings = await requestAssist({ kind: "question-headings", ...page, headings: ["Building your savings plan", "Why do your 40s matter?"] }, demo);
     const summary = await requestAssist({ kind: "summary", ...page }, demo);
-    const meta = await requestMeta({ field: "metaDescription", pageTitle: "About", currentValue: "", pageUrl: "https://example.com/about" }, demo);
+    const meta = await requestMeta({ field: "metaDescription", pageTitle: "About us", currentValue: "", pageUrl: "https://example.com/about-us" }, demo);
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(alt).toMatchObject({ kind: "alt", alt: "Bar chart of page scores from a content audit, grouped by relevance" });
+    expect(alt).toMatchObject({ kind: "alt", alt: "Line chart of retirement savings growing from age 40 to 65" });
     expect(faq.kind === "faq-answers" && faq.answers.every((a) => a.inRange)).toBe(true);
-    expect(headings).toEqual({ kind: "question-headings", headings: [{ before: "Building your audit framework", after: "How do you build a content audit framework?" }] });
+    expect(headings).toEqual({ kind: "question-headings", headings: [{ before: "Building your savings plan", after: "How do you build a retirement savings plan?" }] });
     expect(summary.kind).toBe("summary");
-    expect(meta.value).toMatch(/^Who we are/);
+    expect(meta.value).toMatch(/^Meet BrandX/);
   });
 
   it("maps every demo image to a field: a page field, a local component and a shared one", () => {

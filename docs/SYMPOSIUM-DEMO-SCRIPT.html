@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Is It Agent-Ready? — Symposium Demo Script</title>
+<style>
+  :root { --accent:#5b34c4; --seo:#2563eb; --aeo:#16a34a; --geo:#9333ea; --ink:#1f2430; --muted:#5c6370; --line:#e3e6ec; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif; color: var(--ink); line-height: 1.55; max-width: 880px; margin: 0 auto; padding: 48px 40px; }
+  h1 { font-size: 30px; border-bottom: 3px solid var(--accent); padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 22px; margin-top: 34px; padding-left: 12px; border-left: 5px solid var(--accent); }
+  h3 { font-size: 17px; margin-top: 24px; color: var(--accent); }
+  p { margin: 10px 0; }
+  code { background: #f3f0fb; color: #6429c9; padding: 2px 6px; border-radius: 4px; font-family: 'Cascadia Code', Consolas, monospace; font-size: 0.88em; }
+  a { color: var(--seo); text-decoration: none; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th { background: var(--accent); color: #fff; padding: 9px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #faf9fe; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 26px 0; }
+  ul { margin: 10px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { color: #2a2f3a; }
+  blockquote { border-left: 4px solid var(--line); margin: 12px 0; padding: 4px 16px; color: var(--muted); }
+  @media print {
+    body { padding: 0; max-width: none; }
+    h2, h3 { break-after: avoid; }
+    table, tr { break-inside: avoid; }
+    a { color: inherit; }
+  }
+</style>
+</head>
+<body>
+<h1>Is It Agent-Ready? — Symposium Demo Script</h1>
+<p>A 5-minute walk-through of <strong>Is It Agent-Ready? for SitecoreAI</strong>, run from the app's built-in demo data. It needs no internet, no Sitecore login and no AI calls, so nothing can fail on stage because of the venue Wi-Fi.</p>
+<p><strong>The story:</strong> BrandX is a financial adviser. Its article <strong>"Retirement planning in your 40s"</strong> is good content, but AI assistants rarely cite it. In five minutes we show why, fix part of it in Page Builder, and show what the whole site looks like to AI agents.</p>
+<p><strong>The flow:</strong> panel verdict → Top fixes → Apply → Agent View → dashboard → AI citations.</p>
+<p>BrandX is the fictional company of the demo data. The numbers below are the demo's and always the same. The real BrandX demo site in Sitecore scores differently.</p>
+<hr/>
+<h2>Before you go on stage</h2>
+<h3>Set up (once, with internet)</h3>
+<ul>
+<li>Get the repo and run <code>npm ci</code>, then <code>npm run build</code>.</li>
+<li>Start it with <code>npx next start -p 3000</code>. Use the production build: the dev server (<code>npm run dev</code>) is slower and can show Next.js's error overlay.</li>
+<li>From here on the laptop can be offline. Demo mode makes no request outside the app and calls none of the app's AI or site-check routes.</li>
+</ul>
+<h3>Open three browser tabs</h3>
+<table><thead><tr>
+<th style="text-align:left">Tab</th>
+<th style="text-align:left">URL</th>
+<th style="text-align:left">Window</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">1. Panel</td>
+<td style="text-align:left"><code>http://localhost:3000/pages-contextpanel-extension?demo=1</code></td>
+<td style="text-align:left">About 420 px wide, as in Page Builder. Use the browser's device toolbar or a narrow window.</td>
+</tr>
+<tr>
+<td style="text-align:left">2. Dashboard</td>
+<td style="text-align:left"><code>http://localhost:3000/dashboard-widget-extension?demo=1</code></td>
+<td style="text-align:left">Full width.</td>
+</tr>
+<tr>
+<td style="text-align:left">3. "After" state (optional)</td>
+<td style="text-align:left"><code>http://localhost:3000/pages-contextpanel-extension?demo=1&amp;md=1</code></td>
+<td style="text-align:left">As tab 1. The same page once the site serves Markdown to agents.</td>
+</tr>
+</tbody></table>
+<ul>
+<li>Zoom to 125% if the room is large.</li>
+<li><strong>Check before you start:</strong> the panel shows <strong>70 · Almost there</strong> and the dashboard shows <strong>62 · Almost there</strong> with "Demo data" in the header. If either doesn't, check that the URL has <code>?demo=1</code>.</li>
+<li><strong>Reset between runs:</strong> reload the tab. Nothing in demo mode is saved.</li>
+<li>Stay on the app's own buttons and links. A link to another website (a page URL, a vendor's docs) needs the internet.</li>
+</ul>
+<hr/>
+<h2>The 5 minutes</h2>
+<h3>1. The verdict (0:00–0:45) · Panel, Score tab</h3>
+<ul>
+<li><strong>Point at:</strong> the score ring <strong>70</strong>, <strong>Almost there</strong>, "▲ 6 since last scan" and the sentence "1 fix would make this page agent-ready."</li>
+<li><strong>Point at:</strong> the four bars, <strong>Reach 100 · Read 31 · Understand 88 · Trust 40</strong>. Every check answers one of four plain questions: can AI agents get to the page, read it, understand it, and trust it.</li>
+<li><strong>Point at:</strong> the banner "Scored from your draft. It differs from the live page." The panel scores what the author is editing, before it's published.</li>
+<li><strong>Say:</strong> "This is the panel inside Page Builder. One score, one verdict, one sentence on what it takes. No SEO jargon: four questions anyone on the team can answer."</li>
+</ul>
+<h3>2. Top fixes (0:45–1:30) · Panel, Score tab</h3>
+<ul>
+<li><strong>Point at:</strong> <strong>Top fixes</strong>, ranked by points: "Agents can get this page as Markdown" <strong>+13 pts</strong>, "Content is there without JavaScript" <strong>+7 pts</strong> (both Developer · Send to developer), and "Structured data is present and valid" <strong>+4 pts</strong> (Developer · Copy snippet).</li>
+<li><strong>Point at:</strong> the red strip above them: "1 site issue affects every page: ChatGPT-User and Perplexity-User get HTTP 403 from your firewall."</li>
+<li><strong>Say:</strong> "Each fix says what it's worth and who fixes it. Developer fixes go out with <strong>Send to developer</strong>: a ready-made note with the page and the fix. And this strip is the surprise: the firewall blocks ChatGPT when someone asks it about this page. No edit to the page can fix that."</li>
+</ul>
+<h3>3. Apply (1:30–2:30) · Panel, Score → AI Assist</h3>
+<ul>
+<li><strong>Click:</strong> under <strong>All checks</strong>, the row <strong>Images are described</strong> (Improve, Understand). It opens: "1 image missing alt text … inline-figure-1.jpg", <strong>+1 pts</strong>, <strong>You can fix</strong>.</li>
+<li><strong>Click:</strong> <strong>Generate</strong>. The panel switches to <strong>AI Assist</strong> at the <strong>Image alt text</strong> card.</li>
+<li><strong>Click:</strong> <strong>Suggest alt text</strong>. The suggestion: "Line chart of retirement savings growing from age 40 to 65" (58 characters, target up to 125).</li>
+<li><strong>Click:</strong> <strong>Apply to field</strong>. The confirmation shows the item (Data/Figure 1), the field ("image"), the language, and <strong>Before: empty → After:</strong> the new text.</li>
+<li><strong>Click:</strong> <strong>Write to Sitecore</strong>. The toast says "Demo: nothing was written to Sitecore."</li>
+<li><strong>Say:</strong> "Authors fix things themselves without leaving Page Builder. AI writes the suggestion, the author checks it, and nothing is saved without this confirmation. In Sitecore it saves to the page's current version and follows your workflow. Nothing is ever published automatically."</li>
+<li><strong>If asked about the other cards:</strong> the same tab writes meta and social text, tighter FAQ answers and the author byline, and suggests question headings and a summary paragraph.</li>
+</ul>
+<h3>4. Agent View (2:30–3:15) · Panel, Agent View tab</h3>
+<ul>
+<li><strong>Click:</strong> the <strong>Agent View</strong> tab.</li>
+<li><strong>Point at:</strong> "Agents ask for Markdown. Your site sends them the full HTML page instead.", and the four checks (Markdown response ✕, HTML fallback ✓, Vary: Accept ✕, Distinct versions —).</li>
+<li><strong>Point at:</strong> "If you served Markdown: about 92% fewer tokens", HTML <strong>6,150</strong> vs Markdown <strong>511</strong>.</li>
+<li><strong>Click:</strong> <strong>Human</strong> / <strong>Agent</strong> in the preview to compare the page with the Markdown an agent would get.</li>
+<li><strong>Say:</strong> "This is what an AI agent actually receives. Markdown is a fraction of the size, so agents read more of your content and less of your menus. It's one developer change for the whole site, and the fix cards show how: accept-md for Next.js sites, or a switch in Cloudflare."</li>
+<li><strong>Optional (10 seconds):</strong> switch to tab 3 (<code>&amp;md=1</code>). The same page now scores <strong>84 · Agent-ready</strong>.</li>
+</ul>
+<h3>5. The dashboard (3:15–4:15) · Dashboard, Overview</h3>
+<ul>
+<li><strong>Switch to:</strong> tab 2.</li>
+<li><strong>Point at:</strong> the site score <strong>62 · Almost there</strong>, the last 8 scans, and the counts: <strong>2 Agent-ready · 4 Almost there · 5 Not ready · 1 Blocked</strong>.</li>
+<li><strong>Point at:</strong> the four category cards, then <strong>Fix first</strong>, grouped by issue rather than by page: "AI agents can open your site · Whole site · Developer", "Agents can get this page as Markdown · 11 pages · +16 pts each".</li>
+<li><strong>Point at:</strong> <strong>What changed since last scan</strong>: a page down 18 after a publish two days ago, "ChatGPT-User now gets 403 from your firewall (it got 200 last time)", 2 pages that became agent-ready once their structured data was fixed, and "Cited in 2 AI answers more" for the retirement article.</li>
+<li><strong>Say:</strong> "The same rules for every page on the site. Fix first says where one change lifts the most pages. What changed is the news: a page that got worse after a publish, a firewall that started blocking ChatGPT."</li>
+<li><strong>Optional:</strong> the <strong>Agent access</strong> tab shows each AI agent's live request: ChatGPT-User and Perplexity-User <strong>403 · Blocked by firewall</strong>, although robots.txt allows them.</li>
+</ul>
+<h3>6. AI citations (4:15–5:00) · Dashboard, AI citations tab</h3>
+<ul>
+<li><strong>Click:</strong> the <strong>AI citations</strong> tab. It opens on "Retirement planning in your 40s".</li>
+<li><strong>Point at:</strong> the estimate: <strong>ChatGPT Limited</strong> and <strong>Perplexity Limited</strong> (the firewall's 403s), Claude, Gemini and Copilot <strong>Ready</strong>.</li>
+<li><strong>Point at:</strong> the measured result: <strong>Cited in the answer: 2 of 7 · Found in search results: 5 of 7 · Most cited instead: retirementwise.example (4 of 8 answers)</strong>, and "▲ 2 since last run".</li>
+<li><strong>Point at:</strong> the table. "Is it too late to open a Roth IRA in my 40s?" cites this page; "What are catch-up contributions…?" finds it but cites a competitor.</li>
+<li><strong>Say:</strong> "This isn't guessed. We ask real questions with live web search and count who the answer actually cites. Found in 5, cited in 2: the gap is what the fixes you just saw are for."</li>
+<li><strong>Close:</strong> "Reach, read, understand, trust: one score in Page Builder and the dashboard, fixes authors can apply themselves, and a measured answer to 'are AI assistants citing us?'. For every SitecoreAI customer, with no extra licence."</li>
+</ul>
+<hr/>
+<h2>If you have more time</h2>
+<ul>
+<li><strong>Generate for all</strong> (Overview): <strong>Show all 18 issues</strong> → "Meta description missing" → <strong>Generate for all</strong> → <strong>Generate 3 descriptions</strong>. Each page gets a suggestion to edit and an unticked <strong>Approve</strong>. Tick two, <strong>Write 2 approved</strong>, and the one confirmation lists both. "Saving for retirement at any age" can't be approved: "This page's template has no "MetaDescription" field." That's the app checking the template before it offers to write.</li>
+<li><strong>Pages:</strong> the heatmap with full category names, filters and sorting. <strong>Open in Page Builder</strong> on "Retirement planning in your 40s" opens the panel demo; on other rows the demo says what would open.</li>
+<li><strong>Files:</strong> the llms.txt generator (with its "When should AI tools use this site?" text) and the robots.txt helper with search, user and training bots as separate choices. "robots.txt is a request, not a lock: firewall rules decide who actually gets in."</li>
+<li><strong>The "after" state:</strong> <code>?demo=1&amp;md=1</code> on the dashboard shows the site once it serves Markdown: site score <strong>79</strong>, <strong>5 Agent-ready</strong>.</li>
+</ul>
+<hr/>
+<h2>If something goes wrong</h2>
+<table><thead><tr>
+<th style="text-align:left">What you see</th>
+<th style="text-align:left">What to do</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">A page that says it can't reach Sitecore, or no "Demo data" label</td>
+<td style="text-align:left">The URL is missing <code>?demo=1</code>.</td>
+</tr>
+<tr>
+<td style="text-align:left">"This site can't be reached"</td>
+<td style="text-align:left">The server isn't running: <code>npx next start -p 3000</code> in the repo.</td>
+</tr>
+<tr>
+<td style="text-align:left">Port 3000 is in use</td>
+<td style="text-align:left">Start with <code>-p 3001</code> and change the URLs.</td>
+</tr>
+<tr>
+<td style="text-align:left">A suggestion or toast you didn't expect, or a dialog left open</td>
+<td style="text-align:left">Reload the tab. Demo mode keeps nothing.</td>
+</tr>
+<tr>
+<td style="text-align:left">A new tab opened on another website</td>
+<td style="text-align:left">Close it and go back. Only the app's own buttons work offline.</td>
+</tr>
+<tr>
+<td style="text-align:left">The Wi-Fi drops</td>
+<td style="text-align:left">Nothing changes: the demo doesn't use it.</td>
+</tr>
+</tbody></table>
+<p><strong>Presenting live in Sitecore instead?</strong> That uses the real BrandX demo site, real AI calls and real writes. Use the test pages only, and press <strong>Cancel</strong> in the confirmation unless you mean to save.</p>
+<hr/>
+<h2>Likely questions</h2>
+<table><thead><tr>
+<th style="text-align:left">Question</th>
+<th style="text-align:left">Answer</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Does it need Scrunch or another licence?</td>
+<td style="text-align:left">No. It runs on SitecoreAI with the app's own checks. Citation probes use Claude with web search.</td>
+</tr>
+<tr>
+<td style="text-align:left">Where does the score come from?</td>
+<td style="text-align:left">The same rules in the panel and the dashboard. The panel scores the draft you're editing; the dashboard scores the published pages.</td>
+</tr>
+<tr>
+<td style="text-align:left">Does Apply publish anything?</td>
+<td style="text-align:left">No. It saves to the item's current version and follows your workflow, after a confirmation that shows before and after.</td>
+</tr>
+<tr>
+<td style="text-align:left">How are citations measured?</td>
+<td style="text-align:left">Each question is asked once with live web search; we count whether your domain is in the results and in the answer's citations. Results are kept 7 days. About 3 cents a question.</td>
+</tr>
+<tr>
+<td style="text-align:left">What does the AI cost otherwise?</td>
+<td style="text-align:left">About 1 cent per generated description. Asking again for unchanged content is free (cached).</td>
+</tr>
+<tr>
+<td style="text-align:left">Does blocking AI training lower the score?</td>
+<td style="text-align:left">No. Opting out of training is your choice and costs nothing. Blocking AI search and AI assistants does.</td>
+</tr>
+<tr>
+<td style="text-align:left">How do we serve Markdown?</td>
+<td style="text-align:left">One developer change for the whole site: accept-md for Next.js (Content SDK) sites, or Markdown for Agents in Cloudflare.</td>
+</tr>
+<tr>
+<td style="text-align:left">Which sites does it work on?</td>
+<td style="text-align:left">Any SitecoreAI site. Field names are configurable for each site's templates.</td>
+</tr>
+</tbody></table>
+<p>More detail: <code>PAGE-CHECKS-EXPLAINED</code> (the panel) and <code>PAGE-MATRIX-EXPLAINED</code> (the dashboard).</p>
+</body>
+</html>
