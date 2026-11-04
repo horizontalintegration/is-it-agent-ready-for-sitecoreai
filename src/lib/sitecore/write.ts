@@ -165,10 +165,13 @@ export interface WriteAvailability {
   itemKind?: string;
 }
 
-/** Null when a write can go ahead; otherwise the reason shown next to the disabled Apply. */
+/**
+ * Null when a write can go ahead; otherwise the reason shown next to the
+ * disabled Apply. Demo mode has no client but keeps Apply on, so the confirm
+ * dialog can be shown; WriteConfirmProvider then writes nothing.
+ */
 export function writeDisabledReason(a: WriteAvailability): string | null {
-  if (a.demo) return "Demo: nothing is written to Sitecore.";
-  if (!a.hasClient) return "Open this in SitecoreAI to write to the field.";
+  if (!a.hasClient && !a.demo) return "Open this in SitecoreAI to write to the field.";
   if (!a.configuredField) return "No field is set up for this on the site's templates, so copy it instead.";
   if (!a.fieldOnItem) return `This ${a.itemKind ?? "page"}'s template has no "${a.configuredField}" field.`;
   if (a.canEdit === false) return "You can't edit this item (no rights, or it's locked).";

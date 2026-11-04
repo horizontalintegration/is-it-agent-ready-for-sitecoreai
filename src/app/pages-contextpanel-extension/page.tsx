@@ -213,9 +213,9 @@ export default function PagesContextPanel() {
   // Opens the dashboard on its Agent access tab (it reads the tab from the hash).
   // The link opens the app's route in a new tab, outside the Sitecore host, so
   // it passes the site as `?domain=` for the standalone dashboard (plan
-  // section 13, item 10).
+  // section 13, item 10). Demo mode stays on this origin, so it works offline.
   const openDashboard = async () => {
-    const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const base = (!fixture && process.env.NEXT_PUBLIC_APP_URL) || window.location.origin;
     const query = fixture ? "?demo=1" : siteDomain ? `?domain=${encodeURIComponent(siteDomain)}` : "";
     const url = `${base}/dashboard-widget-extension${query}#agent-access`;
     try {
@@ -266,7 +266,7 @@ export default function PagesContextPanel() {
   const trigger = "h-10 border-b-0 px-2.5 text-sm font-semibold data-[state=active]:border-b-2";
 
   return (
-    <WriteConfirmProvider client={fixture ? null : client} contextId={writeContext.sitecoreContextId}>
+    <WriteConfirmProvider client={fixture ? null : client} contextId={writeContext.sitecoreContextId} demo={Boolean(fixture)}>
     <TooltipProvider>
       <div className="flex h-screen flex-col bg-body-bg text-body-text">
         <header className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5">

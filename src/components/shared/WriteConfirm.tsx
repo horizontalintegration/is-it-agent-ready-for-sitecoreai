@@ -24,6 +24,10 @@ import { writeField, type WriteRequest, type WriteResult } from "@/lib/sitecore/
 //
 // An in-page dialog, not window.confirm: Page Builder's iframe blocks browser
 // dialogs (SPIKE-FINDINGS §9.3).
+//
+// Demo mode (`?demo=1`) shows the same dialog, but "Write to Sitecore" only
+// logs an "[audit] demo" line and says nothing was written. Demo mode never
+// starts the Marketplace client, so there's nothing it could write with.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ConfirmWrite = (requests: WriteRequest[], opts?: { title?: string }) => Promise<WriteResult[] | null>;
@@ -46,10 +50,12 @@ interface Pending {
 export function WriteConfirmProvider({
   client,
   contextId,
+  demo = false,
   children,
 }: {
   client: ClientSDK | null;
   contextId: string | undefined;
+  demo?: boolean;
   children: ReactNode;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
@@ -70,6 +76,13 @@ export function WriteConfirmProvider({
 
   const send = async () => {
     if (!pending) return;
+    if (demo) {
+      for (const req of pending.requests) console.info(`[audit] demo, nothing written: ${req.label} on ${req.itemLabel} (field "${req.target.field}")`);
+      toast.info("Demo: nothing was written to Sitecore.");
+      pending.resolve(null);
+      setPending(null);
+      return;
+    }
     if (!client) {
       toast.error("Nothing was written: there's no connection to Sitecore here.");
       pending.resolve(null);

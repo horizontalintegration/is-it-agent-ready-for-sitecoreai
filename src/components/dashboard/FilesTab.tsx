@@ -62,7 +62,7 @@ function LlmsStatus({ access }: { access: AgentAccessData | null }) {
 
 function LlmsTxtCard({ pages, siteUrl, siteName, access }: { pages: PageMatrixRow[]; siteUrl: string; siteName: string; access: AgentAccessData | null }) {
   const ids = { tagline: useId(), when: useId(), only: useId() };
-  const [tagline, setTagline] = useState("Digital experience platform");
+  const [tagline, setTagline] = useState("");
   const [whenToUse, setWhenToUse] = useState("");
   const [onlyReady, setOnlyReady] = useState(true);
   const [flash, setFlash] = useFlash();
@@ -95,7 +95,7 @@ function LlmsTxtCard({ pages, siteUrl, siteName, access }: { pages: PageMatrixRo
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor={ids.tagline} className="text-sm font-semibold">One-line summary of the site</label>
-        <input id={ids.tagline} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} className={field} />
+        <input id={ids.tagline} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="For example: Financial planning and wealth management" className={field} />
       </div>
 
       <div className="flex flex-col gap-1.5">

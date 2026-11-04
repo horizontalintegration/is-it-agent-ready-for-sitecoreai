@@ -77,14 +77,14 @@ export function makeParsedHtml(overrides: Partial<ParsedHtml> = {}): ParsedHtml 
 
 const FAQ = [
   {
-    question: "How long should a content strategy take to develop?",
+    question: "How much should I have saved for retirement at 45?",
     answer:
-      "Most teams need 4-6 weeks to develop a meaningful content strategy. This includes an audit, audience research, and initial content roadmap.",
+      "A common benchmark is three to four times your annual salary by 45. This includes workplace plans, IRAs, and other long-term investments.",
   },
   {
-    question: "Do I need separate strategies for SEO and AEO?",
+    question: "Is it too late to start a Roth IRA in my 40s?",
     answer:
-      "No. A modern strategy treats them as overlapping surfaces of the same content programme — but acknowledges each has different format requirements.",
+      "No. You can contribute at any age if you have earned income — and two decades of tax-free growth still make a Roth IRA worth opening.",
   },
 ];
 
@@ -109,37 +109,41 @@ function bodyBlocksFor(mainText: string): BodyBlock[] {
   ];
 }
 
+/** The demo article (the panel's page, and the dashboard's p8). */
+export const DEMO_ROUTE = "/insights/retirement-planning-in-your-40s";
+const OG_DESCRIPTION = "How much to save in your 40s, which accounts to fund first, and how to catch up.";
+
 export function makeTestPageData(): PageData {
-  const pageUrl = `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`;
-  const title = "How to build an effective content strategy in 2026";
+  const pageUrl = `${SITE_DOMAIN}${DEMO_ROUTE}`;
+  const title = "Retirement planning in your 40s: a practical guide";
   const description =
-    "A practical guide to building a content strategy that delivers measurable results across SEO, AEO and AI search channels.";
+    "How much to save in your 40s, which accounts to fund first, and how to catch up on retirement savings if you started late.";
   const paragraphs = [
-    "Content strategy is the planning, development, and management of content for a business or brand. A solid strategy aligns content to business goals, audience needs, and channel requirements.",
-    "Modern content strategies must account for traditional search, answer engines, and AI-driven retrieval systems. Each surface has different relevance signals and content formats.",
-    "Start by auditing your existing content. Identify gaps, duplicates, and pages that under-perform. Use that audit to prioritise where to invest in new content vs refreshes.",
+    "Retirement planning is the setting of income goals for later life and the saving, investing, and protection needed to reach them. A solid plan aligns contributions to goals, timelines, and risk tolerance.",
+    "Your 40s are usually your peak earning years. Decisions about saving rates, account types, and debt during this decade affect retirement income more than any other period.",
+    "Start by reviewing your current balances. Identify gaps, duplicated accounts, and investments that under-perform. Use that review to prioritise between higher contributions and paying down debt.",
   ];
   const headings = [
     { level: 1, text: title },
-    { level: 2, text: "What is a content strategy?" },
-    { level: 2, text: "Why does it matter?" },
-    { level: 2, text: "Building your audit framework" },
-    { level: 3, text: "Step 1: Map your existing pages" },
-    { level: 3, text: "Step 2: Score for relevance" },
+    { level: 2, text: "What does retirement planning involve?" },
+    { level: 2, text: "Why do your 40s matter?" },
+    { level: 2, text: "Building your savings plan" },
+    { level: 3, text: "Step 1: Max out your workplace plan" },
+    { level: 3, text: "Step 2: Open an IRA" },
   ];
-  const mainText = [title, "What is a content strategy?", paragraphs[0], "Why does it matter?", paragraphs[1],
-    "Building your audit framework", "Step 1: Map your existing pages", "Step 2: Score for relevance", paragraphs[2]].join("\n");
+  const mainText = [title, headings[1].text, paragraphs[0], headings[2].text, paragraphs[1],
+    headings[3].text, headings[4].text, headings[5].text, paragraphs[2]].join("\n");
 
   return {
     pageUrl,
-    route: "/blog/how-to-build-an-effective-content-strategy",
+    route: DEMO_ROUTE,
     templateName: "Article Detail Page",
     organization: BRANDX_ORGANIZATION,
     authoring: {
       pageTitle: title,
       metaDescription: description,
       ogTitle: title,
-      ogDescription: "A practical guide to building a content strategy that delivers measurable results.",
+      ogDescription: OG_DESCRIPTION,
       ogImage: `${SITE_DOMAIN}/images/hero.jpg`,
       author: "Jane Smith",
       authorProfileLinked: false,
@@ -167,14 +171,14 @@ export function makeTestPageData(): PageData {
       articleModifiedTimeMeta: daysAgo(60).toISOString(),
       headings,
       images: [
-        { src: `${SITE_DOMAIN}/images/hero.jpg`, alt: "Team collaborating around a whiteboard" },
+        { src: `${SITE_DOMAIN}/images/hero.jpg`, alt: "Couple meeting a financial advisor" },
         { src: `${SITE_DOMAIN}/images/inline-figure-1.jpg`, alt: null }, // missing alt
-        { src: `${SITE_DOMAIN}/images/inline-figure-2.jpg`, alt: "Content workflow diagram" },
+        { src: `${SITE_DOMAIN}/images/inline-figure-2.jpg`, alt: "Savings chart" },
       ],
       links: [
-        { anchorText: "the content audit guide", href: "/blog/content-audit" },
-        { anchorText: "click here", href: "/contact" }, // generic
-        { anchorText: "our 2026 SEO playbook", href: "/blog/seo-playbook-2026" },
+        { anchorText: "our retirement savings calculator", href: "/insights/retirement-calculator" },
+        { anchorText: "click here", href: "/contact-us" }, // generic
+        { anchorText: "our guide to Roth conversions", href: "/insights/roth-conversions-explained" },
       ],
       paragraphs,
       mainText,
@@ -183,7 +187,7 @@ export function makeTestPageData(): PageData {
       canonicalHref: pageUrl,
       robotsMeta: "index, follow",
       ogTitle: title,
-      ogDescription: "A practical guide to building a content strategy that delivers measurable results.",
+      ogDescription: OG_DESCRIPTION,
       ogImage: `${SITE_DOMAIN}/images/hero.jpg`,
       ogType: null, // missing → P11 warning
       metaAuthor: "Jane Smith", // named, no profile link → P17 warning
@@ -203,7 +207,7 @@ export function makeTestPageData(): PageData {
           "@type": "BreadcrumbList",
           itemListElement: [
             { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_DOMAIN}/` },
-            { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE_DOMAIN}/blog` },
+            { "@type": "ListItem", position: 2, name: "Insights", item: `${SITE_DOMAIN}/insights` },
             { "@type": "ListItem", position: 3, name: title, item: pageUrl },
           ],
         }),
@@ -227,13 +231,13 @@ export function makeTestPageData(): PageData {
     ai: {
       uniquenessRating: "borderline",
       uniquenessExplanation:
-        "The article restates common content strategy advice with limited original perspective or first-hand examples.",
+        "The article repeats common retirement-saving advice with few first-hand examples or figures of BrandX's own.",
       followUpGaps: [
-        { question: "How do I measure content ROI?", covered: false },
-        { question: "What tools should I use for an audit?", covered: false },
-        { question: "How often should I refresh content?", covered: true },
-        { question: "Who should own content strategy in my org?", covered: false },
-        { question: "How do I prioritise new vs refresh?", covered: true },
+        { question: "How do catch-up contributions work?", covered: false },
+        { question: "Should I pay off my mortgage or invest more?", covered: false },
+        { question: "How do I roll over an old 401(k)?", covered: true },
+        { question: "How much will I need to retire?", covered: false },
+        { question: "Which account should I fund first?", covered: true },
       ],
     },
   };
@@ -241,18 +245,18 @@ export function makeTestPageData(): PageData {
 
 // The draft edits one heading. Related-article cards are fetched in the
 // browser, as on BrandX: they're in the draft but not in the server HTML.
-const LIVE_H2 = "Why does it matter?";
-const DRAFT_H2 = "Why does a content strategy matter?";
+const LIVE_H2 = "Why do your 40s matter?";
+const DRAFT_H2 = "Why do your 40s matter for retirement?";
 const RELATED = [
   {
-    title: "Measuring content ROI without guesswork",
-    summary: "Three metrics that tie content to pipeline.",
-    href: "/blog/content-roi",
+    title: "When to claim Social Security",
+    summary: "How your claiming age changes your monthly benefit.",
+    href: "/insights/social-security-timing",
   },
   {
-    title: "Refreshing old articles for AI search",
-    summary: "When to update a page instead of writing a new one.",
-    href: "/blog/refresh-for-ai",
+    title: "Roth conversions explained",
+    summary: "When converting to a Roth IRA pays off.",
+    href: "/insights/roth-conversions-explained",
   },
 ];
 
@@ -326,11 +330,11 @@ export function makeTestPageSource({ draft = false }: { draft?: boolean } = {}):
     `</ul></nav></header>`,
     `<main><article data-component="${COMPONENT.content}">`,
     `<h1>${esc(h1.text)}</h1>`,
-    `<img src="/images/hero.jpg" alt="Team collaborating around a whiteboard">`,
+    `<img src="/images/hero.jpg" alt="${esc(h.images[0].alt ?? "")}">`,
     `<h2>${esc(heading(sections[0].text))}</h2>${para(0)}`,
     `<h2>${esc(heading(sections[1].text))}</h2>${para(1)}`,
     `<h2>${esc(sections[2].text)}</h2><h3>${esc(sections[3].text)}</h3><h3>${esc(sections[4].text)}</h3>${para(2)}`,
-    `<p>Read <a href="/blog/content-audit">the content audit guide</a> and <a href="/blog/seo-playbook-2026">our 2026 SEO playbook</a>.</p>`,
+    `<p>Try <a href="/insights/retirement-calculator">our retirement savings calculator</a> and read <a href="/insights/roth-conversions-explained">our guide to Roth conversions</a>.</p>`,
     `</article><section data-component="${COMPONENT.accordion}">${faq}</section>${related}</main>`,
     `<footer data-component="${COMPONENT.footer}"><p>© BrandX. All rights reserved.</p><a href="/privacy">Privacy policy</a> <a href="/terms">Terms of use</a></footer>`,
     `</body></html>`,
@@ -517,8 +521,8 @@ export function makeTestAgentAccess({ servesMarkdown = false }: { servesMarkdown
 // ── Dashboard demo rows ───────────────────────────────────────────────────────
 //
 // Each row is the fixture page above with a few changes, scored by the real
-// engine on live HTML only, as the dashboard does. "Blog: content strategy" is
-// the panel's demo page unchanged; the panel also scores its draft
+// engine on live HTML only, as the dashboard does. "Retirement planning in your
+// 40s" is the panel's demo page unchanged; the panel also scores its draft
 // (makeTestDraft), so its score there can differ.
 
 type Variant = (d: PageData) => void;
@@ -544,7 +548,7 @@ const withArticle: Variant = (d) => {
   html(d).jsonLdScripts.push(
     script({
       "@context": "https://schema.org",
-      "@type": "BlogPosting",
+      "@type": "Article",
       headline: html(d).title,
       author: { "@type": "Person", name: "Jane Smith", url: `${SITE_DOMAIN}/authors/jane-smith` },
     }),
@@ -594,34 +598,34 @@ function buildRow(input: FixtureRowInput, servesMarkdown: boolean): PageMatrixRo
 
 export function makeTestSitePages({ servesMarkdown = false }: { servesMarkdown?: boolean } = {}): PageMatrixRow[] {
   const rows: FixtureRowInput[] = [
-    { id: "p1", name: "About", route: "/about", daysOld: 1200,
+    { id: "p1", name: "About us", route: "/about-us", daysOld: 1200,
       variants: [notArticle, noFaq, noJsonLd, noCanonical, noDescription, commodity, age(1200)] },
-    { id: "p2", name: "Legacy product page", route: "/products/legacy", daysOld: 900,
-      variants: [notArticle, noFaq, noJsonLd, twoH1s, shortTitle("Legacy"), commodity, age(900)] },
-    { id: "p3", name: "Empty draft", route: "/blog/draft", daysOld: 800, noMetaField: true,
-      variants: [noJsonLd, noCanonical, noDescription, shortTitle("Draft"), commodity, age(800)] },
-    { id: "p4", name: "Pricing", route: "/pricing", daysOld: 400,
+    { id: "p2", name: "Annuities", route: "/services/annuities", daysOld: 900,
+      variants: [notArticle, noFaq, noJsonLd, twoH1s, shortTitle("Annuities"), commodity, age(900)] },
+    { id: "p3", name: "Saving for retirement at any age", route: "/insights/saving-at-any-age", daysOld: 800, noMetaField: true,
+      variants: [noJsonLd, noCanonical, noDescription, shortTitle("Saving"), commodity, age(800)] },
+    { id: "p4", name: "Fees and pricing", route: "/fees", daysOld: 400,
       variants: [notArticle, noFaq, noJsonLd, noDescription, age(400)] },
-    { id: "p5", name: "Contact us", route: "/contact", daysOld: 200,
+    { id: "p5", name: "Contact us", route: "/contact-us", daysOld: 200,
       variants: [notArticle, noFaq, noCanonical, age(200)] },
-    { id: "p6", name: "Old blog post", route: "/blog/intro-to-cms", daysOld: 500,
+    { id: "p6", name: "529 college savings plans", route: "/insights/college-savings-529-plans", daysOld: 500,
       variants: [noJsonLd, twoH1s, age(500)] },
-    { id: "p7", name: "Solutions overview (noindex)", route: "/solutions/overview", daysOld: 300,
+    { id: "p7", name: "Client login (noindex)", route: "/client-login", daysOld: 300,
       variants: [notArticle, noindex] },
-    { id: "p8", name: "Blog: content strategy", route: "/blog/how-to-build-an-effective-content-strategy", daysOld: 60,
-      variants: [], description: "A practical guide to building a content strategy that delivers measurable results." },
-    { id: "p9", name: "Homepage", route: "/", daysOld: 30,
+    { id: "p8", name: "Retirement planning in your 40s", route: DEMO_ROUTE, daysOld: 60,
+      variants: [], description: OG_DESCRIPTION },
+    { id: "p9", name: "Home", route: "/", daysOld: 30,
       variants: [notArticle, noFaq, unique, age(30)],
-      description: "The digital experience platform for building content-led customer journeys." },
-    { id: "p10", name: "Blog: SEO playbook 2026", route: "/blog/seo-playbook-2026", daysOld: 45,
+      description: "Independent financial planning and wealth management to help you invest smarter, retire better and grow with confidence." },
+    { id: "p10", name: "Roth conversions explained", route: "/insights/roth-conversions-explained", daysOld: 45,
       variants: [withArticle, unique, age(45)],
-      description: "A practical playbook for ranking across traditional and AI-driven search in 2026." },
-    { id: "p11", name: "Solutions: marketing", route: "/solutions/marketing", daysOld: 90,
+      description: "What a Roth conversion is, when paying the tax now saves you money later, and the mistakes to avoid." },
+    { id: "p11", name: "Wealth management", route: "/services/wealth-management", daysOld: 90,
       variants: [notArticle, noFaq, age(90)],
-      description: "Marketing solutions for personalising and orchestrating omnichannel campaigns." },
-    { id: "p12", name: "Blog: AEO essentials", route: "/blog/aeo-essentials", daysOld: 60,
+      description: "Personal wealth management from BrandX advisors: investments, tax and estate planning in one plan." },
+    { id: "p12", name: "Estate planning checklist", route: "/insights/estate-planning-checklist", daysOld: 60,
       variants: [withArticle, age(60)],
-      description: "What answer-engine optimisation is and how it differs from classic SEO." },
+      description: "The documents, accounts and decisions to review so your estate plan does what you intend." },
   ];
   return rows.map((r) => buildRow(r, servesMarkdown));
 }
@@ -636,15 +640,16 @@ export const DEMO_SITE_HISTORY_BEFORE = [48, 50, 49, 53, 55, 54, 56];
 
 // ── AI citations (Phase 8) ────────────────────────────────────────────────────
 //
-// A probe run of "Blog: content strategy" with every outcome: cited, found
-// but not cited, not found, and one question that wasn't searched (left out
-// of the totals). The run before had the same questions and no citations, so
-// the tab shows "▲ 2 since last run". Totals: cited 2 of 7, found 5 of 7,
-// contentmarketinghub.example cited instead in 4 answers.
+// A probe run of "Retirement planning in your 40s" with every outcome: cited,
+// found but not cited, not found, and one question that wasn't searched (left
+// out of the totals). The run before had the same questions and no citations,
+// so the tab shows "▲ 2 since last run". Totals: cited 2 of 7, found 5 of 7,
+// retirementwise.example cited instead in 4 answers.
 
 /** The page the AI citations tab opens on in demo mode. */
 export const DEMO_CITATION_PAGE_ID = "p8";
-const DEMO_CITATION_URL = `${SITE_DOMAIN}/blog/how-to-build-an-effective-content-strategy`;
+const DEMO_CITATION_URL = `${SITE_DOMAIN}${DEMO_ROUTE}`;
+const DEMO_COMPETITOR = "retirementwise.example";
 
 interface DemoProbe {
   question: string;
@@ -656,34 +661,34 @@ interface DemoProbe {
 }
 
 const DEMO_PROBES: DemoProbe[] = [
-  { question: "How do I build a content strategy from scratch?", found: true, cited: true, instead: [],
-    excerpt: "Start with clear goals, research your audience, audit what you already have, then plan topics and a publishing cadence [example.com]." },
-  { question: "What should a content strategy document include?", found: true, cited: false, instead: ["contentmarketinghub.example"],
-    excerpt: "A typical strategy document covers goals, audience personas, core topics, channels, a calendar and how success is measured [contentmarketinghub.example]." },
-  { question: "How often should a B2B company publish blog posts?", found: false, cited: false, instead: ["contentmarketinghub.example", "strategyplain.example"],
-    excerpt: "Consistency matters more than volume: one to four quality posts a month is common for B2B teams [strategyplain.example]." },
-  { question: "How do you measure whether content marketing is working?", found: true, cited: false, instead: ["seoweekly.example"],
-    excerpt: "Track engagement, organic traffic, conversions and pipeline influenced by content, not just page views [seoweekly.example]." },
-  { question: "What is a content audit and how do I run one?", found: true, cited: true, instead: [],
-    excerpt: "A content audit inventories every page, then scores each one on performance and accuracy to decide what to keep, update or remove [example.com]." },
-  { question: "What is the difference between content strategy and content marketing?", found: true, cited: false, instead: ["contentmarketinghub.example"],
-    excerpt: "Content strategy is the plan: why, for whom and how content is made and governed. Content marketing is executing it [contentmarketinghub.example]." },
-  { question: "How many content pillars should a strategy have?", found: false, cited: false, instead: ["contentmarketinghub.example"],
-    excerpt: "Most teams settle on three to five pillars that map to their audience's main problems [contentmarketinghub.example]." },
-  { question: "Should small teams use AI to write content?", found: false, cited: false, instead: [], searched: false,
-    excerpt: "AI can speed up research and first drafts, but human editing keeps content accurate and on-brand." },
+  { question: "How much should I have saved for retirement at 45?", found: true, cited: true, instead: [],
+    excerpt: "A common benchmark is three to four times your annual salary by 45, counting workplace plans and IRAs [example.com]." },
+  { question: "What are catch-up contributions and when can I make them?", found: true, cited: false, instead: [DEMO_COMPETITOR],
+    excerpt: `From age 50 you can add catch-up contributions on top of the normal 401(k) and IRA limits [${DEMO_COMPETITOR}].` },
+  { question: "Should I pay off my mortgage or invest for retirement in my 40s?", found: false, cited: false, instead: [DEMO_COMPETITOR, "savvysaver.example"],
+    excerpt: "It depends on your mortgage rate: above about 6%, extra payments often win; below it, investing usually does [savvysaver.example]." },
+  { question: "How do I know if I'm on track for retirement?", found: true, cited: false, instead: ["moneyweekly.example"],
+    excerpt: "Compare your savings with age-based benchmarks and project your income at 65, not just your balance today [moneyweekly.example]." },
+  { question: "Is it too late to open a Roth IRA in my 40s?", found: true, cited: true, instead: [],
+    excerpt: "No. Anyone with earned income can contribute, and 20 or more years of tax-free growth still make it worthwhile [example.com]." },
+  { question: "What is the difference between a 401(k) and an IRA?", found: true, cited: false, instead: [DEMO_COMPETITOR],
+    excerpt: `A 401(k) is offered by your employer and has higher limits; an IRA is one you open yourself, with more investment choice [${DEMO_COMPETITOR}].` },
+  { question: "How much of my income should I save for retirement in my 40s?", found: false, cited: false, instead: [DEMO_COMPETITOR],
+    excerpt: `Most planners suggest 15% to 20% of gross income in your 40s, more if you started late [${DEMO_COMPETITOR}].` },
+  { question: "Should I use an AI tool to plan my retirement?", found: false, cited: false, instead: [], searched: false,
+    excerpt: "AI tools can help you model scenarios, but a qualified advisor should review a plan before you act on it." },
 ];
 
 function demoEvidence(p: DemoProbe, ranAt: string, previous: boolean): ProbeEvidence {
   const searched = p.searched ?? true;
   const own = (path: string) => `${SITE_DOMAIN}${path}`;
   const cited = p.cited && !previous;
-  const instead = cited || !p.cited ? p.instead : ["contentmarketinghub.example"];
+  const instead = cited || !p.cited ? p.instead : [DEMO_COMPETITOR];
   return {
     question: p.question,
     searched,
     resultUrls: searched
-      ? [...(p.found ? [DEMO_CITATION_URL, own("/blog")] : []), ...instead.map((h) => `https://${h}/guide`), "https://en.wikipedia.org/wiki/Content_strategy"]
+      ? [...(p.found ? [DEMO_CITATION_URL, own("/insights")] : []), ...instead.map((h) => `https://${h}/guide`), "https://en.wikipedia.org/wiki/Retirement_planning"]
       : [],
     citedUrls: [...(cited ? [DEMO_CITATION_URL] : []), ...instead.map((h) => `https://${h}/guide`)],
     queries: searched ? [p.question.replace(/\?$/, "").toLowerCase()] : [],
@@ -715,8 +720,8 @@ export function makeTestCitationDemo(): CitationDemo {
 // line matches the other tabs: the weakest unready page dropped 18 points
 // after a publish two days ago (its biggest current issue is new), ChatGPT-User
 // got 200 at the last scan and 403 now, two pages became agent-ready after
-// their structured data was fixed, and the content-strategy post is cited in
-// 2 more probe answers.
+// their structured data was fixed, and the retirement article is cited in 2
+// more probe answers.
 
 export function makeTestWhatChanged(pages: PageMatrixRow[], siteScore: number | null, access: AgentAccessData): WhatChangedInput {
   const prevAt = daysAgo(7).toISOString();
@@ -750,7 +755,7 @@ export function makeTestWhatChanged(pages: PageMatrixRow[], siteScore: number | 
   return {
     scans: [prev, cur],
     access: [prevAccess, nowAccess],
-    citations: [{ route: "/blog/how-to-build-an-effective-content-strategy", delta: 2, at: new Date().toISOString() }],
+    citations: [{ route: DEMO_ROUTE, delta: 2, at: new Date().toISOString() }],
   };
 }
 
@@ -763,7 +768,7 @@ export function makeTestWhatChanged(pages: PageMatrixRow[], siteScore: number | 
 // FAQ answers' datasources, and the author names used on the site's articles.
 // Writes stay off in demo mode, with the reason shown.
 
-const DEMO_PAGE_PATH = "/sitecore/content/Example/Home/Blog/How to build an effective content strategy";
+const DEMO_PAGE_PATH = "/sitecore/content/BrandX/Home/Insights/Retirement planning in your 40s";
 
 export interface AssistDemo {
   pagePath: string;
@@ -801,7 +806,7 @@ export function makeTestAssist(): AssistDemo {
       pageTitle: page.authoring!.pageTitle ?? "",
       MetaDescription: page.authoring!.metaDescription ?? "",
       authorName: "Jane Smith",
-      image: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="Team collaborating around a whiteboard" />',
+      image: `<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="${images[0].alt}" />`,
     },
     fieldNames: {
       pageTitle: "pageTitle",
@@ -814,38 +819,38 @@ export function makeTestAssist(): AssistDemo {
     faqSources: faq,
     imageFields: [
       { owner: "page", itemId: "11111111-demo-page-0000-000000000001", itemPath: DEMO_PAGE_PATH, field: "image",
-        value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="Team collaborating around a whiteboard" />',
+        value: `<image mediaid="AAAAAAAA-0000-0000-0000-000000000001" alt="${images[0].alt}" />`,
         mediaId: "aaaaaaaa-0000-0000-0000-000000000001", mediaPath: "/images/hero", shared: false },
       { owner: "item", itemId: "22222222-demo-figure-000-000000000001", itemPath: `${DEMO_PAGE_PATH}/Data/Figure 1`, field: "image",
         value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000002" />',
         mediaId: "aaaaaaaa-0000-0000-0000-000000000002", mediaPath: "/images/inline-figure-1", shared: false },
-      { owner: "item", itemId: "33333333-demo-shared-000-000000000001", itemPath: "/sitecore/content/Example/Data/Promos/Workflow diagram", field: "image",
-        value: '<image mediaid="AAAAAAAA-0000-0000-0000-000000000003" alt="Content workflow diagram" />',
+      { owner: "item", itemId: "33333333-demo-shared-000-000000000001", itemPath: "/sitecore/content/BrandX/Data/Promos/Savings chart", field: "image",
+        value: `<image mediaid="AAAAAAAA-0000-0000-0000-000000000003" alt="${images[2].alt}" />`,
         mediaId: "aaaaaaaa-0000-0000-0000-000000000003", mediaPath: "/images/inline-figure-2", shared: true },
     ],
     authorNames: ["Daniel Osei", "Jane Smith", "Priya Raman"],
     meta: {
-      metaTitle: "Build a Content Strategy That Works in 2026: A Practical Guide",
-      metaDescription: "Plan, audit and prioritise content that performs in search, answer engines and AI assistants, with a step-by-step framework you can start this week.",
-      ogTitle: "How to Build a Content Strategy That Works for People and AI",
-      ogDescription: "A practical, step-by-step guide to auditing your content, closing gaps and planning what to publish next, so it works across search and AI answers.",
+      metaTitle: "Retirement Planning in Your 40s: How Much to Save and Where",
+      metaDescription: "How much to save in your 40s, which accounts to fund first and how to catch up if you started late, with a step-by-step plan you can start this month.",
+      ogTitle: "Retirement Planning in Your 40s: A Practical Guide from BrandX",
+      ogDescription: "Savings benchmarks for your 40s, the order to fund your 401(k) and IRA, and how to catch up if you started late, explained by BrandX advisors.",
     },
     bulkMeta: {
-      [`${SITE_DOMAIN}/about`]: "Who we are, what we build and how we help teams create content-led customer journeys across every channel, from search to AI assistants.",
-      [`${SITE_DOMAIN}/blog/draft`]: "A working draft on planning content for search and AI answers: the questions to ask, the pages to audit and how to decide what to write next.",
-      [`${SITE_DOMAIN}/pricing`]: "Compare plans and pricing for the platform, see what each tier includes, and find the right fit for your team's size and content goals.",
+      [`${SITE_DOMAIN}/about-us`]: "Meet BrandX: independent financial advisors with over two decades of experience helping clients invest smarter, retire better and grow with confidence.",
+      [`${SITE_DOMAIN}/insights/saving-at-any-age`]: "How much to save for retirement at every age, the accounts to fund first and how to catch up if you started late, explained by BrandX advisors.",
+      [`${SITE_DOMAIN}/fees`]: "See how BrandX charges for financial planning and wealth management, what each service includes and how to choose the right level of advice.",
     },
     alt: {
-      [images[0].src]: "Four colleagues planning a content calendar on a whiteboard",
-      [images[1].src]: "Bar chart of page scores from a content audit, grouped by relevance",
-      [images[2].src]: "Diagram of a content workflow from brief to publishing and review",
+      [images[0].src]: "Couple reviewing their retirement savings with a BrandX financial advisor",
+      [images[1].src]: "Line chart of retirement savings growing from age 40 to 65",
+      [images[2].src]: "Bar chart comparing yearly 401(k) and IRA contribution limits",
     },
     faqAnswers: {
-      [faq[0].itemId]: "Most teams need 4 to 6 weeks: an audit of existing pages, audience research, and a first content roadmap.",
-      [faq[1].itemId]: "No. One strategy covers both: SEO and AEO reward the same useful content, with different formats such as concise answers and FAQs.",
+      [faq[0].itemId]: "Aim for about three to four times your annual salary by 45, counting your 401(k), IRAs and other long-term investments.",
+      [faq[1].itemId]: "No. You can open a Roth IRA at any age if you have earned income, and 20 or more years of tax-free growth still make it worthwhile.",
     },
-    headings: [{ before: "Building your audit framework", after: "How do you build a content audit framework?" }],
+    headings: [{ before: "Building your savings plan", after: "How do you build a retirement savings plan?" }],
     summary:
-      "A content strategy plans what to publish, for whom and why. Start with an audit of existing pages, score them for relevance, then decide what to refresh, merge or write new, so every page serves a clear goal in search and in AI answers.",
+      "Your 40s are usually your peak earning years, so they shape retirement income more than any other decade. Check your savings against a benchmark of three to four times your salary, fund your workplace plan first, then add an IRA and close any gaps.",
   };
 }

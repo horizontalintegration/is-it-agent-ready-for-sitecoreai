@@ -256,7 +256,7 @@ The panel's AI Assist tab (`src/components/panel/AssistTab.tsx`, cards in `src/c
 - The value is read back (`updateFields` returns no field values; `updateItem` returns the item). A value that didn't stick is a failure.
 - **Audit:** one console line per write, success or not (`auditLine`): `[audit] wrote: <label> on <item> (<id>, field "<name>", <language>, <call>): "<before>" → "<after>", version N, M ms, not published`, with the full request as a second argument. The UI adds a toast (Blok sonner).
 - **Confirm:** `WriteConfirmProvider` and `useConfirmWrite()` (`src/components/shared/WriteConfirm.tsx`, Blok alert-dialog) list each change: label, item, field, language, before → after (`display` holds the readable text when the raw value is markup), and a shared-component warning. Only **Write to Sitecore** sends. It's an in-page dialog because Page Builder's iframe blocks `window.confirm`.
-- **Why Apply is off** (`writeDisabledReason`), shown next to the button: demo mode; no Marketplace client; no field configured; the item's template doesn't have the field; `workflow.canEdit` is false.
+- **Why Apply is off** (`writeDisabledReason`), shown next to the button: no Marketplace client (except in demo mode); no field configured; the item's template doesn't have the field; `workflow.canEdit` is false.
 - **Shared components:** a datasource outside the page's own item path (e.g. `Data/Feature/Home - Advisor`) is shared (`isSharedDatasource`); the confirm says the change shows on every page that uses it.
 - After a successful write the panel re-reads the fields (`usePageFields().refetch`) and the draft (`usePageHtml().refresh`).
 
@@ -277,7 +277,7 @@ The panel's AI Assist tab (`src/components/panel/AssistTab.tsx`, cards in `src/c
 - **Prompt caching:** the brand voice and the page text carry `cache_control`, and the field instruction comes after them. The server log shows `cache_read=N` on each `[anthropic] generate-meta:<field>` line.
 - **Brand voice:** `getBrandVoice()` (`src/lib/brand/brand-voice.ts`) reads `BRAND_VOICE_FILE` and `BRAND_NAME`, else a neutral default. `brand/brandx.md` is the BrandX demo voice. The SitecoreAI brand kit stays out of scope (plan section 11).
 
-**Demo mode** (`?demo=1`): `makeTestAssist()` (`test-fixture.ts`) holds a suggestion for every card, the page's fields, FAQ datasources, three image fields (a page field, a page-local component and a shared component) and author names. `demoAnswers()` (`src/lib/assist/demo.ts`) answers `requestAssist` and `requestMeta` with no request, and image previews aren't loaded. Every Apply is off with "Demo: nothing is written to Sitecore."
+**Demo mode** (`?demo=1`): `makeTestAssist()` (`test-fixture.ts`) holds a suggestion for every card, the page's fields, FAQ datasources, three image fields (a page field, a page-local component and a shared component) and author names. `demoAnswers()` (`src/lib/assist/demo.ts`) answers `requestAssist` and `requestMeta` with no request, and image previews aren't loaded. The demo page is a BrandX article, "Retirement planning in your 40s". Apply works as far as the confirm dialog: `WriteConfirmProvider` gets `demo`, and **Write to Sitecore** then logs `[audit] demo, nothing written: …` and shows the toast "Demo: nothing was written to Sitecore." with no request (there's no Marketplace client in demo mode). The field checks still apply, so the JSON-LD card stays copy-only and the image in rich text shows Copy, as on BrandX. The Symposium walk-through is `docs/SYMPOSIUM-DEMO-SCRIPT.md`.
 
 ---
 

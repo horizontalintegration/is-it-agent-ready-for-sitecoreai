@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { mdiChartLine } from "@mdi/js";
+import { toast } from "sonner";
 import { useMarketplaceClient } from "@/utils/hooks/useMarketplaceClient";
 import { useSitePages } from "@/hooks/useSitePages";
 import { useAgentAccess } from "@/hooks/useAgentAccess";
@@ -57,7 +58,7 @@ const NO_PAGES: PageMatrixRow[] = [];
 const DEMO_SITE_CONTEXT = {
   id: "demo",
   domain: "https://example.com",
-  name: "Demo Site",
+  name: "BrandX",
   organization: "",
   tenantName: "",
 };
@@ -169,8 +170,15 @@ export default function DashboardWidgetPage() {
   };
 
   // Hand off to the Pages editor for the chosen item. Falls back to the public
-  // page URL when the deep-link params aren't available (e.g. demo mode).
+  // page URL when the deep-link params aren't available. Demo mode stays in the
+  // app, so it works offline: the demo article opens the panel's demo, and the
+  // other rows say what would happen.
   const handleOpenPage = async (row: PageMatrixRow) => {
+    if (useFixture) {
+      if (row.id === DEMO_CITATION_PAGE_ID) window.open(`${window.location.origin}/pages-contextpanel-extension?demo=1`, "_blank", "noopener");
+      else toast.info(`Demo: in SitecoreAI this opens "${row.name}" in Page Builder.`);
+      return;
+    }
     // The host may fill in host.state after the dashboard's first read, so
     // ask again when the tenant name is still missing.
     let tenantName = siteContext.tenantName;
@@ -235,7 +243,7 @@ export default function DashboardWidgetPage() {
   ) : null;
 
   return (
-    <WriteConfirmProvider client={writeClient} contextId={offline ? undefined : live.siteContext.sitecoreContextId || undefined}>
+    <WriteConfirmProvider client={writeClient} contextId={offline ? undefined : live.siteContext.sitecoreContextId || undefined} demo={useFixture}>
     <div className="flex h-screen flex-col bg-subtle-bg text-body-text">
       <Tabs value={tab} onValueChange={(v) => setTab(v as DashboardTab)} className="min-h-0 flex-1 gap-0">
         <header className="shrink-0 border-b bg-body-bg">
