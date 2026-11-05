@@ -66,10 +66,29 @@ describe("collectMarkdownCheck against a local server", () => {
     expect(data.preview!.tokens).toBeLessThan(data.html.tokens / 10);
   });
 
+  it("breaks the HTML page's tokens down, with or without Markdown", async () => {
+    for (const path of ["/pricing", "/served"]) {
+      const data = await collectMarkdownCheck(`${base}${path}`, { fetch: fetcher, allowHosts: ALLOW });
+      const { tokens } = data.html.anatomy!;
+      expect(Object.values(tokens).reduce((a, b) => a + b, 0)).toBe(data.html.tokens);
+      expect(tokens.scripts).toBeGreaterThan(1_000); // the __DATA__ blob
+      expect(tokens.content).toBeGreaterThan(0);
+      expect(data.html.excerpt).toBeNull(); // only when asked for
+    }
+  });
+
+  it("adds the start of the HTML when asked for (the panel)", async () => {
+    const data = await collectMarkdownCheck(`${base}/pricing`, { fetch: fetcher, allowHosts: ALLOW, excerpt: true });
+    expect(data.html.excerpt!.segments.map((s) => s.text).join("")).toBe(PAGE);
+    expect(data.html.excerpt!.truncated).toBe(false);
+  });
+
   it("reports a missing page without a preview", async () => {
-    const data = await collectMarkdownCheck(`${base}/missing`, { fetch: fetcher, allowHosts: ALLOW });
+    const data = await collectMarkdownCheck(`${base}/missing`, { fetch: fetcher, allowHosts: ALLOW, excerpt: true });
     expect(data.html.status).toBe(404);
     expect(data.preview).toBeNull();
+    expect(data.html.anatomy).toBeNull();
+    expect(data.html.excerpt).toBeNull();
   });
 
   it("refuses private addresses before fetching", async () => {
