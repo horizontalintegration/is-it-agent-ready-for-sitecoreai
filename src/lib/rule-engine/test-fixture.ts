@@ -7,6 +7,7 @@ import { WELL_KNOWN_PATHS } from "@/lib/agent-access/well-known";
 import { buildPageContext } from "@/lib/checks/context";
 import { runPageChecks } from "@/lib/checks/engine";
 import { summarisePageReport } from "@/lib/checks/view-model";
+import { analyseHtml, EXCERPT_MAX_CHARS } from "@/lib/markdown/anatomy";
 import { estimateTokens, toAgentMarkdown } from "@/lib/markdown/convert";
 import type { MarkdownCheckData } from "@/lib/markdown/types";
 import { botGrid } from "@/lib/agent-access/grid";
@@ -297,52 +298,174 @@ export function makeTestDraft(): DraftHtml {
 // ── The demo page as HTML (Phase 7: the Agent View's Markdown) ────────────────
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const attr = (s: string) => esc(s).replace(/"/g, "&quot;");
+
+// The published page's weight (plan Phase 13), as on a Content SDK (Next.js) site such as the
+// BrandX replica: chunk scripts and preloads, JSON-LD, utility classes, responsive image srcSets,
+// inline SVG icons, and the page's layout data again in __NEXT_DATA__. The Agent View's Before
+// view breaks it down. Measured on the replica (2026-11-04): about 60% markup, 37% scripts, under
+// 1% content, CSS in external files; Markdown 97% smaller. The demo follows that shape.
+
+/** A stable fake build hash for a name. */
+function hashOf(name: string, length = 16): string {
+  let h = 2166136261;
+  let out = "";
+  while (out.length < length) {
+    for (const c of name + out.length) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    out += h.toString(16).padStart(8, "0");
+  }
+  return out.slice(0, length);
+}
+
+const BUILD_ID = hashOf("build", 21);
+const CHUNKS = [
+  "webpack", "framework", "main", "pages/_app", "pages/[[...path]]", "polyfills", "1755", "2817", "3402", "4620",
+  "5139", "6871", "7424", "8159", "9038", "components/header", "components/accordion", "components/footer",
+].map((name) => `/_next/static/chunks/${name}-${hashOf(name)}.js`);
+
+/** An SVG path of about `segments` × 40 characters, like an exported icon's. */
+const svgPath = (segments: number, seed: number) =>
+  Array.from({ length: segments }, (_, i) => {
+    const n = (k: number) => (((seed + i) * 37 + k * 11) % 230) / 10;
+    return `M${n(1)} ${n(2)}c${n(3)}-${n(4)} ${n(5)}-${n(6)} ${n(7)}-${n(8)}l${n(9)} ${n(10)}z`;
+  }).join("");
+const LOGO_PATH = svgPath(60, 7);
+const ICON_PATH = svgPath(22, 3);
+const SOCIAL_PATH = svgPath(35, 11);
+const icon = (label: string, path = ICON_PATH) =>
+  `<svg class="!h-4 !w-4 duration-200 h-auto transition-transform group-hover:rotate-180 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false" data-icon="${label}"><path stroke-linecap="round" stroke-linejoin="round" d="${path}"></path></svg>`;
+
+/** A Next.js image's srcSet: the media URL through the image optimiser at every width. */
+const srcSet = (path: string) =>
+  [640, 750, 828, 1080, 1200, 1920, 2048, 3840]
+    .map((w) => `/_next/image?url=${encodeURIComponent(`https://edge.sitecorecloud.io/brandx-${hashOf("tenant", 8)}/media${path}?h=630&iar=0&w=1200&hash=${hashOf(path, 32)}`)}&w=${w}&q=75 ${w}w`)
+    .join(", ");
+
+/** The page's layout data as the Content SDK serialises it: every field again, the rich text as HTML. */
+function nextData(d: PageData, mainHtml: string): string {
+  const field = (value: unknown) => ({ value });
+  const nav = ["Services", "Insights", "About", "Contact"].map((name, i) => ({
+    id: hashOf(name, 32), displayName: name, href: `/${name.toLowerCase()}`, fields: { Title: field(name), Link: field({ href: `/${name.toLowerCase()}`, linktype: "internal", id: `{${hashOf(name + i, 32).toUpperCase()}}` }) },
+  }));
+  const dictionary = Object.fromEntries(
+    ["Header", "Footer", "Search", "Article", "Accordion", "Form", "Cookie", "Share", "Pagination", "Error", "Newsletter", "Navigation", "Media", "Author"].flatMap((area) =>
+      ["Title", "Label", "Placeholder", "Button", "Close", "Open", "Next", "Previous", "Loading", "Empty", "Required", "Invalid"].map((key) => [
+        `${area}.${key}`,
+        `${area} ${key.toLowerCase()} text for BrandX visitors`,
+      ]),
+    ),
+  );
+  const component = (name: string, uid: string, fields: object) => ({ uid: hashOf(uid, 32), componentName: name, dataSource: `{${hashOf(uid + "ds", 32).toUpperCase()}}`, params: { GridParameters: "col-12", FieldNames: "Default", Styles: "", RenderingIdentifier: "", DynamicPlaceholderId: "1" }, fields });
+  const data = {
+    props: {
+      pageProps: {
+        site: { name: "brandx", hostName: "*", language: "en" },
+        locale: "en",
+        layoutData: {
+          sitecore: {
+            context: { pageEditing: false, site: { name: "brandx" }, pageState: "normal", editMode: "chromes", language: "en", itemPath: d.route, variantId: "_default" },
+            route: {
+              name: d.route.split("/").pop(), displayName: d.authoring.pageTitle, templateName: d.templateName, itemId: hashOf("item", 32), itemLanguage: "en", itemVersion: 3, layoutId: hashOf("layout", 32), templateId: hashOf("template", 32),
+              fields: {
+                pageTitle: field(d.authoring.pageTitle), metaTitle: field(d.fields.metaTitle), metaDescription: field(d.fields.metaDescription), ogTitle: field(d.authoring.ogTitle), ogDescription: field(d.authoring.ogDescription), ogImage: field({ src: d.authoring.ogImage, alt: "", width: 1200, height: 630 }),
+                authorName: field(d.authoring.author), publishDate: field(d.authoring.publishDate?.toISOString()), content: field(mainHtml),
+              },
+              placeholders: {
+                "headless-header": [component("Header", "header", { navigation: nav, logo: field({ src: "/images/brandx-logo.svg", alt: "BrandX" }) })],
+                "headless-main": [
+                  component("RichText", "content", { Text: field(mainHtml) }),
+                  component("Accordion", "accordion", { items: FAQ.map((f, i) => ({ id: hashOf(`faq${i}`, 32), fields: { heading: field(f.question), content: field(`<p>${esc(f.answer)}</p>`) } })) }),
+                ],
+                "headless-footer": [component("Footer", "footer", { copyright: field("© BrandX. All rights reserved."), links: nav, social: BRANDX_ORGANIZATION.sameAs.map((href) => ({ fields: { Link: field({ href, target: "_blank" }) } })) })],
+              },
+            },
+          },
+        },
+        dictionary,
+        headLinks: [],
+        componentProps: {},
+      },
+      __N_SSG: true,
+    },
+    page: "/[[...path]]",
+    query: { path: d.route.split("/").filter(Boolean) },
+    buildId: BUILD_ID,
+    isFallback: false,
+    gsp: true,
+    locale: "en",
+    locales: ["en"],
+    defaultLocale: "en",
+    scriptLoader: [],
+  };
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
 
 /**
  * The demo page's HTML, matching makeTestPageData's parsed HTML: published,
  * or as the sanitised Page Builder draft (edited heading, Related Articles
- * cards, and an empty head). The Agent View converts it to Markdown.
+ * cards, an empty head and no scripts). The Agent View converts it to
+ * Markdown, and breaks the published page's tokens down.
  */
 export function makeTestPageSource({ draft = false }: { draft?: boolean } = {}): string {
   const d = makeTestPageData();
   const h = d.parsedHtml!;
   const heading = (text: string) => (draft && text === LIVE_H2 ? DRAFT_H2 : text);
   const [h1, ...sections] = h.headings;
-  const para = (i: number) => `<p>${esc(h.paragraphs[i])}</p>`;
+  const para = (i: number) => `<p class="mb-4 text-base text-slate-700">${esc(h.paragraphs[i])}</p>`;
+  const h2 = (text: string) => `<h2 class="mt-8 mb-3 text-2xl font-semibold tracking-tight text-slate-900">${esc(text)}</h2>`;
+  const h3 = (text: string) => `<h3 class="mt-6 mb-2 text-xl font-semibold text-slate-900">${esc(text)}</h3>`;
   const faq = FAQ.map(
     (f, i) =>
-      `<div class="accordion-item"><button aria-controls="faq-${i}" aria-expanded="false">${esc(f.question)}</button>` +
-      `<div id="faq-${i}" aria-hidden="true"><p>${esc(f.answer)}</p></div></div>`,
+      `<div class="accordion-item border-b border-slate-200"><button class="flex w-full items-center justify-between py-4 text-left text-lg font-medium" aria-controls="faq-${i}" aria-expanded="false">${esc(f.question)}${icon("chevron-down")}</button>` +
+      `<div id="faq-${i}" class="overflow-hidden pb-4 text-base text-slate-700" aria-hidden="true" style="max-height:0px;transition:max-height .3s ease-in-out"><p>${esc(f.answer)}</p></div></div>`,
   ).join("");
   const related = draft
     ? `<section data-component="${COMPONENT.related}"><h2>Related articles</h2>${RELATED.map(
         (r) => `<div><h3>${esc(r.title)}</h3><p>${esc(r.summary)}</p><a href="${r.href}">Read more</a></div>`,
       ).join("")}</section>`
     : "";
+  const article = [
+    `<h1 class="mb-6 text-4xl font-bold tracking-tight text-slate-900">${esc(h1.text)}</h1>`,
+    `<img src="/images/hero.jpg" alt="${attr(h.images[0].alt ?? "")}" class="mb-8 h-auto w-full rounded-xl object-cover" width="1200" height="630" loading="eager" decoding="async" style="color:transparent" sizes="100vw" srcSet="${attr(srcSet("/images/hero.jpg"))}">`,
+    `${h2(heading(sections[0].text))}${para(0)}`,
+    `${h2(heading(sections[1].text))}${para(1)}`,
+    `${h2(sections[2].text)}${h3(sections[3].text)}${h3(sections[4].text)}${para(2)}`,
+    `<p class="mb-4 text-base text-slate-700">Try <a class="text-blue-700 underline underline-offset-2 hover:text-blue-900" href="/insights/retirement-calculator">our retirement savings calculator</a> and read <a class="text-blue-700 underline underline-offset-2 hover:text-blue-900" href="/insights/roth-conversions-explained">our guide to Roth conversions</a>.</p>`,
+  ].join("");
   const head = draft
     ? "<head></head>"
-    : `<head><title>${esc(d.authoring.pageTitle ?? "")}</title><meta name="description" content="${esc(d.authoring.metaDescription ?? "")}">` +
-      `<script>window.__NEXT_DATA__={}</script><style>body{margin:0}</style></head>`;
+    : [
+        `<head><meta charSet="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(d.authoring.pageTitle ?? "")}</title>`,
+        `<meta name="description" content="${attr(d.authoring.metaDescription ?? "")}"><meta name="robots" content="index, follow"><meta name="author" content="Jane Smith">`,
+        `<link rel="canonical" href="${d.pageUrl}"><meta property="og:title" content="${attr(d.authoring.ogTitle ?? "")}"><meta property="og:description" content="${attr(OG_DESCRIPTION)}">`,
+        `<meta property="og:image" content="${d.authoring.ogImage}"><meta name="twitter:card" content="summary_large_image"><meta property="article:modified_time" content="${h.articleModifiedTimeMeta}">`,
+        `<link rel="icon" href="/favicon.ico"><link rel="preconnect" href="https://edge.sitecorecloud.io" crossorigin=""><link rel="preload" href="/_next/static/media/inter-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous">`,
+        ...h.jsonLdScripts.map((s) => `<script type="application/ld+json">${JSON.stringify(s.ok ? s.value : {})}</script>`),
+        ...CHUNKS.map((src) => `<link rel="preload" href="${src}" as="script">`),
+        `<link rel="preload" as="image" imageSrcSet="${attr(srcSet("/images/hero.jpg"))}" imageSizes="100vw" fetchpriority="high">`,
+        ...["app", "components", "fonts"].map((name) => `<link rel="stylesheet" href="/_next/static/css/${hashOf(name)}.css" data-precedence="next">`),
+        `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-BRANDX1');</script>`,
+        ...CHUNKS.slice(0, 6).map((src) => `<script src="${src}" defer=""></script>`),
+        `</head>`,
+      ].join("");
+  const scripts = draft
+    ? ""
+    : `<script id="__NEXT_DATA__" type="application/json">${nextData(d, article)}</script>` + CHUNKS.slice(6).map((src) => `<script src="${src}" async=""></script>`).join("");
   return [
-    `<!doctype html><html lang="en">${head}<body>`,
-    `<header data-component="${COMPONENT.header}"><a href="/">BrandX</a><nav><ul>`,
-    ["Services", "Insights", "About", "Contact"].map((n) => `<li><a href="/${n.toLowerCase()}">${n}</a></li>`).join(""),
-    `</ul></nav></header>`,
-    `<main><article data-component="${COMPONENT.content}">`,
-    `<h1>${esc(h1.text)}</h1>`,
-    `<img src="/images/hero.jpg" alt="${esc(h.images[0].alt ?? "")}">`,
-    `<h2>${esc(heading(sections[0].text))}</h2>${para(0)}`,
-    `<h2>${esc(heading(sections[1].text))}</h2>${para(1)}`,
-    `<h2>${esc(sections[2].text)}</h2><h3>${esc(sections[3].text)}</h3><h3>${esc(sections[4].text)}</h3>${para(2)}`,
-    `<p>Try <a href="/insights/retirement-calculator">our retirement savings calculator</a> and read <a href="/insights/roth-conversions-explained">our guide to Roth conversions</a>.</p>`,
-    `</article><section data-component="${COMPONENT.accordion}">${faq}</section>${related}</main>`,
-    `<footer data-component="${COMPONENT.footer}"><p>© BrandX. All rights reserved.</p><a href="/privacy">Privacy policy</a> <a href="/terms">Terms of use</a></footer>`,
-    `</body></html>`,
+    `<!doctype html><html lang="en">${head}<body class="min-h-screen bg-white font-sans antialiased"><div id="__next">`,
+    `<header data-component="${COMPONENT.header}" class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"><div class="container flex h-16 items-center justify-between gap-6">`,
+    `<a href="/" class="flex items-center gap-2 text-xl font-bold text-slate-900"><svg class="h-8 w-auto" viewBox="0 0 200 32" role="img" aria-hidden="true"><path fill="currentColor" d="${LOGO_PATH}"></path></svg>BrandX</a>`,
+    `<nav aria-label="Main" class="hidden md:block"><ul class="flex items-center gap-8 text-sm font-medium text-slate-700">`,
+    ["Services", "Insights", "About", "Contact"].map((n) => `<li class="relative"><a class="flex items-center gap-1 py-2 hover:text-blue-700" href="/${n.toLowerCase()}">${n}${icon("chevron-down")}</a></li>`).join(""),
+    `</ul></nav></div></header>`,
+    `<main class="container py-12"><article data-component="${COMPONENT.content}" class="mx-auto max-w-3xl">${article}`,
+    `</article><section data-component="${COMPONENT.accordion}" class="mx-auto mt-12 max-w-3xl">${faq}</section>${related}</main>`,
+    `<footer data-component="${COMPONENT.footer}" class="mt-16 border-t border-slate-200 bg-slate-50"><div class="container flex flex-col gap-6 py-10 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">`,
+    `<p>© BrandX. All rights reserved.</p><div class="flex gap-6"><a class="hover:text-slate-900" href="/privacy">Privacy policy</a> <a class="hover:text-slate-900" href="/terms">Terms of use</a></div>`,
+    `<ul class="flex gap-4" aria-label="Social">${BRANDX_ORGANIZATION.sameAs.map((href) => `<li><a href="${href}" target="_blank" rel="noopener noreferrer" aria-label="${new URL(href).hostname}">${icon("social", SOCIAL_PATH)}</a></li>`).join("")}</ul>`,
+    `</div></footer></div>${scripts}</body></html>`,
   ].join("");
 }
-
-/** A typical published page's weight: Next.js pages carry their data, scripts and styles. */
-const DEMO_HTML_BYTES = 24_600;
 
 /**
  * /api/markdown-check for the demo page. `serves: false` (the default, as in
@@ -354,22 +477,24 @@ export function makeTestMarkdownCheck({ serves = false, pageUrl }: { serves?: bo
   const d = makeTestPageData();
   const url = pageUrl ?? d.pageUrl;
   const source = makeTestPageSource();
-  const html = {
+  const probe = {
     finalUrl: url,
     status: 200,
     error: null,
     contentType: "text/html; charset=utf-8",
     vary: null,
-    bytes: DEMO_HTML_BYTES,
-    tokens: estimateTokens("x".repeat(DEMO_HTML_BYTES)),
+    bytes: new TextEncoder().encode(source).byteLength,
+    tokens: estimateTokens(source),
   };
+  // The route's breakdown of the page, with the excerpt the panel asks for.
+  const html = { ...probe, ...analyseHtml(source, { excerptChars: EXCERPT_MAX_CHARS }) };
   const converted = toAgentMarkdown(source, { title: d.fields.metaTitle, description: d.fields.metaDescription, url });
   if (serves) {
     return {
       url,
       checkedAt: new Date().toISOString(),
       markdown: {
-        ...html,
+        ...probe,
         contentType: "text/markdown; charset=utf-8",
         vary: "Accept",
         bytes: converted.length,
@@ -384,7 +509,7 @@ export function makeTestMarkdownCheck({ serves = false, pageUrl }: { serves?: bo
   return {
     url,
     checkedAt: new Date().toISOString(),
-    markdown: { ...html, body: source.slice(0, 2_000), truncated: true },
+    markdown: { ...probe, body: source.slice(0, 2_000), truncated: true },
     html,
     preview: { markdown: converted, tokens: estimateTokens(converted), truncated: false },
   };

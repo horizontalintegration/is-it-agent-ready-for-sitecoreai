@@ -9,10 +9,14 @@ export const MAIN_TEXT_MAX_CHARS = 20_000;
 export const BODY_TEXT_MAX_CHARS = 50_000;
 
 // Never content, wherever they appear.
-const NON_CONTENT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "iframe", "nav"]);
+const NON_CONTENT_TAGS: ReadonlySet<string> = new Set(["script", "style", "noscript", "template", "svg", "iframe", "nav"]);
 // Site chrome. Skipped only when there is no <main>: inside <main>, a <header>
 // or <footer> usually belongs to an article (title, byline, date).
-const CHROME_TAGS = new Set(["header", "footer"]);
+const CHROME_TAGS: ReadonlySet<string> = new Set(["header", "footer"]);
+
+/** True for an element mainText skips as hidden: `hidden` or `aria-hidden`, unless a toggle controls it. */
+export const isHiddenText = (el: HTMLElement, panels: Set<string>) =>
+  (el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true") && !panels.has(el.id);
 // Elements that start a new line, so adjacent blocks don't run together.
 const BLOCK_TAGS = new Set([
   "address", "article", "aside", "blockquote", "br", "button", "dd", "details", "div", "dl", "dt",
@@ -41,7 +45,7 @@ export function controlledPanelIds(root: HTMLElement): Set<string> {
   return ids;
 }
 
-function collectText(node: Node, skip: Set<string>, panels: Set<string>, out: string[]): void {
+function collectText(node: Node, skip: ReadonlySet<string>, panels: Set<string>, out: string[]): void {
   if (node.nodeType === NodeType.TEXT_NODE) {
     out.push((node as TextNode).text); // .text decodes entities (&nbsp;, &amp;, …)
     return;
@@ -50,12 +54,24 @@ function collectText(node: Node, skip: Set<string>, panels: Set<string>, out: st
   const el = node as HTMLElement;
   const tag = el.rawTagName?.toLowerCase() ?? "";
   if (skip.has(tag)) return;
-  const hidden = el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true";
-  if (hidden && !panels.has(el.id)) return;
+  if (isHiddenText(el, panels)) return;
   const block = BLOCK_TAGS.has(tag);
   if (block) out.push("\n");
   for (const child of el.childNodes) collectText(child, skip, panels, out);
   if (block) out.push("\n");
+}
+
+/**
+ * Where mainText reads: `<main>` when present, otherwise `<body>` (or the
+ * whole document), and the tags it skips there. Shared with the Agent View's
+ * token breakdown (src/lib/markdown/anatomy.ts), so "your content" is the same text.
+ */
+export function mainTextScope(root: HTMLElement): { scope: HTMLElement; skip: ReadonlySet<string> } {
+  const main = root.querySelector("main");
+  return {
+    scope: main ?? root.querySelector("body") ?? root,
+    skip: main ? NON_CONTENT_TAGS : new Set([...NON_CONTENT_TAGS, ...CHROME_TAGS]),
+  };
 }
 
 /**
@@ -65,9 +81,7 @@ function collectText(node: Node, skip: Set<string>, panels: Set<string>, out: st
  * skipped, except panels a toggle controls (collapsed FAQ answers).
  */
 export function extractMainText(root: HTMLElement): string {
-  const main = root.querySelector("main");
-  const scope = main ?? root.querySelector("body") ?? root;
-  const skip = main ? NON_CONTENT_TAGS : new Set([...NON_CONTENT_TAGS, ...CHROME_TAGS]);
+  const { scope, skip } = mainTextScope(root);
   const out: string[] = [];
   collectText(scope, skip, controlledPanelIds(root), out);
   return out

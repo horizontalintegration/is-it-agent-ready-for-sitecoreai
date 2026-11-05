@@ -342,7 +342,6 @@ export default function PagesContextPanel() {
                 p5={p5Row}
                 pageUrl={effectivePageUrl}
                 draftSource={draft?.source ?? null}
-                body={draft?.html ?? liveHtml}
                 live={liveHtml}
                 fields={pageInput.fields}
               />

@@ -24,7 +24,7 @@ BrandX is the fictional company of the demo data. The numbers below are the demo
 |---|---|---|
 | 1. Panel | `http://localhost:3000/pages-contextpanel-extension?demo=1` | About 420 px wide, as in Page Builder. Use the browser's device toolbar or a narrow window. |
 | 2. Dashboard | `http://localhost:3000/dashboard-widget-extension?demo=1` | Full width. |
-| 3. "After" state (optional) | `http://localhost:3000/pages-contextpanel-extension?demo=1&md=1` | As tab 1. The same page once the site serves Markdown to agents. |
+| 3. "Markdown served" state (optional) | `http://localhost:3000/pages-contextpanel-extension?demo=1&md=1` | As tab 1. The same page once the site serves Markdown to agents. |
 
 - Zoom to 125% if the room is large.
 - **Check before you start:** the panel shows **70 · Almost there** and the dashboard shows **62 · Almost there** with "Demo data" in the header. If either doesn't, check that the URL has `?demo=1`.
@@ -62,10 +62,12 @@ BrandX is the fictional company of the demo data. The numbers below are the demo
 
 - **Click:** the **Agent View** tab.
 - **Point at:** "Agents ask for Markdown. Your site sends them the full HTML page instead.", and the four checks (Markdown response ✕, HTML fallback ✓, Vary: Accept ✕, Distinct versions —).
-- **Point at:** "If you served Markdown: about 92% fewer tokens", HTML **6,150** vs Markdown **511**.
-- **Click:** **Human** / **Agent** in the preview to compare the page with the Markdown an agent would get.
-- **Say:** "This is what an AI agent actually receives. Markdown is a fraction of the size, so agents read more of your content and less of your menus. It's one developer change for the whole site, and the fix cards show how: accept-md for Next.js sites, or a switch in Cloudflare."
-- **Optional (10 seconds):** switch to tab 3 (`&md=1`). The same page now scores **84 · Agent-ready**.
+- **Point at:** "If you served Markdown: about 97% fewer tokens", HTML **15,509** vs Markdown **511**.
+- **Point at:** **Compare**, which opens on **Before** ("Without optimisation: the full web page an agent downloads today"): the bar, mostly red, and the line "Your content is **2%** of what an agent downloads. **96% (14,925 tokens)** is code and layout." Scroll the page's HTML a little: everything in red is code; the page title is the only plain text near the top.
+- **Click:** **After** ("With optimisation: the same page as Markdown"): the article as an agent would get it, then **What was removed**: Scripts **−6,281**, Markup **−8,585**, Styles and the menus struck through, **−14,998 tokens, about 97% fewer**.
+- **Point at:** **Why it matters**: it fits, it's easier to quote, it's cheaper to read.
+- **Say:** "Red is what an agent pays for and throws away. Today 2% of this page is the article; the rest is code. As Markdown the agent gets the article and nothing else, so it fits in what the agent reads, and it's easier to quote. It's one developer change for the whole site, and the fix cards show how: accept-md for Next.js sites, or a switch in Cloudflare."
+- **Optional (10 seconds):** switch to tab 3 (`&md=1`). The same page now scores **84 · Agent-ready**, and the Agent View opens on **After** with the measured saving: **97% fewer tokens**.
 
 ### 5. The dashboard (3:15–4:15) · Dashboard, Overview
 
@@ -92,7 +94,7 @@ BrandX is the fictional company of the demo data. The numbers below are the demo
 - **Generate for all** (Overview): **Show all 18 issues** → "Meta description missing" → **Generate for all** → **Generate 3 descriptions**. Each page gets a suggestion to edit and an unticked **Approve**. Tick two, **Write 2 approved**, and the one confirmation lists both. "Saving for retirement at any age" can't be approved: "This page's template has no "MetaDescription" field." That's the app checking the template before it offers to write.
 - **Pages:** the heatmap with full category names, filters and sorting. **Open in Page Builder** on "Retirement planning in your 40s" opens the panel demo; on other rows the demo says what would open.
 - **Files:** the llms.txt generator (with its "When should AI tools use this site?" text) and the robots.txt helper with search, user and training bots as separate choices. "robots.txt is a request, not a lock: firewall rules decide who actually gets in."
-- **The "after" state:** `?demo=1&md=1` on the dashboard shows the site once it serves Markdown: site score **79**, **5 Agent-ready**.
+- **The "Markdown served" state:** `?demo=1&md=1` on the dashboard shows the site once it serves Markdown: site score **79**, **5 Agent-ready**.
 
 ---
 
@@ -122,6 +124,8 @@ BrandX is the fictional company of the demo data. The numbers below are the demo
 | What does the AI cost otherwise? | About 1 cent per generated description. Asking again for unchanged content is free (cached). |
 | Does blocking AI training lower the score? | No. Opting out of training is your choice and costs nothing. Blocking AI search and AI assistants does. |
 | How do we serve Markdown? | One developer change for the whole site: accept-md for Next.js (Content SDK) sites, or Markdown for Agents in Cloudflare. |
+| Is the red really waste? Isn't the code needed? | Browsers need it; agents don't. They read the text, so they pay for the scripts, styles and markup and then discard them. Structured data (JSON-LD) is shown in grey, not red: agents do use it. |
+| Is 97% realistic? | It's measured the same way on real pages. The real BrandX demo site's home page is about 54,000 tokens as HTML and about 1,500 as Markdown: 97% smaller. |
 | Which sites does it work on? | Any SitecoreAI site. Field names are configurable for each site's templates. |
 
 More detail: `PAGE-CHECKS-EXPLAINED` (the panel) and `PAGE-MATRIX-EXPLAINED` (the dashboard).
