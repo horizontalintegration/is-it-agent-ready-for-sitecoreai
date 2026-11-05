@@ -635,7 +635,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 - Create `docs/SYMPOSIUM-DEMO-SCRIPT.md`: a 5-minute flow covering panel verdict → Top fixes → Apply → Agent View → dashboard → citations.
 - Refresh the demo fixtures so they tell that story.
 - **Accept when:** a full demo runs with `?demo=1` and no network.
-- **Status (2026-11-04): built, accepted locally.** Branch `feature/v2-phase-10-symposium`.
+- **Status (2026-11-04): done (PR #31).** Accepted locally, then on production: the same 54-check run against `https://is-it-agent-ready-for-sitecoreai.vercel.app` passed, with no request outside the app and no `/api` call. Branch `feature/v2-phase-10-symposium`.
 - **Agreed decisions** (with the user, 2026-11-03): the demo page becomes a BrandX article, "Retirement planning in your 40s" (as in the mockups, keeping BrandX so the demo and the real BrandX site in Sitecore look like one company), with the same mix of results; in demo mode Apply opens the real confirm dialog and **Write to Sitecore** writes nothing (this changes Phase 9's "Apply off in demo"); an editing pass on the four docs rather than a rewrite (they were kept current since Phase 3); the script built with the other docs (HTML and PDF); acceptance by a scripted walk-through in headless Edge.
 - **Built:**
   - **Demo story** (`test-fixture.ts`): the panel's page, its draft, Markdown, AI Assist suggestions, the 12 dashboard rows (BrandX pages: About us, Annuities, Fees and pricing, …), the citation questions (retirement questions, retirementwise.example cited instead) and What changed. Every score, status and count is unchanged: panel 70 (live 74), site 62; with `&md=1` panel 84, site 79; citations 2 of 7 and 5 of 7. The dashboard header says "BrandX".
@@ -650,13 +650,39 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 - A route `/scan/[domain]` outside the Marketplace iframe that runs the site checks (S1–S12) plus the home page checks, with a shareable report URL and a badge.
 - **Needs:** SSRF-safe fetch (from Phase 1), rate limiting, and caching.
 - Doubles as lead generation for the agency.
+- Needs Phase 12 first: a public scanner invites the traffic the API routes can't withstand today.
+
+### Phase 12 — Protect the API routes
+- **Why:** anyone with the production URL can call the API routes and spend our budget (section 13, item 16).
+  - Four routes call Claude: `ai-check`, `assist`, `generate-meta` and `citation-probe`.
+  - Every `/api` route answers any caller: `Access-Control-Allow-Origin: *` in `next.config.ts` and in each route.
+  - Only `citation-probe` has a rate limit (`probeLimiter`, 40 probes per site per hour), and it lives in one server instance's memory.
+  - `psi-check` spends the PageSpeed quota (`PSI_API_KEY`). `agent-access`, `markdown-check` and `preview-fetch` make our server fetch other sites (SSRF-safe since Phase 1).
+  - The Anthropic key has a monthly spend limit (set by the user). It caps the cost, but once abuse reaches it, the AI features stop for everyone until the month resets.
+- **Goal:** in practice only the app's own pages can use the routes, and no single caller can exhaust the budget.
+- **[SPIKE] first** (write to `docs/SPIKE-FINDINGS.md` section 10):
+  - **Who calls the routes, from which origin:** the panel and dashboard inside Sitecore, the standalone dashboard (`?domain=`), and local dev. Is the wildcard CORS needed anywhere, or is every call same-origin?
+  - **Proof that the caller is the app inside SitecoreAI:** does the Marketplace host give the iframe anything our server can verify (a signed token, a Context ID that can be checked)? With built-in authorization the host attaches tokens to `xmc.*` calls only. Custom authorization (SPIKE-FINDINGS §7.4, about 3 days) is out of scope unless the user decides otherwise.
+  - **Rate limits that hold across instances:** Vercel Firewall rate-limit rules on the team's plan, or a shared counter (Upstash Redis through the Vercel Marketplace, already named in decision 2). What each costs.
+- **Likely build** (confirm after the spike):
+  - Drop the wildcard CORS. Accept browser requests only from the app's own origin (`Origin` / `Sec-Fetch-Site`). This stops other websites from using the routes through their visitors' browsers. A script can fake these headers, which is why the rate limits are needed too.
+  - Rate limits on the Claude routes and `psi-check` that hold across instances: per IP, plus a daily ceiling per route. When a limit is hit, the panel and dashboard say so in plain words, for example "Daily AI limit reached. Try again tomorrow."
+  - A verified caller identity only if the spike finds a cheap way.
+- **Must keep working:** the panel and dashboard inside Sitecore, the standalone dashboard with `?domain=`, `?demo=1` (it makes no `/api` call), and local dev.
+- **Rule:** a new service or a paid tier needs the user's approval, with the cost, before it's added.
+- **Accept when:**
+  - the Claude routes refuse requests from another origin
+  - past a limit, the routes answer 429 and the UI explains it
+  - the panel and dashboard still work in Sitecore (checked by the user)
+  - demo mode makes no `/api` call
+  - tests and the TECHNICAL docs are updated
 
 ---
 
 ## 11. Out of scope / future
 
 - **Scrunch connector:** if a customer has Scrunch, read its citation and Signal data and show it in place of the probe estimate. The interface should stay pluggable (`CitationProvider`).
-- **Brand voice from the SitecoreAI brand kit** (agreed 2026-10-31: build it only after all other phases are done, deployed and working). Phase 1 reads the brand voice from `BRAND_VOICE_FILE` (`src/lib/brand/brand-voice.ts`). What we found (2026-10-30):
+- **Brand voice from the SitecoreAI brand kit** (agreed 2026-10-31: build it only after all other phases are done, deployed and working; on 2026-11-04 the user left it for later, after Phase 12). Phase 1 reads the brand voice from `BRAND_VOICE_FILE` (`src/lib/brand/brand-voice.ts`). What we found (2026-10-30):
   - **Brand kit ID via the SDK:** `pages.context` → `siteInfo.brandKitId` is typed in `@sitecore-marketplace-sdk/client` 0.4.1, and `Site.brandKitId` is in the xmc Sites API. Not yet seen at runtime.
   - **Brand kit text, not via the SDK:** `@sitecore-marketplace-sdk/ai` (0.1.3) only offers `ai.skills.generateBrandReview`. The text comes from the Brand Management REST API: `GET /api/brands/v1/organizations/{organizationId}/brandkits/{brandkitId}/sections`, then `GET /api/brands/v2/…/sections/{sectionId}/fields` (subsection text in `value`). That API needs a Stream client-credentials token (Admin > AI APIs keys) whose scopes include `ai.org:admin` and brand/document **write**, plus the `organizationId` from the Cloud Portal URL. The Marketplace host doesn't proxy it. That only suits single-organisation deployments.
   - **A possible SDK route:** `xmc.agent.sitesGetSiteDetails(siteId)` returns an undocumented `brand_information: string`. **[SPIKE]** Check what it contains first; if it holds the brand kit text, use it as the voice source.
@@ -700,3 +726,4 @@ Things left open by a phase. Each phase session reads this list first and picks 
 | 13 | **Phase 8 on the deployed app.** Checked with a local production build only (the standalone dashboard against the replica, plan Phase 8 status). Not yet seen: the probe route on Vercel (a probe takes about 30 s, within `maxDuration = 90`), the tab inside Sitecore (item 8), and a real page that is found or cited (the replica isn't in any search results yet). The probe cache and the per-site rate limit live in one server instance's memory, so on Vercel they don't carry across instances or cold starts (the browser's 7-day cache still does). | **Deployed probe done (2026-11-02):** on production with `?domain=` the replica, one question probed and re-run from the cache, demo mode and the panel checked (plan Phase 8 status). **The tab inside Sitecore works (2026-11-03).** **A real found and cited page (2026-11-03):** the user ran irs.gov with "What are the 2026 IRA contribution limits?" (the spike's case, SPIKE-FINDINGS §5) in the standalone dashboard, and it worked. | — (if several people use the probes, or cost control across instances matters, revisit decision 2 (shared storage) together with authentication on the API routes) |
 | 14 | **Phase 9 acceptance in Sitecore.** Built and checked in `?demo=1`, and the AI routes with real Claude calls on a local build (plan Phase 9 status). Not yet seen with real writes: Apply on each card in Page Builder, the confirm dialog inside the iframe, the `[audit]` line and toast, a disabled Apply with its reason, and Generate for all from the dashboard. Also the panel regression moved here from item 1. | **Done (2026-11-03):** verified by the user on production after PR #27. In Page Builder, the AI Assist writes on the test pages worked with the confirm dialog, the `[audit]` line and the toast, each reverted, nothing published; an image in rich text shows Copy instead of Apply. From the dashboard, Generate for all wrote an approved description (the Banking article's description cleared for the test and restored). | — |
 | 15 | **Phase 10: rehearse the Symposium demo on the presenting laptop.** The script (`docs/SYMPOSIUM-DEMO-SCRIPT.md`) passed a scripted run in headless Edge with no network (plan Phase 10 status), but it hasn't been spoken through against a timer or shown on a projector. | **Closed by the user (2026-11-04).** | — (the presenter rehearses as they see fit: set-up, the six steps against a timer, the zoom level) |
+| 16 | **Anyone can call the API routes.** Found on 2026-11-04 after Phase 10. Four routes call Claude (`ai-check`, `assist`, `generate-meta`, `citation-probe`). Every route sends `Access-Control-Allow-Origin: *` and needs no login. Only `citation-probe` is rate-limited, in one instance's memory. Anyone with the production URL can spend the Anthropic budget. The key's monthly spend limit (set by the user) caps the cost, but abuse would then stop the AI features for everyone. | Open. Assigned to **Phase 12**. | Phase 12: spike first, then same-origin checks and rate limits that hold across instances. |
