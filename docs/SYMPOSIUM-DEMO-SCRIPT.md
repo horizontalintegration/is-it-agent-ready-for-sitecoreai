@@ -95,6 +95,7 @@ BrandX is the fictional company of the demo data. The numbers below are the demo
 - **Pages:** the heatmap with full category names, filters and sorting. **Open in Page Builder** on "Retirement planning in your 40s" opens the panel demo; on other rows the demo says what would open.
 - **Files:** the llms.txt generator (with its "When should AI tools use this site?" text) and the robots.txt helper with search, user and training bots as separate choices. "robots.txt is a request, not a lock: firewall rules decide who actually gets in."
 - **The "Markdown served" state:** `?demo=1&md=1` on the dashboard shows the site once it serves Markdown: site score **79**, **5 Agent-ready**.
+- **Full screen:** open `http://localhost:3000/fullscreen-extension?demo=1` in a wide window. "In SitecoreAI this opens from the **Apps** menu, across the whole screen, for any site in the organisation." Point at the site picker under the app name, and at What changed beside the site score. Pick **Nimbus Goods**: the demo says "Demo: in SitecoreAI this scans Nimbus Goods." (the demo has one site's pages). In Sitecore, the full-screen app and the widget share their scans, so a site scanned in one opens with its scores in the other.
 
 ---
 

@@ -781,6 +781,36 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
   - **Demo:** `?demo=1` works with no network.
   - **Layout:** no horizontal scroll at 375 px, and the full width is used at 1440 px.
   - **Tests:** vitest covers the site choice (remembered site, first site, a remembered site that no longer exists).
+- **Status (2026-11-05): built, waiting for the check in Sitecore** (section 13, item 18). Branch `feature/v2-phase-14-fullscreen-app`.
+- **Spike (2026-11-05, SPIKE-FINDINGS §11):** run from the Apps menu on production through a temporary page (PR #37, and PR #38 for a client that never started). The user changed Full screen's Route URL to `/fullscreen-extension` the same day. Findings:
+  - The full-screen host is the Pages-style host, with a Context ID.
+  - `site.context` and `pages.context` answer with no data.
+  - `listSites`, `retrieveSite` and authoring GraphQL work with built-in authorization. `listSites` already has each site's host name and home item.
+  - The tenant name is only in the `userInfo` claim.
+  - There's no language or theme.
+  - localStorage is shared with the widget, under the same site IDs.
+  - **`navigateToExternalUrl` isn't implemented** by this host.
+- **Agreed decisions** (with the user, 2026-11-05):
+  - **Default site:** the remembered site, else the site on `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN`, else the first site with a host name. listSites puts kpdemo first, and it has none.
+  - **Sites without a host name:** listed, disabled.
+  - **Remembered pick:** under `aiDiscovery:fullscreenSite:v1:<organizationId>`.
+  - **Open in Page Builder:** in full screen, with `window.open`.
+  - **Language and theme:** `en` and light, no picker.
+  - **Width:** tabs capped at 1600 px, up from 1320.
+  - **Demo:** picking the second site shows a toast and stays on BrandX.
+- **Built:**
+  - **`DashboardApp`** (`src/components/dashboard/DashboardApp.tsx`): the dashboard page's body, taking the client and an optional site, a picker, a site error and `openPagesInNewTab`. The widget route renders it as before.
+  - **`useSitePages(client, isInitialized, site?)`:** a given site replaces the `site.context` subscription and `retrieveSite`. A run counter stops an enumeration whose site changed meanwhile, and a scan caches under the site it started on.
+  - **`useSiteList`** reads `application.context`, then calls `listSites`. **`src/lib/sitecore/sites.ts`** has `siteOptionsFromListing`, `chooseSite` and the remembered pick.
+  - **`/fullscreen-extension`:** the picker under the app name. Outside Sitecore it shows "Open this from the Apps menu". It shows an alert when the sites can't be listed (with Retry), when none has a host name, or when the client can't connect. It mounts the client only once it knows where it runs.
+  - **Overview from 1280 px:** What changed beside the hero.
+  - **Demo:** `makeTestSiteList()`.
+  - The spike page is removed.
+- **Docs:**
+  - README: extension points, setup, demo.
+  - PAGE-MATRIX-EXPLAINED: where to find it, the header, What changed, a talking point.
+  - PAGE-MATRIX-TECHNICAL: where the dashboard runs, the site choice, storage, layout, demo, key files.
+  - The demo script's "If you have more time".
 
 ---
 
@@ -835,4 +865,5 @@ Things left open by a phase. Each phase session reads this list first and picks 
 | 14 | **Phase 9 acceptance in Sitecore.** Built and checked in `?demo=1`, and the AI routes with real Claude calls on a local build (plan Phase 9 status). Not yet seen with real writes: Apply on each card in Page Builder, the confirm dialog inside the iframe, the `[audit]` line and toast, a disabled Apply with its reason, and Generate for all from the dashboard. Also the panel regression moved here from item 1. | **Done (2026-11-03):** verified by the user on production after PR #27. In Page Builder, the AI Assist writes on the test pages worked with the confirm dialog, the `[audit]` line and the toast, each reverted, nothing published; an image in rich text shows Copy instead of Apply. From the dashboard, Generate for all wrote an approved description (the Banking article's description cleared for the test and restored). | — |
 | 15 | **Phase 10: rehearse the Symposium demo on the presenting laptop.** The script (`docs/SYMPOSIUM-DEMO-SCRIPT.md`) passed a scripted run in headless Edge with no network (plan Phase 10 status), but it hasn't been spoken through against a timer or shown on a projector. | **Closed by the user (2026-11-04).** | — (the presenter rehearses as they see fit: set-up, the six steps against a timer, the zoom level) |
 | 17 | **Phase 13 in Page Builder.** Built and checked in `?demo=1`, `&md=1`, and with the route against the BrandX replica (plan Phase 13 status). Not yet seen in Page Builder: Before / After at the panel's width with a real page, the replica's excerpt (its content starts past the excerpt, so the "Your content starts about N tokens in" line should show), and the route's larger response with `excerpt=1` (about 16 KB more) inside the iframe. | **Done (2026-11-05):** PR #35 merged and deployed to production; the user checked it and reported it working. | — (optional: the no-Markdown case on a real page needs a page or site without Markdown) |
+| 18 | **Phase 14 in Sitecore.** Built and checked in `?demo=1` and in headless Edge (plan Phase 14 status). Not yet seen in Sitecore: the picker's real list, a scan started from full screen, reopening on the remembered site, the widget still following its site, and Open in Page Builder through `window.open` (the host doesn't implement `navigateToExternalUrl`; the sandbox allows escaping popups, but it hasn't been tried). | Open. | The user checks it from the Apps menu after deploy: BrandKS (cached, about $0), then one small site (HelloWorld Corp, a few cents of `ai-check`). If `window.open` is blocked, try an `<a target="_blank">` link, then ask Sitecore whether the full-screen host will implement `navigateToExternalUrl`. |
 | 16 | **Anyone can call the API routes.** Found on 2026-11-04 after Phase 10. Four routes call Claude (`ai-check`, `assist`, `generate-meta`, `citation-probe`). Every route sends `Access-Control-Allow-Origin: *` and needs no login. Only `citation-probe` is rate-limited, in one instance's memory. Anyone with the production URL can spend the Anthropic budget. The key's monthly spend limit (set by the user) caps the cost, but abuse would then stop the AI features for everyone. | Open. Assigned to **Phase 12**. | Phase 12: spike first, then same-origin checks and rate limits that hold across instances. |

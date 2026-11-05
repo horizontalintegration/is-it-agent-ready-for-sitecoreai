@@ -4,6 +4,11 @@ The **dashboard** in **Is It Agent-Ready? for SitecoreAI** grades every page on 
 
 This guide explains what you see on the dashboard and why it matters. Use it as a demo cheat sheet.
 
+**Where to find it:** the dashboard appears in two places in SitecoreAI, with the same tabs and the same results.
+
+- **The dashboard widget** shows the site you've selected in SitecoreAI.
+- **The full-screen app** opens from the **Apps** menu in SitecoreAI's header ("Is It Agent-Ready for SitecoreAI?") and uses the whole screen. It isn't tied to a site, so it has a **site picker** under the app name. It opens on the site you picked last time. Sites without a public web address in SitecoreAI are listed but can't be picked, because their pages can't be fetched. Both places share what they've scanned, so a site you scanned in the widget opens with its scores in full screen.
+
 ---
 
 ## The big idea: four questions every page must answer
@@ -45,7 +50,7 @@ AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your 
 
 ## The header
 
-The app name, your site's name and address, the **Site type** setting, when the site was last scanned, and **Scan site**, which rescans every page and re-runs the agent access checks. **Site type** (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.
+The app name, your site's name and address (in full screen, the site picker), the **Site type** setting, when the site was last scanned, and **Scan site**, which rescans every page and re-runs the agent access checks. **Site type** (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.
 
 The dashboard has five tabs: **Overview · Pages · Agent access · AI citations · Files**.
 
@@ -87,7 +92,7 @@ The descriptions go into each page's current version and follow your workflow; *
 Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.
 
 ### What changed since last scan
-Next to Fix first, the news since the previous scan, worst first:
+Next to Fix first (on a wide screen, such as the full-screen app, beside the site score), the news since the previous scan, worst first:
 - **▼ 18 /services dropped after the Oct 28 publish. Now needs work: One clear H1 and logical headings.** A page lost 5 points or more; when it was published since the last scan, the card says when, and it names the checks that newly need work.
 - **New: ChatGPT-User now gets 403 from your firewall (it got 200 last time).** A search or user agent that could read the site and now can't (or **▲** can again). Training agents are left out: blocking them is your choice.
 - **▲ 2 pages became agent-ready**, and the fix they had in common when there is one.
@@ -192,3 +197,4 @@ For the full 5-minute walk-through with demo data, see **SYMPOSIUM-DEMO-SCRIPT**
 - **"Every status says what it is."** An icon, a colour and a word, so nobody has to decode a colour.
 - **"Measured, not guessed."** The citation probe asks real questions with live web search and counts who the answer actually links to: "Cited in 2 of 7, found in 5 of 7, and this competitor was cited instead." The estimate beside it says why an engine can't cite you, straight from the Agent access results.
 - **"What changed since last scan."** A page that dropped after a publish, a firewall that started blocking ChatGPT-User, pages that became agent-ready: the news, without comparing reports by hand.
+- **"Every site, full screen."** From SitecoreAI's Apps menu the same dashboard opens across the whole screen, with a picker for every site in the organisation.

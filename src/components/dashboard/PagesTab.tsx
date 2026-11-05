@@ -80,7 +80,7 @@ export function PagesTab({ pages, issue, onClearIssue, onOpenPage, onScanRow }: 
   const unscanned = pages.filter((p) => p.score === null).length;
 
   return (
-    <div className="mx-auto flex max-w-[1320px] flex-col gap-4 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <label htmlFor="page-search" className="sr-only">Search pages</label>
         <input

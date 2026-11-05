@@ -14,8 +14,9 @@ The v2 roadmap is in [docs/IS-IT-AGENT-READY-PLAN.md](docs/IS-IT-AGENT-READY-PLA
 |---|---|---|
 | **Pages context panel** | `src/app/pages-contextpanel-extension/page.tsx` | "Is this page agent-ready?" Scores the page open in Page Builder in four categories (Reach, Read, Understand, Trust), runs the AI uniqueness check on the page's main text, and its **AI Assist** tab suggests fixes in your brand voice: meta and Open Graph values, quotable FAQ answers, image alt text, the author byline, structured data, question headings and a summary paragraph. **Apply** writes a fix to its Sitecore field after a confirm that shows before → after (current version, never published); fixes without a field are copy-only. |
 | **Dashboard widget** | `src/app/dashboard-widget-extension/page.tsx` | "Is this site agent-ready?" Scans every page of the site with the same checks: site score, category cards, site checks (robots.txt, home page Organization schema), Fix first (with **Generate for all** for missing meta descriptions, reviewed and approved page by page before it writes), "What changed since last scan", the Agent access checklist and bot grid, AI citations (a readiness estimate per engine and on-demand citation probes), the llms.txt generator and the robots.txt helper. |
+| **Full screen** | `src/app/fullscreen-extension/page.tsx` | The dashboard at full size, opened from the **Apps** menu in SitecoreAI's header. The same header and five tabs, using the width (from 1280 px the Overview puts What changed beside the hero). The Apps menu sits outside any site, so a **site picker** lists the organisation's sites (`xmc.sites.listSites`) and remembers the pick per organisation; it opens on the remembered site, else the site on `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN`, else the first site with a public host name. It shares the widget's browser cache and history. |
 
-Both run inside the Sitecore iframe. Opening their routes directly in a browser only works in demo mode (below).
+All three run inside the Sitecore iframe and share one dashboard component (`src/components/dashboard/DashboardApp.tsx`). Opening their routes directly in a browser only works in demo mode (below); the full-screen route then says to open it from the Apps menu.
 
 Server routes in `src/app/api/*` fetch and parse pages (`preview-fetch`, `agent-access` for the site checks, `markdown-check` for Markdown, `psi-check`) and call Claude (`ai-check`, `generate-meta`, `assist`, `citation-probe`). Writes to Sitecore happen in the browser through the Marketplace SDK (`src/lib/sitecore/write.ts`), never from the server. Every server-side fetch of a caller-supplied URL goes through `src/lib/server/safe-fetch.ts`, which blocks private, loopback and cloud-metadata addresses.
 
@@ -36,8 +37,9 @@ Then register the app in the Sitecore Cloud Portal:
 1. Create a custom app, and point its extension points at your deployment:
    - Pages context panel → `<APP_URL>/pages-contextpanel-extension`
    - Dashboard widget → `<APP_URL>/dashboard-widget-extension`
+   - Full screen → Route URL `/fullscreen-extension` (the app's logo is what the Apps menu shows)
 2. Grant API access to **SitecoreAI APIs** (the app uses `xmc.pages`, `xmc.sites` and `xmc.authoring.graphql`).
-3. Install the app in your environment and open it from Page Builder or the dashboard.
+3. Install the app in your environment and open it from Page Builder, the dashboard, or the Apps menu.
 
 See the [Sitecore Marketplace documentation](https://doc.sitecore.com/mp/en/developers/marketplace/introduction-to-sitecore-marketplace.html) for the portal steps.
 
@@ -85,10 +87,11 @@ AI check results are cached by a hash of the page title and text, in the browser
 
 ## Demo mode
 
-Add `?demo=1` to either extension URL to use fixture data from `src/lib/rule-engine/test-fixture.ts` instead of the SDK:
+Add `?demo=1` to any extension URL to use fixture data from `src/lib/rule-engine/test-fixture.ts` instead of the SDK:
 
 - http://localhost:3000/pages-contextpanel-extension?demo=1
 - http://localhost:3000/dashboard-widget-extension?demo=1
+- http://localhost:3000/fullscreen-extension?demo=1 (the site picker lists BrandX and Nimbus Goods; picking Nimbus Goods only says what would happen)
 
 By default the demo site doesn't serve Markdown to AI agents (the Agent View shows the local preview and the estimated saving). Add `&md=1` for a site that does (4 of 4 Markdown checks).
 

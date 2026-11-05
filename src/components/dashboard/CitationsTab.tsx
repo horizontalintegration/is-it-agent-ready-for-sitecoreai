@@ -80,7 +80,7 @@ export function CitationsTab({ pages, siteUrl, botRows, demo, initialPageId }: C
   const estimates = useMemo(() => engineEstimates({ rows: botRows, page: row?.score ?? null }), [botRows, row]);
 
   return (
-    <div className="mx-auto flex max-w-[1320px] flex-col gap-5 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 sm:p-6">
       <PagePicker
         options={options}
         pageId={pageId}

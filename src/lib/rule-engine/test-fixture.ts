@@ -10,6 +10,7 @@ import { summarisePageReport } from "@/lib/checks/view-model";
 import { analyseHtml, EXCERPT_MAX_CHARS } from "@/lib/markdown/anatomy";
 import { estimateTokens, toAgentMarkdown } from "@/lib/markdown/convert";
 import type { MarkdownCheckData } from "@/lib/markdown/types";
+import type { SiteOption } from "@/lib/sitecore/sites";
 import { botGrid } from "@/lib/agent-access/grid";
 import type { CitationDemo, ProbeEvidence } from "@/lib/citations/types";
 import { accessSnapshot, scanSnapshot, type AccessSnapshot, type ScanSnapshot, type WhatChangedInput } from "@/lib/history/what-changed";
@@ -753,6 +754,17 @@ export function makeTestSitePages({ servesMarkdown = false }: { servesMarkdown?:
       description: "The documents, accounts and decisions to review so your estate plan does what you intend." },
   ];
   return rows.map((r) => buildRow(r, servesMarkdown));
+}
+
+/**
+ * The full-screen app's site picker in demo mode (Phase 14): BrandX, whose
+ * pages are the demo, and a second site that picking only names in a toast.
+ */
+export function makeTestSiteList(): SiteOption[] {
+  return [
+    { id: "demo", name: "BrandX", domain: SITE_DOMAIN, homePageId: null },
+    { id: "demo-nimbus", name: "Nimbus Goods", domain: "https://nimbus.example.com", homePageId: null },
+  ];
 }
 
 // ── Demo history (Phase 5 UI) ─────────────────────────────────────────────────
