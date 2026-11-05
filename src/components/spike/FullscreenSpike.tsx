@@ -129,6 +129,13 @@ interface Ids {
 
 export function FullscreenSpike() {
   const inFrame = useSyncExternalStore(subscribe, inFrameSnapshot, () => false);
+  // The key remounts the box once hydration finds the frame: useMarketplaceClient
+  // starts the client only on mount, and flipping its autoInit afterwards
+  // never sends the handshake (seen in SitecoreAI on 2026-11-05).
+  return <SpikeBox key={String(inFrame)} inFrame={inFrame} />;
+}
+
+function SpikeBox({ inFrame }: { inFrame: boolean }) {
   const { client, isInitialized, error: clientError } = useMarketplaceClient({ autoInit: inFrame });
 
   const [reports, setReports] = useState<SpikeReport[]>([]);
