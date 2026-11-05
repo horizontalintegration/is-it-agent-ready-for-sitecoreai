@@ -621,3 +621,31 @@ Approved by the user, run by the user from the spike box (panel and dashboard), 
 - **Confirmed (a2, storage):** `updateFields` stores an `alt` attribute on a page's image field.
 - **Confirmed (a2, rendering):** after write 2, the hero `<img>` in the Page Builder canvas reads `alt="spike test"` (the user inspected it after reloading). So an `alt` on the image field overrides the media item's Alt in the rendered page, and Phase 9 writes alt text there.
 - **Cleaned up:** the Banking article's `image` field kept `alt="spike test"` for a while (unpublished), by the user's choice, as a test case for the alt card. It was replaced during Phase 9 acceptance (2026-11-03), so the spike value is no longer in Sitecore. The FAQ answer (write 1) was reverted by hand in Page Builder.
+
+---
+
+## 11. Phase 14: the full-screen extension point (plan section 10, Phase 14)
+
+Date: 2026-11-05 · Branches: `feature/v2-phase-14-fullscreen` (PR #37), `fix/phase-14-spike-client-start` (PR #38) · Section 10 is Phase 12's (on its own branch).
+
+The spike ran on production from a temporary page at `/fullscreen-extension`, opened by the user from SitecoreAI's **Apps** menu, after the Route URL of **Full screen** was changed from `/` to `/fullscreen-extension` in the Cloud Portal. Two runs (02:00 and 02:01 UTC) gave the same answers. Read-only: no writes, no `/api` call.
+
+| # | Question | Answer | Status |
+|---|---|---|---|
+| 1 | Which host type mounts the full-screen app? | The Pages-style host: `host.state` = `{ organizationId, xmCloudTenantInfo, userInfo }`, the same shape as the dashboard widget and the panel (7.1). `host.route` answers `undefined`; `host.user` answers with the user's token claims. | **Confirmed** |
+| 2 | What does `application.context` give? | A Context ID (one resource), `organizationId`, app type `custom`, and the extension points: `xmc:fullscreen` → `/fullscreen-extension` (also in its `meta`), `xmc:dashboardblocks` (block `/dashboard-widget-extension`) and `xmc:pages:contextpanel`. No `tenantName`. The iframe's permissions: sandbox `allow-popups`, `allow-downloads`, `allow-popups-to-escape-sandbox`; allow `clipboard-write`, `clipboard-read`. | **Confirmed** |
+| 3 | Do `site.context` and `pages.context` answer? | Both answer at once, with no data: no site and no page. **The full-screen app needs its own site picker.** | **Confirmed** |
+| 4 | Does built-in authorization attach a token? | Yes. `xmc.sites.listSites` (with the Context ID, 0.4–1.0 s), `xmc.sites.retrieveSite` (0.3–0.6 s) and the dashboard's authoring page-list query (depth 1, `ID!`, 0.2–0.5 s) all succeeded, with no `errors`. No retry without the Context ID was needed. | **Confirmed** |
+| 5 | What does `listSites` return? | 7 sites (kpdemo, BrandX, HelloWorld Corp, Nimbus Goods, Playground, BrandKS, Shared), each with `id`, `name`, `collectionId`, `languages` and one host with `targetHostname` and `homePageId`. **Same data as `retrieveSite`**, so one `listSites` call gives the picker every site's domain and home item. `displayName` is empty on all but kpdemo. Two sites have an empty `targetHostname` (kpdemo, Shared). | **Confirmed** |
+| 6 | The tenant name for Open in Page Builder | Only in the `userInfo` claim `https://auth.sitecorecloud.io/claims/tenant_name` (`tenantNameFromHostState` reads it). `application.context` and `xmCloudTenantInfo` have no name, as in the dashboard (section 13, item 8). | **Confirmed** |
+| 7 | Open in Page Builder | **`navigateToExternalUrl` isn't implemented by this host:** `CoreError: [client SDK] navigateTo.externalUrl method is not implemented.` (11–20 ms, twice). The URL built from the tenant name, organization, item and site was complete. The sandbox allows popups that escape it, so `window.open(url, "_blank")` should open Page Builder in a new tab, which the dashboard's Open in Page Builder already falls back to. | **Confirmed** (the error); **Open** (the `window.open` fallback, checked in the build's acceptance) |
+| 8 | The language, and does the host pass a theme? | No language: `host.state` has no `language`, and `pages.context` has no site. Each site's languages come from `listSites` (all 7 have `en`). No theme: no theme-like key in `host.state`, the iframe URL's only query parameters are `organizationId` and `marketplaceAppTenantId`, and `prefers-color-scheme` is light. The frame was 1482 × 718 px. | **Confirmed** |
+| 9 | Does the full-screen iframe see the widget's localStorage? | Yes. The top-level origin is `https://app.sitecorecloud.io` (`ancestorOrigins`), and the frame read 22 `aiDiscovery:*` keys written by the widget: the page cache `aiDiscovery:scores:v6:<BrandKS site ID>`, the agent-access scan, the history, What changed snapshots, the citation probes and runs, and the AI results. **The widget's `site.context` site ID equals the `listSites` ID** (BrandKS, `4b1eb4e1-…`), so the full-screen app can use the same per-site keys. | **Confirmed** |
+
+**Notes for the build:**
+
+- **The widget's site is BrandKS**, whose host is the BrandX replica (`hztl-page-health-checker-demo.vercel.app`, the app's `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN`). The site named **BrandX** has its own host, `blueprint-brandx.horizontaldigital.com`.
+- `listSites`' first site, kpdemo, has no host name, so "the first site" can't be the default without a check.
+- The spike page first stayed on "Connecting to SitecoreAI…": it passed `autoInit` = "inside a frame" to `useMarketplaceClient`, which is false on the server render and true after hydration, and the hook starts the client only on mount. Fixed in PR #38 by remounting the box. The build's page must start the client on mount, like the panel and widget routes.
+
+**How the spike was run:** open the app from the Apps menu (steps 1–9 and 5–6 on BrandX run on their own), pick BrandKS in the select (5–6 again), click **Open home in Page Builder** (10), then **Copy report**. Implementation: `src/components/spike/FullscreenSpike.tsx` (temporary; removed in the Phase 14 build).
