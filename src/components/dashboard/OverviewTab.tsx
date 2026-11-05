@@ -61,9 +61,11 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
   const notServed = aggregate.markdown.checked - aggregate.markdown.served;
 
   return (
-    <div className="mx-auto flex max-w-[1320px] flex-col gap-5 p-4 sm:p-6">
+    // From 1280 px (the full-screen app) a grid moves What changed up beside
+    // the hero; Fix first's row wrapper steps aside (xl:contents).
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 sm:p-6 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(340px,440px)]">
       {/* Hero */}
-      <section aria-label="Site score" className="flex flex-wrap items-center gap-7 rounded-xl border bg-body-bg p-6 shadow-small">
+      <section aria-label="Site score" className="flex flex-wrap items-center gap-7 xl:col-start-1 xl:row-start-1 rounded-xl border bg-body-bg p-6 shadow-small">
         <ScoreRing score={score} size={132} label="Site score" />
         <div className="flex min-w-[240px] flex-[1_1_320px] flex-col gap-2">
           <span className="text-md text-subtle-text">Is this site agent-ready?</span>
@@ -115,7 +117,7 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
       </section>
 
       {/* Category cards */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4 xl:col-span-2">
         {aggregate.categories.map((c) => {
           const meta = CATEGORY_META[c.key];
           const pct = c.pct === null ? null : Math.round(c.pct);
@@ -153,9 +155,9 @@ export function OverviewTab({ aggregate, pages, siteUrl, isLoading, issues, hist
         })}
       </div>
 
-      <div className="flex flex-wrap items-start gap-5">
+      <div className="flex flex-wrap items-start gap-5 xl:contents">
         {/* Fix first */}
-        <section aria-labelledby="fix-first" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3 rounded-xl border bg-body-bg p-[18px]">
+        <section aria-labelledby="fix-first" className="flex min-w-0 flex-[999_1_560px] flex-col xl:col-span-2 gap-3 rounded-xl border bg-body-bg p-[18px]">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 id="fix-first" className="text-lg font-bold">Fix first</h3>
             <span className="text-sm text-subtle-text">Grouped by issue, biggest gain first</span>
@@ -188,7 +190,7 @@ function WhatChangedCard({ changes }: { changes: WhatChanged }) {
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? changes.items : changes.items.slice(0, CHANGES_LIMIT);
   return (
-    <section aria-labelledby="what-changed" className="flex min-w-0 flex-[1_1_340px] flex-col gap-3 rounded-xl border bg-body-bg p-[18px]">
+    <section aria-labelledby="what-changed" className="flex min-w-0 flex-[1_1_340px] flex-col xl:col-start-2 xl:row-start-1 gap-3 rounded-xl border bg-body-bg p-[18px]">
       <h3 id="what-changed" className="text-lg font-bold">What changed since last scan</h3>
       {changes.items.length === 0 ? (
         <p className="border-t pt-3 text-sm text-subtle-text">
