@@ -621,3 +621,99 @@ Approved by the user, run by the user from the spike box (panel and dashboard), 
 - **Confirmed (a2, storage):** `updateFields` stores an `alt` attribute on a page's image field.
 - **Confirmed (a2, rendering):** after write 2, the hero `<img>` in the Page Builder canvas reads `alt="spike test"` (the user inspected it after reloading). So an `alt` on the image field overrides the media item's Alt in the rendered page, and Phase 9 writes alt text there.
 - **Cleaned up:** the Banking article's `image` field kept `alt="spike test"` for a while (unpublished), by the user's choice, as a test case for the alt card. It was replaced during Phase 9 acceptance (2026-11-03), so the spike value is no longer in Sitecore. The FAQ answer (write 1) was reverted by hand in Page Builder.
+
+
+---
+
+## 10. Phase 12: protecting the API routes
+
+Date: 2026-11-04 · Branch: `feature/v2-phase-12-api-protection` · Base: `cdc1fa4`
+
+Plan section 10, Phase 12, and section 13, item 16. No production route was called and no real site was fetched: the header test (10.2) ran on local servers in headless Edge, and the rate-limit options (10.4) come from Vercel's and Upstash's docs.
+
+| # | Question | Answer | Status |
+|---|---|---|---|
+| a | Who calls the routes, from which origin? | Only the app's own pages: the panel, the dashboard (in Sitecore and standalone). Every call is built as `${NEXT_PUBLIC_APP_URL}/api/…`, so it's same-origin only when that value is the page's own origin (10.1). | **Confirmed** (code) |
+| b | Is the wildcard CORS needed anywhere? | No, as long as the calls are same-origin. Inside a framed page they are (10.2). | **Confirmed** (local test). The headers inside Sitecore itself: **Open** (10.6) |
+| c | Does dropping the wildcard CORS stop other websites? | **Not on its own.** A `text/plain` POST from another site reaches the route with no preflight, and the routes parse any body with `req.json()`, so Claude would run; the browser only hides the answer. The routes must refuse such requests themselves (10.2). | **Confirmed** (local test) |
+| d | Can the server verify that the caller is the app inside SitecoreAI? | No, not with built-in authorization. The app never gets a token; what the iframe gets is unsigned (10.3). | **From docs/types** |
+| e | Rate limits that hold across instances | Vercel's firewall can't do a daily ceiling and counts per region. Upstash Redis (free tier) can do both (10.4). | **From docs** |
+
+### 10.1 Who calls the routes (Confirmed, from the code)
+
+| Route | Paid | Method | Called from |
+|---|---|---|---|
+| `ai-check` | Claude (~$0.009 a page, Sonnet; §6) | POST | `fetchAiResults` (`src/lib/ai/ai-results-cache.ts`): the panel's scan (`useScan`) and every dashboard page (`useSitePages`) |
+| `assist` | Claude (Opus) | POST | `requestAssist` (`src/lib/assist/client.ts`): AI Assist in the panel |
+| `generate-meta` | Claude (~$0.008 a field, Opus; §6) | POST | `requestMeta` (same file): AI Assist in the panel, Generate for all in the dashboard |
+| `citation-probe` | Claude and web search (~$0.03 a probe, ~$0.009 a question set; §5.1) | POST | `useCitationProbe`: the dashboard's AI citations tab, in Sitecore and standalone |
+| `psi-check` | PageSpeed quota (`PSI_API_KEY`) | GET | `useScan`: the panel, on click |
+| `preview-fetch` | No (fetches another site) | GET | `useScan` (panel), `useSitePages` (dashboard, per page) |
+| `markdown-check` | No (2 requests to another site) | GET | `useMarkdownCheck` (panel), `useSitePages` (dashboard, per page) |
+| `agent-access` | No (about 50 requests to another site) | GET | `useAgentAccess`: the panel's strip and the dashboard's Agent access |
+
+- **Every caller prefixes `NEXT_PUBLIC_APP_URL`** (`?? ""`): `useScan`, `useSitePages`, `useAgentAccess`, `useMarkdownCheck`, `useCitationProbe` and `assist/client.ts`. Nothing else in the repo calls the routes (`scripts/spikes/citation-probe.mts` calls Anthropic directly).
+- **So the calls are same-origin only when `NEXT_PUBLIC_APP_URL` is the origin the page was loaded from.** `.env.local` has `http://localhost:3000`, so `next dev -p 3001` would call port 3000 cross-origin. The Production value in Vercel isn't in the repo; Phase 10 recorded that the panel's View in dashboard opened "the deployed app", so it's most likely the production URL.
+- **Preview deployments:** Vercel builds every PR branch (the commit statuses on GitHub link to them). A preview gets whatever the Preview environment sets for `NEXT_PUBLIC_APP_URL`. If that's the production URL, a preview's pages call production cross-origin, which works today only because of the wildcard CORS.
+- **Demo mode makes no `/api` call** (Phase 10's check).
+- The extension URLs in App Studio point at the production URL (plan section 13, items 8 and 10), so in Sitecore the iframe's origin is `https://is-it-agent-ready-for-sitecoreai.vercel.app`, not a Sitecore domain.
+
+### 10.2 What the browser sends (Confirmed, local test in headless Edge, 2026-11-04)
+
+A local stand-in: the "app" on `http://127.0.0.1:4101` makes GET, POST JSON and (for comparison) POST `text/plain` calls with a **relative** URL. It's loaded framed by a "host" on `http://localhost:4102`, another site as `pages.sitecorecloud.io` is to `vercel.app`, in three iframe set-ups; standalone; and called from a third site, `http://localhost:4103`. The server logged each request's headers. (A throwaway Node script, not kept in the repo.)
+
+| Page | Call | `Origin` | `Sec-Fetch-Site` | Reached the route? |
+|---|---|---|---|---|
+| Framed, `sandbox="allow-scripts allow-same-origin …"` | GET | none | `same-origin` | yes, 200 |
+| | POST (JSON or text) | the app's origin | `same-origin` | yes, 200 |
+| Framed, no sandbox | GET / POST | as above | `same-origin` | yes, 200 |
+| Standalone (top level) | GET / POST | as above | `same-origin` | yes, 200 |
+| Framed, sandbox **without** `allow-same-origin` | GET, POST text | `null` | `cross-site` | yes, but the page can't read the answer; `localStorage` throws `SecurityError` |
+| | POST JSON | `null` | `cross-site` | preflight (`OPTIONS`) only |
+| **Another website** | GET (`cors` or `no-cors`) | the other site / none | `cross-site` | **yes** (the page can't read the answer) |
+| | POST JSON | the other site | `cross-site` | preflight only, unless `OPTIONS` answers `Access-Control-Allow-Origin: *` (ours does today) |
+| | **POST `text/plain`** | the other site | `cross-site` | **yes**: a "simple" request, no preflight |
+
+What this shows:
+
+- **Being framed by Sitecore doesn't make the calls cross-origin.** `Sec-Fetch-Site` compares the page that makes the request with the URL it requests, not with the top window. A same-origin call from the iframe is `same-origin`, and a POST carries the app's own `Origin`. So the wildcard CORS isn't needed for the panel or the dashboard, provided the URL is the page's own origin.
+- **The one set-up that would break:** a sandbox without `allow-same-origin` gives the iframe an opaque origin (`Origin: null`, `cross-site`). That can't be how Sitecore frames the app: `localStorage` works in both extension points (the AI results cache, the history store, and the Phase 9 spike's `localStorage.setItem("iiar-spike", "9")` in the panel's iframe), and an opaque origin throws on `localStorage`. The real headers in Sitecore should still be seen once (10.6).
+- **Dropping the wildcard CORS isn't enough.** Another website can still send a `text/plain` POST or a `no-cors` GET through its visitors' browsers: the request runs, only the answer is hidden. Our routes call `req.json()` whatever the `Content-Type`, so a `text/plain` POST to `ai-check` spends on Claude today, and still would after a CORS-only change. The routes must refuse a request whose `Sec-Fetch-Site` is `cross-site` or `same-site`, or whose `Origin` isn't their own.
+- **`Sec-Fetch-Site` and `Origin` only stop browsers.** A script sends whatever headers it likes. Requiring the route's own `Origin` on the POST routes also stops a plain `curl` (browsers always send `Origin` on a POST, same-origin included); anything more needs the rate limits.
+
+### 10.3 Proof that the caller is the app inside SitecoreAI (From docs/types)
+
+- **Built-in authorization gives the app no token.** A `client.query/mutate("xmc.*")` call is a `postMessage` to the host; the host's HostSDK adds the token and makes the HTTP call (7.1). The token never reaches the iframe, so the app can't pass it to its own server.
+- **What the iframe does get is unsigned.** `host.state` (`XmcPagesContextViewHostState`, client 0.4.1) has `organizationId`, `xmCloudTenantInfo` (URLs, environment and project IDs) and `userInfo`: an ID token's claims (`sub`, `email`, the tenant-name claim, …) as a plain object, not the token. `application.context` has the Context IDs, tenant ID and app ID. None of these is secret or signed, so the server can't tell them from copies. The SDK types have no token, nonce or signature anywhere (`core` 0.3.5, `client` 0.4.1, `xmc` 0.4.4).
+- **A Context ID allow-list** (the browser sends its Context ID, the server checks it against an env var) would be cheap but weak: anyone who can open the app or read one request can copy it. The standalone dashboard (`?domain=`) has no Context ID, so it would lose AI citations. Not worth it.
+- **Only custom authorization gives a verifiable caller:** an access token from `auth.sitecorecloud.io` that the server checks against Sitecore's signing keys. That's the 7.4 contingency (about 3 working days, with its iframe-login risks), and it still wouldn't cover the standalone dashboard. Out of scope unless the user decides otherwise.
+
+### 10.4 Rate limits that hold across instances (From docs, checked 2026-11-04)
+
+| | Vercel Firewall rate limit (a WAF rule, or `@vercel/firewall`'s `checkRateLimit`) | Upstash Redis through the Vercel Marketplace, with `@upstash/ratelimit` |
+|---|---|---|
+| Plans | All. **Hobby: 1 rate-limit rule per project** (within its 3 custom rules); Pro: 40; Enterprise: 250 | Any |
+| Algorithm | Fixed window (token bucket on Enterprise only) | Fixed window, sliding window or token bucket |
+| Window | Hobby and Pro: 10 s to **10 min**; Enterprise up to 1 h. **No daily window** | Any length, so a daily ceiling works |
+| Key | IP or JA4 (headers need Enterprise). `checkRateLimit`'s `rateLimitKey` takes any string, in place of the IP | Any string |
+| Counter scope | **Per region**: traffic through several regions can go over the limit | One database |
+| Response | A dashboard rule answers with Vercel's own 429 (or 403, or a challenge); its body couldn't be confirmed. With `checkRateLimit` the route builds its own JSON 429 | The route builds its own JSON 429 |
+| Local dev | `checkRateLimit` returns "not limited" under `next dev`; under `next start` it calls `/.well-known/vercel/rate-limit-api/…` on the host, which doesn't exist locally, and throws | Needs the Redis URL and token; without them the code needs a fallback |
+| Cost | The first 1M allowed requests a month included, then $0.50–$0.80 per 1M | **Free tier: 500K commands a month**, 256 MB, 1 database. Then pay as you go, $0.20 per 100K commands. Billed through the Vercel account. Upstash says the free tier needs no card; whether Vercel asks for one when installing it isn't confirmed |
+
+- **Commands per request (Upstash):** a fixed-window `limit()` costs 2 commands (3 on the first in a window). A per-IP limit plus a daily ceiling is about 4–5 commands a request, so the free tier covers about 100K limited requests a month. A full dashboard scan of 74 pages makes 74 `ai-check` calls (fewer once the browser cache has them), so limiting only the paid routes costs a few hundred commands a scan.
+- **Other Vercel stores don't fit:** Runtime Cache is regional, can be evicted and has no atomic increment; Edge Config takes up to 10 s to propagate a write and Hobby includes only 100 writes.
+- **Bot Protection and Attack Challenge Mode** (free, all plans): a challenged browser needs a 1-hour challenge session, which a `fetch()` can't solve. Inside a third-party iframe that session's cookie may be blocked or partitioned (an inference, not in the docs), so legitimate users in Sitecore could get a challenge page instead of JSON. Don't turn them on for `/api` without a test in log mode.
+- **The team's Vercel plan** (`horizontal-digital-sandbox`, Hobby or Pro) isn't visible from here. It only matters for the firewall option.
+- Sources: [rate limiting](https://vercel.com/docs/vercel-firewall/vercel-waf/rate-limiting), [rate-limiting SDK](https://vercel.com/docs/vercel-firewall/vercel-waf/rate-limiting-sdk), [custom rules](https://vercel.com/docs/vercel-firewall/vercel-waf/custom-rules), [regional pricing](https://vercel.com/docs/pricing/regional-pricing), [changelog: rate limiting on Hobby](https://vercel.com/changelog/rate-limiting-now-available-on-hobby-with-higher-included-usage-on-pro), [`@vercel/firewall` source](https://github.com/vercel/vercel/blob/main/packages/firewall/src/rate-limit.ts), [Attack Challenge Mode](https://vercel.com/docs/vercel-firewall/attack-challenge-mode), [Runtime Cache](https://vercel.com/docs/caching/runtime-cache), [Edge Config limits](https://vercel.com/docs/edge-config/edge-config-limits), [Marketplace storage](https://vercel.com/docs/marketplace-storage), [Upstash pricing](https://upstash.com/pricing/redis), [`@upstash/ratelimit` costs](https://upstash.com/docs/redis/sdks/ratelimit-ts/costs).
+
+### 10.5 Recommendation
+
+1. **Call the routes with relative URLs** (`/api/…`), so every call is same-origin by construction: production, previews, local dev on any port. `NEXT_PUBLIC_APP_URL` stays for links only (View in dashboard).
+2. **Refuse other origins in the routes**, not only by dropping the CORS headers: refuse when `Sec-Fetch-Site` is present and isn't `same-origin`, and on the POST routes (the four Claude routes) also when `Origin` isn't the route's own origin. Compare with the request's own host, so no URL needs configuring. Drop `Access-Control-Allow-Origin: *` from `next.config.ts` and the routes, and the `OPTIONS` handlers.
+3. **Rate limits in Upstash Redis on its free tier** (a new service: the user's approval first): per IP per hour, plus a daily ceiling per route, on the Claude routes and `psi-check`. With no Redis configured (local dev), fall back to the in-memory limiter. The Vercel Firewall can't do a daily ceiling.
+4. **No verified caller identity**: there's no cheap one (10.3).
+
+### 10.6 Still open
+
+- **The headers inside Sitecore.** The local test predicts `Sec-Fetch-Site: same-origin` and `Origin: https://is-it-agent-ready-for-sitecoreai.vercel.app` on the app's calls in both extension points. To see it (the user, free, no extra call): in the panel's or the dashboard's iframe, DevTools > Network, click any `/api/` request the page already made, and read the request headers.
