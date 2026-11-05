@@ -651,6 +651,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 - **Needs:** SSRF-safe fetch (from Phase 1), rate limiting, and caching.
 - Doubles as lead generation for the agency.
 - Needs Phase 12 first: a public scanner invites the traffic the API routes can't withstand today.
+- **Status (2026-11-04): moved to future scope (section 11) by the user.** Not scheduled.
 
 ### Phase 12 — Protect the API routes
 - **Why:** anyone with the production URL can call the API routes and spend our budget (section 13, item 16).
@@ -688,6 +689,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
   - **A possible SDK route:** `xmc.agent.sitesGetSiteDetails(siteId)` returns an undocumented `brand_information: string`. **[SPIKE]** Check what it contains first; if it holds the brand kit text, use it as the voice source.
   - **Brand Review:** after generating, run `ai.skills.generateBrandReview({ brandkitId, input, sections })` on the suggestion and show the 1–5 score and suggestion next to Populate. Needs the `AI` module in the client's `modules` and "AI skills APIs" access; it may use the customer's Sitecore AI allowance.
   - **Fallback order:** brand kit (`brand_information`, or the REST API) → `BRAND_VOICE_FILE` → the neutral default.
+- **Public scanner (Phase 11)** (the user moved it here on 2026-11-04). A public page, `/scan/<domain>`, outside Sitecore. Anyone enters a domain and gets the site checks and home page checks, with a shareable report link and a badge. It would serve as lead generation for the agency. Build it only after Phase 12, since it needs the API protection, rate limits and caching.
 - **DNS-AID, Web Bot Auth:** informational only. Revisit if adoption grows.
 - **Personalisation variants and non-web channels.**
 
@@ -701,7 +703,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 | 2 | Shared history storage for trends, "What changed" and probes | **Decided 2026-11-02 (Phase 8): localStorage only**, per browser, behind `HistoryStore` so it can be swapped. Shared storage (Upstash Redis through the Vercel Marketplace) waits until the API routes have authentication; without it anyone could read or overwrite a site's history. The probe cache and rate limit live in server memory meanwhile. |
 | 3 | Optional extra citation engines (Perplexity / Gemini / OpenAI keys) | **Kept at the default in Phase 8 (2026-11-02): Claude only.** No Settings button; the probe types leave room for more engines. |
 | 4 | Blok vs custom tokens | **Decided:** Blok (Phase 0 spike), adopted in Phase 5 |
-| 5 | Build the public scanner (Phase 11)? | Not now |
+| 5 | Build the public scanner (Phase 11)? | **Decided 2026-11-04: not now.** Moved to future scope (section 11), after Phase 12. |
 
 ---
 
