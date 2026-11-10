@@ -602,6 +602,68 @@
 <li>Tests: <code>src/lib/server/safe-fetch.test.ts</code>.</li>
 </ul>
 <hr/>
+<h2>Who may call the API routes (Phase 12)</h2>
+<p>Only the app's own pages: the panel, the dashboard widget and the full-screen app in Sitecore, the standalone dashboard (<code>?domain=</code>) and local dev. Background in SPIKE-FINDINGS section 10. Demo mode (<code>?demo=1</code>) makes no <code>/api</code> call.</p>
+<p><strong>Same origin.</strong> The browser calls every route with a relative URL (<code>/api/…</code>), so a call is always to the origin the page came from: production, a preview deployment or <code>localhost</code> on any port. <code>NEXT_PUBLIC_APP_URL</code> is only used for links (View in dashboard). There are no CORS headers (<code>next.config.ts</code> and the routes used to send <code>Access-Control-Allow-Origin: *</code>) and no <code>OPTIONS</code> handlers.</p>
+<p><strong>Origin check</strong> (<code>refuseCrossOrigin</code>, <code>src/lib/server/same-origin.ts</code>), first thing in every route:</p>
+<ul>
+<li>Refused when <code>Sec-Fetch-Site</code> is present and isn't <code>same-origin</code> (<code>cross-site</code>, <code>same-site</code>, or <code>none</code> for a URL typed into the address bar). Inside the Sitecore iframe the app's own calls are <code>same-origin</code>: the header compares the calling page with the URL, not with the top window.</li>
+<li>On the four Claude routes (POST), also refused when <code>Origin</code> is missing or isn't the request's own host (<code>x-forwarded-host</code>, else <code>host</code>). Browsers send <code>Origin</code> on every POST, so this also turns away a plain <code>curl</code>.</li>
+<li>Answer: <strong>403</strong> <code>{ error: "forbidden_origin" }</code>, logged as <code>[api] refused /api/… : &lt;reason&gt;</code>.</li>
+<li>Why the routes check rather than rely on CORS: a <code>text/plain</code> POST and a <code>no-cors</code> GET from another website reach the route without a preflight, and the routes parse any body as JSON, so without the check another site could spend on Claude through its visitors' browsers (the browser only hides the answer).</li>
+<li>A script can send any headers. The rate limits are what stop that.</li>
+</ul>
+<p><strong>Rate limits</strong> (<code>src/lib/server/rate-limit.ts</code>), on the routes that spend money:</p>
+<table><thead><tr>
+<th style="text-align:left">Route</th>
+<th style="text-align:left">Per IP per hour</th>
+<th style="text-align:left">Daily, all callers</th>
+<th style="text-align:left">Env vars</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left"><code>ai-check</code></td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">150</td>
+<td style="text-align:left"><code>RATE_LIMIT_AI_CHECK_IP_HOUR</code>, <code>RATE_LIMIT_AI_CHECK_DAY</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>generate-meta</code></td>
+<td style="text-align:left">20</td>
+<td style="text-align:left">40</td>
+<td style="text-align:left"><code>RATE_LIMIT_GENERATE_META_…</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>assist</code></td>
+<td style="text-align:left">10</td>
+<td style="text-align:left">20</td>
+<td style="text-align:left"><code>RATE_LIMIT_ASSIST_…</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>citation-probe</code></td>
+<td style="text-align:left">20</td>
+<td style="text-align:left">30</td>
+<td style="text-align:left"><code>RATE_LIMIT_CITATION_PROBE_…</code>, plus 40 probes per site per hour</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>psi-check</code></td>
+<td style="text-align:left">20</td>
+<td style="text-align:left">200</td>
+<td style="text-align:left"><code>RATE_LIMIT_PSI_CHECK_…</code></td>
+</tr>
+</tbody></table>
+<ul>
+<li>Sized for a $25 monthly Anthropic limit: at most about $3 a day if every daily ceiling is reached. Each value is a whole number; 0 refuses every call.</li>
+<li><strong>Only calls that reach Claude (or PageSpeed) count.</strong> <code>ai-check</code> takes a limit only when one of its two checks misses the server cache; <code>assist</code> (<code>isAssistCached</code>) and <code>generate-meta</code> likewise; <code>citation-probe</code> counts every question set and every uncached probe. The limit is taken before the Claude call, never after.</li>
+<li><strong>Order:</strong> the caller's hourly limit first (key <code>&lt;route&gt;:ip:&lt;ip&gt;</code>, the IP from <code>x-real-ip</code> or <code>x-forwarded-for</code>, both set by Vercel), then the route's daily ceiling (<code>&lt;route&gt;:day</code>). A caller over their own limit doesn't use up the daily ceiling.</li>
+<li><strong>Windows:</strong> fixed, aligned to the clock, as Upstash counts them. The hourly limit resets on the hour, the daily ceiling at 00:00 UTC.</li>
+<li><strong>Where the counts live:</strong> Upstash Redis (Vercel Marketplace, pay as you go at $0.20 per 100K commands; about 2–3 commands a check), from <code>UPSTASH_KV_REST_API_URL</code> and <code>UPSTASH_KV_REST_API_TOKEN</code> (or <code>KV_REST_API_*</code>, <code>UPSTASH_REDIS_REST_*</code>). Keys start <code>iiar:rl:</code> on Vercel, shared by Production and Preview, and <code>iiar:rl:local:</code> elsewhere. <code>@upstash/ratelimit</code>'s in-memory cache turns away a caller who is already over the limit without a Redis call. Without Redis (local dev), or when a Redis call fails, the counts are kept in the instance's memory (<code>MemoryCounter</code>); if Redis takes over 1.5 s, the call goes through.</li>
+<li><strong>Answer:</strong> <strong>429</strong> <code>{ error: "rate_limited", scope: "ip" | "daily" | "site", retryAfter }</code> with <code>Retry-After</code> (seconds). Anthropic's own rate limit is now a <strong>503</strong> <code>{ error: "ai_busy" }</code>, so a 429 always means one of these limits.</li>
+</ul>
+<p><strong>In the browser</strong> (<code>src/lib/api/limits.ts</code>): <code>readLimit</code> records a 429 per route until it resets, and <code>activeLimit</code> stops further calls meanwhile (<code>fetchAiResults</code> skips <code>ai-check</code>; AI Assist, Generate for all and the probe run fail at once). <code>LimitBanner</code> (<code>src/components/shared/LimitBanner.tsx</code>), under the panel's and the dashboard's header, says which limit, when to try again in the viewer's local time ("Daily AI limit reached. Try again after 7:00 PM."), and what it holds back; the action that hit it shows the same sentence. A dashboard page scored while the <code>ai-check</code> limit is in force is scored without the AI checks and isn't cached, so the next scan scores it in full.</p>
+<ul>
+<li>Tests: <code>src/lib/server/same-origin.test.ts</code>, <code>src/lib/server/rate-limit.test.ts</code>, <code>src/lib/api/limits.test.ts</code>, <code>src/app/api/routes.test.ts</code>.</li>
+</ul>
+<hr/>
 <h2>Tests</h2>
 <table><thead><tr>
 <th style="text-align:left">File</th>
@@ -683,6 +745,22 @@
 <td style="text-align:left"><code>src/lib/html/extract-html.test.ts</code></td>
 <td style="text-align:left"><code>mainText</code> (collapsed answers included), entity decoding, <code>bodyBlocks</code>, Q&amp;A pairs (BrandX accordion markup), metadata, JSON-LD blocks</td>
 </tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/same-origin.test.ts</code></td>
+<td style="text-align:left">the origin check on the header sets the browser sends (SPIKE-FINDINGS 10.2): framed and standalone pass; another site, <code>null</code>, another port and a missing <code>Origin</code> on POST are refused; forwarded host; local dev</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/rate-limit.test.ts</code></td>
+<td style="text-align:left">the env limits, fixed windows (the hour, 00:00 UTC), per IP then daily, routes kept apart, probes per site, the memory fallback when Redis fails, the 429 body</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/api/limits.test.ts</code></td>
+<td style="text-align:left">reading a 429, its expiry, ignoring <code>ai_busy</code>, the banner's sentences</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/app/api/routes.test.ts</code></td>
+<td style="text-align:left">every route answers another site with a 403 and has no <code>OPTIONS</code> handler; the Claude routes refuse a POST with no <code>Origin</code> and a cross-site <code>text/plain</code> POST</td>
+</tr>
 </tbody></table>
 <hr/>
 <h2>Key files</h2>
@@ -741,6 +819,14 @@
 <tr>
 <td style="text-align:left"><code>src/hooks/usePageHtml.ts</code></td>
 <td style="text-align:left">Reads the draft with <code>getPageHTML</code>, debounced on field updates, retried while the canvas loads, with the live fallback</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/server/same-origin.ts</code>, <code>src/lib/server/rate-limit.ts</code></td>
+<td style="text-align:left">Who may call the API routes, and the rate limits (Phase 12)</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>src/lib/api/limits.ts</code>, <code>src/components/shared/LimitBanner.tsx</code></td>
+<td style="text-align:left">A limit in the browser: remembered until it resets, and the banner</td>
 </tr>
 <tr>
 <td style="text-align:left"><code>src/components/panel/</code></td>

@@ -716,7 +716,13 @@ What this shows:
 
 ### 10.6 Still open
 
-- **The headers inside Sitecore.** The local test predicts `Sec-Fetch-Site: same-origin` and `Origin: https://is-it-agent-ready-for-sitecoreai.vercel.app` on the app's calls in both extension points. To see it (the user, free, no extra call): in the panel's or the dashboard's iframe, DevTools > Network, click any `/api/` request the page already made, and read the request headers.
+- **The headers inside Sitecore.** The local test predicts `Sec-Fetch-Site: same-origin` and `Origin: https://is-it-agent-ready-for-sitecoreai.vercel.app` on the app's calls in the three extension points. To see it (the user, free, no extra call): in the panel's, the dashboard's or the full-screen app's iframe, DevTools > Network, click any `/api/` request the page already made, and read the request headers.
+- **More evidence since (2026-11-05, section 11):** the full-screen iframe read the dashboard widget's `localStorage` (22 keys), which an opaque origin can't do, so the full-screen frame keeps the app's origin too. Its sandbox list as reported there (`allow-popups`, `allow-downloads`, `allow-popups-to-escape-sandbox`) can't be the whole list for the same reason.
+
+### 10.7 Upstash on the Vercel Marketplace (2026-11-09)
+
+- The Marketplace's install offered only **Pay As You Go** ($0.20 per 100K commands, up to 10 databases free, then $0.50 a database), not the free plan Upstash's own pricing lists. The user installed it with the prefix `UPSTASH` for Production and Preview; Vercel created `UPSTASH_KV_REST_API_URL`, `UPSTASH_KV_REST_API_TOKEN`, `UPSTASH_KV_REST_API_READ_ONLY_TOKEN`, `UPSTASH_KV_URL` and `UPSTASH_REDIS_URL`. The app uses the first two.
+- Expected cost: about 25K commands, about $0.05, in a month of normal use. A flood with forged headers from many IPs would cost about $10 per million requests; one IP over its limit is turned away from memory (`ephemeralCache`) without a Redis command.
 
 ---
 

@@ -1,5 +1,6 @@
 import type { AssistData, AssistRequest } from "@/lib/server/assist";
 import type { MetaField } from "@/lib/server/generate-meta";
+import { activeLimit, AI_BUSY_MESSAGE, limitMessage, readLimit } from "@/lib/api/limits";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser side of AI Assist: calls /api/assist and /api/generate-meta. In demo
@@ -7,24 +8,27 @@ import type { MetaField } from "@/lib/server/generate-meta";
 // (no network, paid or write calls).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
 const MESSAGES: Record<string, string> = {
   refused: "Claude declined to write this one. Try again, or write it yourself.",
-  rate_limited: "Too many requests right now. Wait a moment and try again.",
+  ai_busy: AI_BUSY_MESSAGE,
   api_key_missing: "The app's Claude API key isn't set up.",
   api_key_invalid: "The app's Claude API key isn't valid.",
   page_unreadable: "The published page couldn't be read.",
   url_not_allowed: "That page address isn't allowed.",
 };
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(route: "assist" | "generate-meta", body: unknown): Promise<T> {
+  // Over a limit (e.g. part-way through Generate for all): fail at once, without asking.
+  const held = activeLimit(route);
+  if (held) throw new Error(limitMessage(held));
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    res = await fetch(`/api/${route}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch {
     throw new Error("Couldn't reach the app. Check your connection and try again.");
   }
+  const limit = await readLimit(route, res);
+  if (limit) throw new Error(limitMessage(limit));
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(MESSAGES[data.error ?? ""] ?? "Generation failed. Try again.");
   return data;
@@ -42,7 +46,7 @@ export async function requestAssist(req: AssistRequest, demo?: Demo | null): Pro
     await pause();
     return demo.assist(req);
   }
-  return post<AssistData>("/api/assist", req);
+  return post<AssistData>("assist", req);
 }
 
 export interface MetaRequest {
@@ -61,5 +65,5 @@ export async function requestMeta(req: MetaRequest, demo?: Demo | null): Promise
     const value = demo.meta(req.field, req.pageUrl ?? req.pageTitle);
     return { value, overLimit: false, maxChars: 0 };
   }
-  return post("/api/generate-meta", req);
+  return post("generate-meta", req);
 }

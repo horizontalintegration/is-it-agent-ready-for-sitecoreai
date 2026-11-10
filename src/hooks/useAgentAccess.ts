@@ -58,8 +58,7 @@ export function useAgentAccess(siteUrl: string, demo: AgentAccessData | null): U
     }
     let cancelled = false;
     setState((prev) => ({ data: prev.data, status: "loading" }));
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    fetch(`${base}/api/agent-access?domain=${encodeURIComponent(siteUrl)}`)
+    fetch(`/api/agent-access?domain=${encodeURIComponent(siteUrl)}`)
       .then((res) => (res.ok ? (res.json() as Promise<AgentAccessData>) : Promise.reject(new Error(`agent-access ${res.status}`))))
       .then((data) => {
         if (cancelled) return;

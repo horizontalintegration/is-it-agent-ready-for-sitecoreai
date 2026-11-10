@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { safeFetch, validateUrl } from "@/lib/server/safe-fetch";
+import { limitCall } from "@/lib/server/rate-limit";
+import { refuseCrossOrigin } from "@/lib/server/same-origin";
 import type { PsiResult } from "@/lib/rule-engine/types";
 
 export const maxDuration = 100; // seconds — PSI Lighthouse audits can take 20–40s
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
 
 const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
@@ -61,22 +57,23 @@ function extractOpportunities(audits: Record<string, LighthouseAudit>): string[]
     .map((a) => `${a.title} — ${a.displayValue}`);
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
-}
-
 export async function GET(req: NextRequest) {
+  const refused = refuseCrossOrigin(req);
+  if (refused) return refused;
   const url = req.nextUrl.searchParams.get("url");
   if (!url) {
-    return NextResponse.json({ error: "missing_url" }, { status: 400, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "missing_url" }, { status: 400 });
   }
   // Google fetches the page, not us, but only send it public http(s) URLs.
   try {
     validateUrl(url);
   } catch (err) {
     const detail = err instanceof Error ? err.message : "";
-    return NextResponse.json({ error: "blocked_url", detail }, { status: 400, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "blocked_url", detail }, { status: 400 });
   }
+  // Each call spends the PageSpeed quota.
+  const limited = await limitCall("psi-check", req);
+  if (limited) return limited;
 
   const params = new URLSearchParams({ url, strategy: "mobile" });
   if (process.env.PSI_API_KEY) {
@@ -95,7 +92,7 @@ export async function GET(req: NextRequest) {
       const detail = data?.error?.message ?? `PSI API returned status ${res.status}`;
       console.error(`[psi-check] PSI API error for ${url}: ${detail}`);
       const result: PsiResult = { performanceScore: 0, isCrawlable: false, psiError: detail, coreWebVitals: [], opportunities: [] };
-      return NextResponse.json(result, { headers: CORS_HEADERS });
+      return NextResponse.json(result);
     }
 
     const audits = data.lighthouseResult?.audits ?? {};
@@ -109,11 +106,11 @@ export async function GET(req: NextRequest) {
       opportunities: extractOpportunities(audits),
     };
 
-    return NextResponse.json(result, { headers: CORS_HEADERS });
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     console.error(`[psi-check] threw for ${url}: ${message}`);
     const result: PsiResult = { performanceScore: 0, isCrawlable: false, psiError: message, coreWebVitals: [], opportunities: [] };
-    return NextResponse.json(result, { headers: CORS_HEADERS });
+    return NextResponse.json(result);
   }
 }

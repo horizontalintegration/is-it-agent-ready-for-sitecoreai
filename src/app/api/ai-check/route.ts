@@ -12,12 +12,8 @@ import {
   structuredCall,
   type StructuredResult,
 } from "@/lib/server/anthropic";
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+import { limitCall } from "@/lib/server/rate-limit";
+import { refuseCrossOrigin } from "@/lib/server/same-origin";
 
 const SYSTEM = "You are a content analyst. You assess web pages for how useful they are to readers and AI answer engines.";
 
@@ -41,12 +37,15 @@ function pageBlock(pageTitle: string, bodyText: string): string {
   return `Page title: ${pageTitle}\nContent (first 3000 chars): ${bodyText}`;
 }
 
-/**
- * Runs one check, or returns its cached result. The key covers the check ID,
- * prompt version, model and the content the model sees.
- */
+const CHECK_IDS = ["uniqueness", "follow-up-gaps"] as const;
+
+/** The cache key covers the check ID, prompt version, model and the content the model sees. */
+const checkKey = (checkId: string, pageTitle: string, bodyText: string) =>
+  contentKey([checkId, AI_CHECK_VERSION, getModel("bulk"), pageTitle, bodyText]);
+
+/** Runs one check, or returns its cached result. */
 async function cachedCheck<S extends z.ZodType>(args: {
-  checkId: string;
+  checkId: (typeof CHECK_IDS)[number];
   effort: Effort;
   schema: S;
   prompt: string;
@@ -55,7 +54,7 @@ async function cachedCheck<S extends z.ZodType>(args: {
   force: boolean;
 }): Promise<StructuredResult<z.infer<S>> | { ok: true; data: z.infer<S>; cached: true }> {
   const model = getModel("bulk");
-  const key = await contentKey([args.checkId, AI_CHECK_VERSION, model, args.pageTitle, args.bodyText]);
+  const key = await checkKey(args.checkId, args.pageTitle, args.bodyText);
   const hit = args.force ? undefined : aiResultCache.get(key);
   if (hit !== undefined) {
     console.info(`[ai-check] ${args.checkId}: server cache hit ${key.slice(0, 8)}`);
@@ -74,20 +73,18 @@ async function cachedCheck<S extends z.ZodType>(args: {
   return result;
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
-}
-
 export async function POST(req: NextRequest) {
+  const refused = refuseCrossOrigin(req, { requireOrigin: true });
+  if (refused) return refused;
   if (!hasApiKey()) {
-    return NextResponse.json({ error: "api_key_missing" }, { status: 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "api_key_missing" }, { status: 500 });
   }
 
   let body: { pageTitle?: string; bodyText?: string; force?: boolean };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid_body" }, { status: 400, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
   const pageTitle = body.pageTitle ?? "";
@@ -96,6 +93,13 @@ export async function POST(req: NextRequest) {
   console.info(
     `[ai-check] "${pageTitle.slice(0, 80)}": received ${body.bodyText?.length ?? 0} chars of body text, sending ${bodyText.length}`,
   );
+
+  // Counted only when Claude will be called: a page answered from the cache is free.
+  const keys = await Promise.all(CHECK_IDS.map((id) => checkKey(id, pageTitle, bodyText)));
+  if (force || keys.some((k) => aiResultCache.get(k) === undefined)) {
+    const limited = await limitCall("ai-check", req);
+    if (limited) return limited;
+  }
 
   try {
     // Classification at low effort, question generation at medium (plan section 9)
@@ -124,11 +128,11 @@ export async function POST(req: NextRequest) {
 
     if (!uniqueness.ok) {
       const { status, body: errBody } = failureResponse(uniqueness);
-      return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+      return NextResponse.json(errBody, { status });
     }
     if (!gaps.ok) {
       const { status, body: errBody } = failureResponse(gaps);
-      return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+      return NextResponse.json(errBody, { status });
     }
 
     const result: AiResults = {
@@ -137,9 +141,9 @@ export async function POST(req: NextRequest) {
       followUpGaps: gaps.data.gaps.slice(0, 5),
     };
 
-    return NextResponse.json(result, { headers: CORS_HEADERS });
+    return NextResponse.json(result);
   } catch (err) {
     const { status, body: errBody } = aiErrorResponse(err);
-    return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+    return NextResponse.json(errBody, { status });
   }
 }

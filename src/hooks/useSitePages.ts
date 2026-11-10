@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSDK } from "@sitecore-marketplace-sdk/client";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
+import { activeLimit } from "@/lib/api/limits";
 import type { AiResults, ParsedHtml } from "@/lib/rule-engine/types";
 import type { MarkdownCheckData } from "@/lib/markdown/types";
 import { getOrganizationInfo } from "@/lib/brand/organization";
@@ -456,8 +457,6 @@ export function useSitePages(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
   const pagesRef = useRef<PageMatrixRow[]>([]);
   useEffect(() => {
     pagesRef.current = pages;
@@ -490,20 +489,24 @@ export function useSitePages(
       const [htmlRes, markdownRes] = await Promise.allSettled([
         tryJson<ParsedHtml>(
           fetch(
-            `${base}/api/preview-fetch?url=${encodeURIComponent(row.pageUrl)}`,
+            `/api/preview-fetch?url=${encodeURIComponent(row.pageUrl)}`,
           ),
         ),
-        tryJson<MarkdownCheckData>(fetch(`${base}/api/markdown-check?url=${encodeURIComponent(row.pageUrl)}`)),
+        tryJson<MarkdownCheckData>(fetch(`/api/markdown-check?url=${encodeURIComponent(row.pageUrl)}`)),
       ]);
 
       const parsedHtml = htmlRes.status === "fulfilled" ? htmlRes.value : null;
       const markdown = markdownRes.status === "fulfilled" ? markdownRes.value : null;
       let ai: AiResults | null = null;
+      // The ai-check limit was reached: the page is scored without the AI checks
+      // (the banner says so) and not cached, so the next scan scores it in full.
+      let aiLimited = false;
 
       // Fire AI with the page's main text once HTML is in hand (same body as the panel).
       // Cached by content hash, so re-scans of unchanged pages don't call Claude.
       if (parsedHtml?.mainText) {
-        ai = await fetchAiResults(base, parsedHtml.title ?? row.name, parsedHtml.mainText);
+        ai = await fetchAiResults(parsedHtml.title ?? row.name, parsedHtml.mainText);
+        aiLimited = !ai && activeLimit("ai-check") !== null;
       }
 
       if (!parsedHtml) {
@@ -532,11 +535,13 @@ export function useSitePages(
       const score = summarisePageReport(report);
 
       const cachedAt = new Date().toISOString();
-      writeCacheEntry(siteId, row.pageUrl, {
-        score,
-        updatedAt: row.lastModified,
-        cachedAt,
-      });
+      if (!aiLimited) {
+        writeCacheEntry(siteId, row.pageUrl, {
+          score,
+          updatedAt: row.lastModified,
+          cachedAt,
+        });
+      }
 
       updateRow(row.id, {
         score,
@@ -545,7 +550,7 @@ export function useSitePages(
         scanError: undefined,
       });
     },
-    [base, updateRow],
+    [updateRow],
   );
 
   // ── Public actions ───────────────────────────────────────────────────────

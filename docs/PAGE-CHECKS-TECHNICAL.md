@@ -300,6 +300,43 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-a
 
 ---
 
+## Who may call the API routes (Phase 12)
+
+Only the app's own pages: the panel, the dashboard widget and the full-screen app in Sitecore, the standalone dashboard (`?domain=`) and local dev. Background in SPIKE-FINDINGS section 10. Demo mode (`?demo=1`) makes no `/api` call.
+
+**Same origin.** The browser calls every route with a relative URL (`/api/…`), so a call is always to the origin the page came from: production, a preview deployment or `localhost` on any port. `NEXT_PUBLIC_APP_URL` is only used for links (View in dashboard). There are no CORS headers (`next.config.ts` and the routes used to send `Access-Control-Allow-Origin: *`) and no `OPTIONS` handlers.
+
+**Origin check** (`refuseCrossOrigin`, `src/lib/server/same-origin.ts`), first thing in every route:
+
+- Refused when `Sec-Fetch-Site` is present and isn't `same-origin` (`cross-site`, `same-site`, or `none` for a URL typed into the address bar). Inside the Sitecore iframe the app's own calls are `same-origin`: the header compares the calling page with the URL, not with the top window.
+- On the four Claude routes (POST), also refused when `Origin` is missing or isn't the request's own host (`x-forwarded-host`, else `host`). Browsers send `Origin` on every POST, so this also turns away a plain `curl`.
+- Answer: **403** `{ error: "forbidden_origin" }`, logged as `[api] refused /api/… : <reason>`.
+- Why the routes check rather than rely on CORS: a `text/plain` POST and a `no-cors` GET from another website reach the route without a preflight, and the routes parse any body as JSON, so without the check another site could spend on Claude through its visitors' browsers (the browser only hides the answer).
+- A script can send any headers. The rate limits are what stop that.
+
+**Rate limits** (`src/lib/server/rate-limit.ts`), on the routes that spend money:
+
+| Route | Per IP per hour | Daily, all callers | Env vars |
+|---|---|---|---|
+| `ai-check` | 100 | 150 | `RATE_LIMIT_AI_CHECK_IP_HOUR`, `RATE_LIMIT_AI_CHECK_DAY` |
+| `generate-meta` | 20 | 40 | `RATE_LIMIT_GENERATE_META_…` |
+| `assist` | 10 | 20 | `RATE_LIMIT_ASSIST_…` |
+| `citation-probe` | 20 | 30 | `RATE_LIMIT_CITATION_PROBE_…`, plus 40 probes per site per hour |
+| `psi-check` | 20 | 200 | `RATE_LIMIT_PSI_CHECK_…` |
+
+- Sized for a $25 monthly Anthropic limit: at most about $3 a day if every daily ceiling is reached. Each value is a whole number; 0 refuses every call.
+- **Only calls that reach Claude (or PageSpeed) count.** `ai-check` takes a limit only when one of its two checks misses the server cache; `assist` (`isAssistCached`) and `generate-meta` likewise; `citation-probe` counts every question set and every uncached probe. The limit is taken before the Claude call, never after.
+- **Order:** the caller's hourly limit first (key `<route>:ip:<ip>`, the IP from `x-real-ip` or `x-forwarded-for`, both set by Vercel), then the route's daily ceiling (`<route>:day`). A caller over their own limit doesn't use up the daily ceiling.
+- **Windows:** fixed, aligned to the clock, as Upstash counts them. The hourly limit resets on the hour, the daily ceiling at 00:00 UTC.
+- **Where the counts live:** Upstash Redis (Vercel Marketplace, pay as you go at $0.20 per 100K commands; about 2–3 commands a check), from `UPSTASH_KV_REST_API_URL` and `UPSTASH_KV_REST_API_TOKEN` (or `KV_REST_API_*`, `UPSTASH_REDIS_REST_*`). Keys start `iiar:rl:` on Vercel, shared by Production and Preview, and `iiar:rl:local:` elsewhere. `@upstash/ratelimit`'s in-memory cache turns away a caller who is already over the limit without a Redis call. Without Redis (local dev), or when a Redis call fails, the counts are kept in the instance's memory (`MemoryCounter`); if Redis takes over 1.5 s, the call goes through.
+- **Answer:** **429** `{ error: "rate_limited", scope: "ip" | "daily" | "site", retryAfter }` with `Retry-After` (seconds). Anthropic's own rate limit is now a **503** `{ error: "ai_busy" }`, so a 429 always means one of these limits.
+
+**In the browser** (`src/lib/api/limits.ts`): `readLimit` records a 429 per route until it resets, and `activeLimit` stops further calls meanwhile (`fetchAiResults` skips `ai-check`; AI Assist, Generate for all and the probe run fail at once). `LimitBanner` (`src/components/shared/LimitBanner.tsx`), under the panel's and the dashboard's header, says which limit, when to try again in the viewer's local time ("Daily AI limit reached. Try again after 7:00 PM."), and what it holds back; the action that hit it shows the same sentence. A dashboard page scored while the `ai-check` limit is in force is scored without the AI checks and isn't cached, so the next scan scores it in full.
+
+- Tests: `src/lib/server/same-origin.test.ts`, `src/lib/server/rate-limit.test.ts`, `src/lib/api/limits.test.ts`, `src/app/api/routes.test.ts`.
+
+---
+
 ## Tests
 
 | File | Covers |
@@ -323,6 +360,10 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-a
 | `src/lib/relative-time.test.ts` | "N min ago" / "N h ago" / "N days ago" |
 | `src/lib/checks/parity.test.ts` | panel and dashboard read the same fields and give the same score on the same inputs; a draft changes the panel's; the 80 / 60 thresholds |
 | `src/lib/html/extract-html.test.ts` | `mainText` (collapsed answers included), entity decoding, `bodyBlocks`, Q&A pairs (BrandX accordion markup), metadata, JSON-LD blocks |
+| `src/lib/server/same-origin.test.ts` | the origin check on the header sets the browser sends (SPIKE-FINDINGS 10.2): framed and standalone pass; another site, `null`, another port and a missing `Origin` on POST are refused; forwarded host; local dev |
+| `src/lib/server/rate-limit.test.ts` | the env limits, fixed windows (the hour, 00:00 UTC), per IP then daily, routes kept apart, probes per site, the memory fallback when Redis fails, the 429 body |
+| `src/lib/api/limits.test.ts` | reading a 429, its expiry, ignoring `ai_busy`, the banner's sentences |
+| `src/app/api/routes.test.ts` | every route answers another site with a 403 and has no `OPTIONS` handler; the Claude routes refuse a POST with no `Origin` and a cross-site `text/plain` POST |
 
 ---
 
@@ -343,6 +384,8 @@ Every server route that fetches a caller-supplied URL (`preview-fetch`, `agent-a
 | `src/lib/checks/context.ts` | `buildPageContext` (draft → `body`), the shared field names, article/home detection |
 | `src/lib/checks/draft-diff.ts` | Draft vs live block comparison: P3 and the "Draft differs" banner |
 | `src/hooks/usePageHtml.ts` | Reads the draft with `getPageHTML`, debounced on field updates, retried while the canvas loads, with the live fallback |
+| `src/lib/server/same-origin.ts`, `src/lib/server/rate-limit.ts` | Who may call the API routes, and the rate limits (Phase 12) |
+| `src/lib/api/limits.ts`, `src/components/shared/LimitBanner.tsx` | A limit in the browser: remembered until it resets, and the banner |
 | `src/components/panel/` | Score tab, the draft banner, the gate banner, the scan note |
 | `src/components/shared/` | Status icon, score ring, verdict card, category bars, Top fixes, check row, fix button, chips |
 | `src/hooks/useScoreHistory.ts` | "Since last scan" (panel) and the last 8 site scores (dashboard) |

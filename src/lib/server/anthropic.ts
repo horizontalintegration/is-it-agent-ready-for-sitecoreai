@@ -182,8 +182,10 @@ export function aiErrorResponse(err: unknown): { status: number; body: Record<st
   if (err instanceof Anthropic.AuthenticationError) {
     return { status: 500, body: { error: "api_key_invalid" } };
   }
+  // Anthropic's own rate limit: a 503, since a 429 from the app always means
+  // one of the app's limits (rate-limit.ts).
   if (err instanceof Anthropic.RateLimitError) {
-    return { status: 429, body: { error: "rate_limited" } };
+    return { status: 503, body: { error: "ai_busy" } };
   }
   if (err instanceof Anthropic.APIError) {
     return { status: 502, body: { error: "ai_failed", detail: `${err.status ?? ""} ${err.message}`.trim() } };

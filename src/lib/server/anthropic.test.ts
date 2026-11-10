@@ -114,7 +114,10 @@ describe("structuredCall", () => {
 describe("aiErrorResponse", () => {
   it("maps SDK errors by type", () => {
     const headers = new Headers();
-    expect(aiErrorResponse(new Anthropic.RateLimitError(429, undefined, "slow down", headers)).status).toBe(429);
+    expect(aiErrorResponse(new Anthropic.RateLimitError(429, undefined, "slow down", headers))).toEqual({
+      status: 503,
+      body: { error: "ai_busy" },
+    });
     expect(aiErrorResponse(new Anthropic.AuthenticationError(401, undefined, "bad key", headers)).body.error).toBe(
       "api_key_invalid",
     );
