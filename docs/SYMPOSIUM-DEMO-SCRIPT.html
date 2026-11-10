@@ -62,7 +62,7 @@
 <td style="text-align:left">Full width.</td>
 </tr>
 <tr>
-<td style="text-align:left">3. "After" state (optional)</td>
+<td style="text-align:left">3. "Markdown served" state (optional)</td>
 <td style="text-align:left"><code>http://localhost:3000/pages-contextpanel-extension?demo=1&amp;md=1</code></td>
 <td style="text-align:left">As tab 1. The same page once the site serves Markdown to agents.</td>
 </tr>
@@ -102,10 +102,12 @@
 <ul>
 <li><strong>Click:</strong> the <strong>Agent View</strong> tab.</li>
 <li><strong>Point at:</strong> "Agents ask for Markdown. Your site sends them the full HTML page instead.", and the four checks (Markdown response ✕, HTML fallback ✓, Vary: Accept ✕, Distinct versions —).</li>
-<li><strong>Point at:</strong> "If you served Markdown: about 92% fewer tokens", HTML <strong>6,150</strong> vs Markdown <strong>511</strong>.</li>
-<li><strong>Click:</strong> <strong>Human</strong> / <strong>Agent</strong> in the preview to compare the page with the Markdown an agent would get.</li>
-<li><strong>Say:</strong> "This is what an AI agent actually receives. Markdown is a fraction of the size, so agents read more of your content and less of your menus. It's one developer change for the whole site, and the fix cards show how: accept-md for Next.js sites, or a switch in Cloudflare."</li>
-<li><strong>Optional (10 seconds):</strong> switch to tab 3 (<code>&amp;md=1</code>). The same page now scores <strong>84 · Agent-ready</strong>.</li>
+<li><strong>Point at:</strong> "If you served Markdown: about 97% fewer tokens", HTML <strong>15,509</strong> vs Markdown <strong>511</strong>.</li>
+<li><strong>Point at:</strong> <strong>Compare</strong>, which opens on <strong>Before</strong> ("Without optimisation: the full web page an agent downloads today"): the bar, mostly red, and the line "Your content is <strong>2%</strong> of what an agent downloads. <strong>96% (14,925 tokens)</strong> is code and layout." Scroll the page's HTML a little: everything in red is code; the page title is the only plain text near the top.</li>
+<li><strong>Click:</strong> <strong>After</strong> ("With optimisation: the same page as Markdown"): the article as an agent would get it, then <strong>What was removed</strong>: Scripts <strong>−6,281</strong>, Markup <strong>−8,585</strong>, Styles and the menus struck through, <strong>−14,998 tokens, about 97% fewer</strong>.</li>
+<li><strong>Point at:</strong> <strong>Why it matters</strong>: it fits, it's easier to quote, it's cheaper to read.</li>
+<li><strong>Say:</strong> "Red is what an agent pays for and throws away. Today 2% of this page is the article; the rest is code. As Markdown the agent gets the article and nothing else, so it fits in what the agent reads, and it's easier to quote. It's one developer change for the whole site, and the fix cards show how: accept-md for Next.js sites, or a switch in Cloudflare."</li>
+<li><strong>Optional (10 seconds):</strong> switch to tab 3 (<code>&amp;md=1</code>). The same page now scores <strong>84 · Agent-ready</strong>, and the Agent View opens on <strong>After</strong> with the measured saving: <strong>97% fewer tokens</strong>.</li>
 </ul>
 <h3>5. The dashboard (3:15–4:15) · Dashboard, Overview</h3>
 <ul>
@@ -131,7 +133,8 @@
 <li><strong>Generate for all</strong> (Overview): <strong>Show all 18 issues</strong> → "Meta description missing" → <strong>Generate for all</strong> → <strong>Generate 3 descriptions</strong>. Each page gets a suggestion to edit and an unticked <strong>Approve</strong>. Tick two, <strong>Write 2 approved</strong>, and the one confirmation lists both. "Saving for retirement at any age" can't be approved: "This page's template has no "MetaDescription" field." That's the app checking the template before it offers to write.</li>
 <li><strong>Pages:</strong> the heatmap with full category names, filters and sorting. <strong>Open in Page Builder</strong> on "Retirement planning in your 40s" opens the panel demo; on other rows the demo says what would open.</li>
 <li><strong>Files:</strong> the llms.txt generator (with its "When should AI tools use this site?" text) and the robots.txt helper with search, user and training bots as separate choices. "robots.txt is a request, not a lock: firewall rules decide who actually gets in."</li>
-<li><strong>The "after" state:</strong> <code>?demo=1&amp;md=1</code> on the dashboard shows the site once it serves Markdown: site score <strong>79</strong>, <strong>5 Agent-ready</strong>.</li>
+<li><strong>The "Markdown served" state:</strong> <code>?demo=1&amp;md=1</code> on the dashboard shows the site once it serves Markdown: site score <strong>79</strong>, <strong>5 Agent-ready</strong>.</li>
+<li><strong>Full screen:</strong> open <code>http://localhost:3000/fullscreen-extension?demo=1</code> in a wide window. "In SitecoreAI this opens from the <strong>Apps</strong> menu, across the whole screen, for any site in the organisation." Point at the site picker under the app name, and at What changed beside the site score. Pick <strong>Nimbus Goods</strong>: the demo says "Demo: in SitecoreAI this scans Nimbus Goods." (the demo has one site's pages). In Sitecore, the full-screen app and the widget share their scans, so a site scanned in one opens with its scores in the other.</li>
 </ul>
 <hr/>
 <h2>If something goes wrong</h2>
@@ -198,6 +201,14 @@
 <tr>
 <td style="text-align:left">How do we serve Markdown?</td>
 <td style="text-align:left">One developer change for the whole site: accept-md for Next.js (Content SDK) sites, or Markdown for Agents in Cloudflare.</td>
+</tr>
+<tr>
+<td style="text-align:left">Is the red really waste? Isn't the code needed?</td>
+<td style="text-align:left">Browsers need it; agents don't. They read the text, so they pay for the scripts, styles and markup and then discard them. Structured data (JSON-LD) is shown in grey, not red: agents do use it.</td>
+</tr>
+<tr>
+<td style="text-align:left">Is 97% realistic?</td>
+<td style="text-align:left">It's measured the same way on real pages. The real BrandX demo site's home page is about 54,000 tokens as HTML and about 1,500 as Markdown: 97% smaller.</td>
 </tr>
 <tr>
 <td style="text-align:left">Which sites does it work on?</td>

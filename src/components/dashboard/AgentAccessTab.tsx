@@ -84,7 +84,7 @@ export function AgentAccessTab({ siteUrl, report, access, status, onRetry, onOpe
   };
 
   return (
-    <div className="mx-auto flex max-w-[1320px] flex-wrap items-start gap-5 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-[1600px] flex-wrap items-start gap-5 p-4 sm:p-6">
       <section aria-labelledby="site-checklist" className="flex min-w-0 flex-[1_1_420px] flex-col gap-1 rounded-xl border bg-body-bg p-[18px]">
         <h2 id="site-checklist" className="text-lg font-bold">Site checklist</h2>
         <p className="mb-2 text-sm text-subtle-text">Checked once for the whole site. Every page inherits these. They aren&apos;t part of the page scores.</p>

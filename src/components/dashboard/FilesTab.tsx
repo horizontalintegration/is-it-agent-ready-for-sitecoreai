@@ -39,7 +39,7 @@ interface FilesTabProps {
 
 export function FilesTab({ pages, siteUrl, siteName, access, onOpenAgentAccess }: FilesTabProps) {
   return (
-    <div className="mx-auto flex max-w-[1320px] flex-wrap items-start gap-5 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-[1600px] flex-wrap items-start gap-5 p-4 sm:p-6">
       <LlmsTxtCard pages={pages} siteUrl={siteUrl} siteName={siteName} access={access} />
       {/* Re-mounted per scan, so the checkboxes start from the robots.txt just read. */}
       <RobotsCard key={access?.checkedAt ?? "none"} siteUrl={siteUrl} access={access} onOpenAgentAccess={onOpenAgentAccess} />

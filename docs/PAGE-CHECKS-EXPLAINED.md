@@ -68,10 +68,16 @@ The tab asks the published page for Markdown, the way an agent does, and shows:
    - **HTML fallback:** people's browsers still get the normal page.
    - **Vary: Accept:** a technical label that stops caches from handing a browser the Markdown, or an agent the web page.
    - **Distinct versions:** the Markdown really is smaller than the web page. This one waits until Markdown is served.
-2. **The saving:** how many "tokens" (the units AI reads in, about 4 characters each) the web page costs, against the Markdown. If your site doesn't serve Markdown yet, it shows the saving you'd get: **"If you served Markdown: about 92% fewer tokens"**.
-3. **A preview** with a **Human / Agent** switch. **Agent** shows the Markdown itself. If your site doesn't serve it yet, the app converts your draft so you can see what agents would get, labelled **"Preview: your site doesn't serve this yet"**. **Human** shows the page as a person sees it, with its full size.
-4. **Is the Markdown complete?** Once your site serves Markdown: does it start with the page's title and meta description, does it include your content (headings, paragraphs, FAQ answers), and does it leave out the menus and footer?
-5. **How to fix** (for your developer), with **Send to developer**: the options are under **Agents can get this page as Markdown**, below.
+2. **The saving:** how many "tokens" (the units AI reads in, about 4 characters each) the web page costs, against the Markdown. If your site doesn't serve Markdown yet, it shows the saving you'd get: **"If you served Markdown: about 97% fewer tokens"**.
+3. **Compare**, with a **Before / After** switch. It opens on **Before** when your page doesn't serve Markdown (the problem), and on **After** when it does (the win).
+   - **Before**, "Without optimisation: the full web page an agent downloads today." A bar and a list show where the page's tokens go: **your content**, **scripts**, **styles**, **markup** (the page's code: tags, settings, icons), **menus, header and footer**, and **structured data**. Each has its count and share, so the colours are never the only clue. Scripts, styles, markup and menus are red: an agent pays for them and throws them away. Structured data is grey, not red, because agents use it. One line sums it up, for example **"Your content is 2% of what an agent downloads. 96% (14,925 tokens) is code and layout."** Below it is the start of the page's actual code, with the red parts highlighted and your content left plain. On many sites your content doesn't appear until thousands of tokens in, and the tab says where it starts.
+   - **After**, "With optimisation: the same page as Markdown." This is the Markdown itself. If your site doesn't serve it yet, the app converts your draft so you can see what agents would get, labelled **"Preview: your site doesn't serve this yet"**. Below it, **What was removed** lists each red part struck through, with the tokens it saves, and the total (for example **"−14,998 tokens, about 97% fewer"**; without "about" once your site serves Markdown and the saving is measured).
+4. **Why it matters**, under the switch in both views, using this page's own numbers:
+   - **It fits:** agents read within a fixed token budget, so a page that's mostly code can be cut short before they reach your content.
+   - **It's easier to quote:** with less noise, your answer is easier for an agent to find and cite correctly.
+   - **It's cheaper to read:** agents can read more of your site for the same cost.
+5. **Is the Markdown complete?** Once your site serves Markdown: does it start with the page's title and meta description, does it include your content (headings, paragraphs, FAQ answers), and does it leave out the menus and footer?
+6. **How to fix** (for your developer), with **Send to developer**: the options are under **Agents can get this page as Markdown**, below.
 
 The score counts the four checks as one Essential check (**Agents can get this page as Markdown**) and the completeness as a Recommended one (**The Markdown version is complete**).
 
@@ -320,3 +326,4 @@ For the full 5-minute walk-through with demo data, see **SYMPOSIUM-DEMO-SCRIPT**
 - **"One set of rules everywhere."** The panel and the dashboard score with the same rules. The panel scores your draft, the dashboard the published page.
 - **"A perfect page can still be invisible."** If the firewall blocks ChatGPT, no page edit helps; the red strip says so and points to the dashboard.
 - **"See what the agent gets."** The Agent View shows the page as Markdown, and the saving: on the BrandX demo site, which now serves Markdown, the home page is about 1,500 tokens instead of 54,000.
+- **"Red is what an agent pays for and throws away."** **Before** marks the code in the page an agent downloads; **After** shows what Markdown removes. On the BrandX demo site's home page, under 1% of the HTML is the content itself.

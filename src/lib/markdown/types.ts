@@ -20,6 +20,29 @@ export interface MarkdownProbe {
   tokens: number;
 }
 
+/**
+ * Where an HTML page's characters go (plan Phase 13, the Agent View's Before
+ * view). Content is the main text the Markdown keeps; scripts, styles, markup
+ * and chrome are what Markdown drops; structured data (JSON-LD) is neutral.
+ */
+export type AnatomyKind = "content" | "scripts" | "styles" | "markup" | "chrome" | "structuredData";
+
+export interface HtmlAnatomy {
+  /** Estimated tokens per category over the whole page. They add up to the probe's `tokens`. */
+  tokens: Record<AnatomyKind, number>;
+  /** Tokens before the first character of content in <body>; null when there's none. */
+  contentStartsAt: number | null;
+}
+
+/** The start of the page's HTML, each run of characters with its category. */
+export interface HtmlExcerpt {
+  segments: Array<{ kind: AnatomyKind; text: string }>;
+  /** Estimated tokens in the excerpt. */
+  tokens: number;
+  /** The page is longer than the excerpt. */
+  truncated: boolean;
+}
+
 export interface MarkdownCheckData {
   /** The page requested. */
   url: string;
@@ -35,7 +58,12 @@ export interface MarkdownCheckData {
     truncated: boolean;
   };
   /** The `Accept: text/html` request. */
-  html: MarkdownProbe;
+  html: MarkdownProbe & {
+    /** Tokens per category, when it returned an HTML page (200, text/html). Null otherwise. */
+    anatomy: HtmlAnatomy | null;
+    /** The first 16 KB, classified: only when asked for (`excerpt=1`, the panel). Null otherwise. */
+    excerpt: HtmlExcerpt | null;
+  };
   /**
    * The local conversion of the published HTML, when the page doesn't serve
    * Markdown: what it could send, and the estimated saving. Null otherwise.

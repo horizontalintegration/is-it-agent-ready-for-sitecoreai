@@ -33,7 +33,8 @@ export function useMarkdownCheck(pageUrl: string, demo: MarkdownCheckData | null
     // A new page clears the old result; a Re-scan keeps it until the new one is in.
     setState((prev) => ({ url: pageUrl, data: prev.url === pageUrl ? prev.data : null, status: "loading" }));
     const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    fetch(`${base}/api/markdown-check?url=${encodeURIComponent(pageUrl)}`)
+    // excerpt=1: the start of the HTML, for the Agent View's Before view.
+    fetch(`${base}/api/markdown-check?url=${encodeURIComponent(pageUrl)}&excerpt=1`)
       .then((res) => (res.ok ? (res.json() as Promise<MarkdownCheckData>) : Promise.reject(new Error(`markdown-check ${res.status}`))))
       .then((data) => !cancelled && setState({ url: pageUrl, data, status: "done" }))
       .catch(() => !cancelled && setState({ url: pageUrl, data: null, status: "error" }));

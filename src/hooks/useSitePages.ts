@@ -12,6 +12,7 @@ import { summarisePageReport, type PageScoreSummary } from "@/lib/checks/view-mo
 import type { PageMatrixRow, RowScanStatus } from "@/types/dashboard";
 import { HOST_AUTH_ERROR_MESSAGE, isHostAuthError } from "@/lib/xmc-errors";
 import { tenantNameFromHostState } from "@/lib/pages-editor-url";
+import type { SiteOption } from "@/lib/sitecore/sites";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -432,9 +433,16 @@ export interface UseSitePagesResult {
   clearAndRefresh: () => void;
 }
 
+/**
+ * The site's pages, scored. The dashboard widget follows `site.context`
+ * (`site` left out). The full-screen app has no site context, so it passes
+ * the site picked from xmc.sites.listSites (null until there is one); its
+ * host name and home item then stand in for retrieveSite.
+ */
 export function useSitePages(
   client: ClientSDK | null,
   isInitialized: boolean,
+  site?: SiteOption | null,
 ): UseSitePagesResult {
   const [pages, setPages] = useState<PageMatrixRow[]>([]);
   const [siteContext, setSiteContext] = useState({
@@ -460,6 +468,11 @@ export function useSitePages(
   // right bucket. Updated by the site.context subscription below.
   const currentSiteIdRef = useRef<string>("");
   const currentSiteNameRef = useRef<string>("");
+  // The given site (full screen), read by enumerateAndScan in place of retrieveSite.
+  const givenSiteRef = useRef<SiteOption | null>(null);
+  // Bumped by every enumeration: a run that's no longer the latest (the site
+  // changed meanwhile) stops instead of listing or scanning the old site.
+  const runRef = useRef(0);
 
   const updateRow = useCallback((id: string, patch: Partial<PageMatrixRow>) => {
     setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -468,6 +481,8 @@ export function useSitePages(
   // ── Scan a single page: HTML, then AI, then the page checks ──────────────
   const scanOne = useCallback(
     async (row: PageMatrixRow) => {
+      // The row's site, even if another site is picked before the scan ends.
+      const siteId = currentSiteIdRef.current;
       updateRow(row.id, { scanStatus: "scanning", scanError: undefined });
 
       // The live page, and the page requested as an agent and as a browser (P5, P6).
@@ -517,7 +532,7 @@ export function useSitePages(
       const score = summarisePageReport(report);
 
       const cachedAt = new Date().toISOString();
-      writeCacheEntry(currentSiteIdRef.current, row.pageUrl, {
+      writeCacheEntry(siteId, row.pageUrl, {
         score,
         updatedAt: row.lastModified,
         cachedAt,
@@ -565,6 +580,8 @@ export function useSitePages(
       );
       return;
     }
+    const run = ++runRef.current;
+    const stale = () => run !== runRef.current;
 
     setIsLoading(true);
     setError(null);
@@ -674,7 +691,12 @@ export function useSitePages(
       // 2. Try xmc.sites.retrieveSite — gives us targetHostname (public domain)
       // AND homePageId (the home item ID) in one call. If the Sites scope isn't
       // available (401 M2M error), we fall back to env domain + content-tree walk.
-      const siteInfo = await retrieveSiteInfo(client, siteId, sitecoreContextId);
+      // The full-screen app's site came from listSites, which already has both.
+      const given = givenSiteRef.current?.id === siteId ? givenSiteRef.current : null;
+      const siteInfo: RetrieveSiteResult = given
+        ? { targetHostname: given.domain || null, homePageId: given.homePageId }
+        : await retrieveSiteInfo(client, siteId, sitecoreContextId);
+      if (stale()) return;
       if (siteInfo.apiError) {
         console.warn(
           "[sitePages] retrieveSite API error — falling back to env domain + content-tree walk:",
@@ -754,6 +776,7 @@ export function useSitePages(
           ...(sitecoreContextId ? { query: { sitecoreContextId } } : {}),
         },
       } as Parameters<ClientSDK["mutate"]>[1]);
+      if (stale()) return;
 
       const envelope: GqlEnvelope =
         ((gqlRes as { data?: GqlEnvelope })?.data as GqlEnvelope) ??
@@ -872,9 +895,10 @@ export function useSitePages(
       // category cards, and worst-pages list fill in live with a progress bar.
       const toScan = rows.filter((r) => r.scanStatus === "idle");
       await withConcurrency(toScan, CONCURRENCY, async (row) => {
-        await scanOne(row);
+        if (!stale()) await scanOne(row);
       });
     } catch (err) {
+      if (stale()) return;
       console.error("[sitePages] enumeration failed:", err);
       const message = err instanceof Error ? err.message : String(err);
       setError(isHostAuthError(err) ? HOST_AUTH_ERROR_MESSAGE : `Could not load pages: ${message}`);
@@ -882,11 +906,28 @@ export function useSitePages(
     }
   }, [client, scanOne]);
 
+  // ── The given site (full screen) ─────────────────────────────────────────
+  const followsContext = site === undefined;
+  const givenSiteId = site?.id ?? "";
+  useEffect(() => {
+    givenSiteRef.current = site ?? null;
+  }, [site]);
+  useEffect(() => {
+    if (followsContext || !client || !isInitialized || !givenSiteId) return;
+    givenSiteRef.current = site ?? null;
+    currentSiteIdRef.current = givenSiteId;
+    currentSiteNameRef.current = site?.name ?? "";
+    setPages([]);
+    void enumerateAndScan();
+    // A new pick re-lists; the same site re-rendered doesn't.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followsContext, client, isInitialized, givenSiteId, enumerateAndScan]);
+
   // ── site.context subscription ────────────────────────────────────────────
   // Pages app updates site.context when the user switches sites in the
   // dashboard; subscribing means we auto-re-enumerate without a manual reload.
   useEffect(() => {
-    if (!client || !isInitialized) return;
+    if (!followsContext || !client || !isInitialized) return;
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
@@ -951,7 +992,7 @@ export function useSitePages(
         /* ignore */
       }
     };
-  }, [client, isInitialized, enumerateAndScan]);
+  }, [followsContext, client, isInitialized, enumerateAndScan]);
 
   const refresh = useCallback(() => {
     void enumerateAndScan();

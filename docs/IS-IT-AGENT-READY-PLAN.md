@@ -317,7 +317,7 @@ Tabs: **Score · Agent View · AI Assist**
 **Agent View tab** (Phase 7)
 - A status row with the 4 accept.md checks.
 - A token savings bar (HTML tokens vs Markdown tokens).
-- A Human / Agent toggle: the rendered Markdown, or the local conversion preview labelled "Preview: your site doesn't serve this yet".
+- A Human / Agent toggle: the rendered Markdown, or the local conversion preview labelled "Preview: your site doesn't serve this yet". **Phase 13 replaces it** with a **Before / After** toggle: the HTML an agent gets today with the wasted tokens in red, then the Markdown with the tokens it saves, and a "Why it matters" card.
 - Markdown quality checks.
 - How-to-fix cards.
 
@@ -466,6 +466,8 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 ---
 
 ## 10. Phases
+
+**Order of the remaining phases (agreed with the user on 2026-11-04):** Phase 13 (Agent View Before / After), then Phase 14 (full-screen app), then Phase 12 (protect the API routes) last. Phases 12–14 keep their numbers. Phase 12's branch and its spike (SPIKE-FINDINGS section 10) already exist.
 
 ### Phase 0 — Setup and spikes (no user-visible change)
 - Upgrade `@sitecore-marketplace-sdk/client` and `@sitecore-marketplace-sdk/xmc` to their latest versions. Fix any breaking changes.
@@ -669,7 +671,7 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
   - Drop the wildcard CORS. Accept browser requests only from the app's own origin (`Origin` / `Sec-Fetch-Site`). This stops other websites from using the routes through their visitors' browsers. A script can fake these headers, which is why the rate limits are needed too.
   - Rate limits on the Claude routes and `psi-check` that hold across instances: per IP, plus a daily ceiling per route. When a limit is hit, the panel and dashboard say so in plain words, for example "Daily AI limit reached. Try again tomorrow."
   - A verified caller identity only if the spike finds a cheap way.
-- **Must keep working:** the panel and dashboard inside Sitecore, the standalone dashboard with `?domain=`, `?demo=1` (it makes no `/api` call), and local dev.
+- **Must keep working:** the panel, the dashboard and the full-screen app (Phase 14) inside Sitecore, the standalone dashboard with `?domain=`, `?demo=1` (it makes no `/api` call), and local dev. The full-screen app is served from the same origin, so a same-origin rule covers it, but check it in Sitecore with the other two.
 - **Rule:** a new service or a paid tier needs the user's approval, with the cost, before it's added.
 - **Accept when:**
   - the Claude routes refuse requests from another origin
@@ -677,6 +679,138 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
   - the panel and dashboard still work in Sitecore (checked by the user)
   - demo mode makes no `/api` call
   - tests and the TECHNICAL docs are updated
+
+### Phase 13 — Agent View: Before / After
+- **Why:** the Agent View's **Human / Agent** toggle doesn't show the problem. "Human" shows the H1, the first paragraph and a token count, not what an agent really receives, so the 97% saving is only a number. The user asked (2026-11-04) for a "without optimisation" view that marks the wasted tokens in red, a "with optimisation" view that shows the tokens saved, and a line on why it matters.
+- **Tab names: Before / After** (section 12, decision 6). The user's names, "Without optimisation" and "With optimisation", become the caption under each view. Both full names together take about 260 px at 12 px. That doesn't fit in the panel's 288 px content width next to the section title. Two short words read as a story in the demo: "Before you fix it, after you fix it".
+  - **Before:** "Without optimisation: the full web page an agent downloads today."
+  - **After:** "With optimisation: the same page as Markdown." When the site doesn't serve Markdown yet, keep the existing "Preview: your site doesn't serve this yet" line.
+  - **Default view:** Before when the page doesn't serve Markdown (it shows the problem first); After when it does (it shows the win).
+- **Before view:**
+  1. **Where the tokens go:** one stacked bar over the whole HTML page, with a legend in words and token counts. It counts these categories:
+     - **Your content:** the main text that ends up in the Markdown. Plain colour.
+     - **Scripts:** `<script>` and inline data blobs (e.g. `__NEXT_DATA__`). Red.
+     - **Styles:** `<style>` and `style=""`. Red.
+     - **Markup:** tags, attributes, comments and inline SVG. Red.
+     - **Menus, header and footer:** chrome text outside the main content. Red.
+     - **Structured data:** JSON-LD. Neutral, not red: agents use it (P10, S7).
+  2. **The HTML itself:** the start of the page's HTML, with each red category in a red highlight (`<mark>`). Your content stays unmarked. Show "Showing the first N of M tokens" under it.
+  3. One summary line, e.g. "Your content is 3% of what an agent downloads. The other 97% (52,100 tokens) is code and layout."
+- **After view:**
+  1. **The Markdown** (served, or the local preview, as today), with your content kept.
+  2. **What was removed:** each red category from Before, struck through, with its tokens in green ("Scripts −24,800"), and the total ("−52,100 tokens, 97% fewer"). On a page that serves Markdown it shows the measured saving; otherwise "about".
+- **Why it matters:** a short card under the toggle, shown in both views, with three points. Use only this page's own numbers and make no claims about specific AI vendors:
+  - **It fits:** agents read within a fixed token budget. A page that is mostly code can be cut short before they reach your content.
+  - **It's easier to quote:** with less noise, your answer is easier for an agent to find and cite correctly.
+  - **It's cheaper to read:** agents can read more of your site for the same cost.
+- **Data:** the route already fetches the HTML. **This changes Phase 7's "no HTML body in the route":**
+  - `api/markdown-check` adds `html.anatomy`, the tokens per category over the whole HTML (characters ÷ 4, as agreed in Phase 7).
+  - It also adds `html.excerpt`: the first 16 KB, as a list of `{ kind, text }` segments.
+  - Classify in a pure function, `src/lib/markdown/anatomy.ts`. "Your content" reuses the main-text extraction that P3, P6 and the preview already use, so the numbers match the Markdown.
+  - The breakdown comes from the live page, because the draft has no `<head>` or scripts. The preview still converts the draft.
+- **Accessibility (principle 6):** red is never the only signal. The legend names every category with its share, the `<mark>`s carry the category in a visually hidden label, and the excerpt keeps `tabIndex={0}` and wraps at 320 px.
+- **Demo:** give `makeTestPageSource` a realistic `<head>` and body: scripts, a Next.js data blob, styles, an inline SVG logo, nav and footer. Its shares should then come out close to the BrandX replica's (about 97% overhead on the home page, Phase 7). Make both `?demo=1` and `&md=1` tell the story.
+- **Departs from the Symposium mockup** (Human / Agent), at the user's request. Update the Agent View step and its talk track in `SYMPOSIUM-DEMO-SCRIPT.md`, e.g. "Red is what an agent pays for and throws away."
+- **Docs:**
+  - `PAGE-CHECKS-EXPLAINED.md` (the Agent View section)
+  - `PAGE-CHECKS-TECHNICAL.md` (the route's new fields, the classifier)
+  - the demo script
+  - Rebuild them with `node docs/build-docs.js`.
+- **Accept when:**
+  - **On a page without Markdown** (`?demo=1`, and the replica with accept-md off or a page it doesn't cover):
+    - Before shows the red highlights, the breakdown and the summary line.
+    - After shows the preview, the struck-through categories, and "about N% fewer tokens".
+  - **On a 4/4 page** (`&md=1`, the replica): the same views, with the measured saving.
+  - In both cases, "Why it matters" is visible.
+  - **Tests:** vitest covers the classifier on the BrandX captures in `src/lib/html/fixtures/`:
+    - the categories add up to the page's total tokens
+    - JSON-LD counts as Structured data
+    - collapsed FAQ answers count as content
+  - **Layout:** no horizontal scroll at 320 px. Statuses use words, not colour alone.
+  - **Demo:** demo mode makes no request outside the app.
+  - **Sitecore:** the user checks it in Page Builder.
+- **Status (2026-11-05): done (PR #35).** Deployed to production and checked by the user, who reported it working (section 13, item 17). Branch `feature/v2-phase-13-agent-view-before-after`.
+- **Agreed decisions** (with the user, 2026-11-04): Before / After with the captions (decision 6), under the section title **Compare**; `html.anatomy` always, `html.excerpt` only with `&excerpt=1` (the panel), because the dashboard calls the route for every page; the `<title>` counts as content (it becomes the front matter), whitespace between tags as markup, hidden text that isn't a FAQ panel as menus, header and footer; the summary's "code and layout" counts only the red kinds, not JSON-LD; What was removed totals HTML minus Markdown tokens (the token card's saving), so the rows don't add up to it exactly; the token card stays as in the mockup; Before by default without Markdown, After with it, a pick held until the page changes; "Your content starts about N tokens in" when the excerpt has no body content; four reds, primary for content, grey for structured data; the demo page weighted like a real Next.js page; Why it matters under the switch in both views.
+- **Built:**
+  - **`src/lib/markdown/anatomy.ts`:** `classifyHtml` walks the `node-html-parser` tree by its source ranges and gives every character one of the six categories. Content uses `extractMainText`'s rules through the new shared `mainTextScope` and `isHiddenText` (`extract-html.ts`), so collapsed FAQ answers count. `analyseHtml` returns the tokens per category (largest-remainder rounding, so they add up to `html.tokens`), `contentStartsAt` (measured in `<body>`, since the title is content too), and with `excerptChars` the first 16 KB as merged `{ kind, text }` runs.
+  - **Route:** `html.anatomy` when the HTML request returned a page (200, `text/html`), with or without Markdown; `html.excerpt` with `&excerpt=1`, which `useMarkdownCheck` sends and `useSitePages` doesn't.
+  - **Agent View:** Human / Agent replaced by **Compare · Before / After**. Before shows the caption, the stacked bar and the legend (words, tokens, shares; "under 1%" for slivers), the summary line, the HTML excerpt with red `<mark>`s (JSON-LD grey; the category in a `title` and a visually hidden label; `tabIndex={0}`; wraps anywhere), and "Showing the first N of M tokens". After shows the caption, the Markdown and its existing line, and What was removed (`<del>` rows, green savings, the total). **Why it matters** is under the switch in both views, with this page's numbers. The panel no longer passes `body` to the tab.
+  - **Demo:** `makeTestPageSource` (published) is now weighted like the BrandX replica: chunk scripts and preloads, JSON-LD, stylesheet links, utility classes, image `srcSet`s, inline SVG icons and logo, and `__NEXT_DATA__` with the layout data. The draft keeps its empty head and no scripts. The Markdown (preview, served and draft) is byte-for-byte the same as before. `makeTestMarkdownCheck` measures the HTML's bytes and tokens from the source (the fixed 24,600 bytes are gone) and adds the anatomy and excerpt. The demo's HTML went from 6,150 to 15,509 tokens: "about 92%" became "about 97% fewer tokens"; every score and count is unchanged.
+  - **Docs:** PAGE-CHECKS-EXPLAINED (the Agent View, a talking point), PAGE-CHECKS-TECHNICAL (the route's fields, the classifier, the tab, tests), PAGE-MATRIX-TECHNICAL (the dashboard doesn't ask for the excerpt; the demo page's weight), SYMPOSIUM-DEMO-SCRIPT (step 4 with Before / After and "Red is what an agent pays for and throws away", the `&md=1` tab renamed "Markdown served" so it isn't confused with After, two likely questions).
+- **Checked:** vitest (483 tests), lint, `next build`; docs rebuilt and the four changed PDFs re-printed (headless Edge).
+  - **Real run (2026-11-04, approved, 6 GETs, no Claude call, $0):** the route's collector with `excerpt` against the BrandX replica, which serves Markdown on every page (the 4/4 case). `/`: HTML 53,673 tokens, Markdown 1,508 (97.2% fewer); content 420 (0.8%), scripts 37.5%, styles 0.2%, markup 60.9%, chrome 0.3%, structured data 0.4%, adding up exactly. `/services`: 53,561, 97.3% fewer, markup 62%, scripts 36%, content 0.8%. `/contact-and-support`: 42,623, 98.1% fewer, content 0.5%. The first content is 6,400–7,500 tokens in, past the 4,096-token excerpt, so the tab says where it starts. The replica's markup is Tailwind classes, image `srcSet`s and inline SVG chevrons; its CSS is external. The demo page was tuned to this shape. The no-Markdown case on a real site wasn't run: accept-md covers every replica page, and the classifier reads the same HTML either way.
+  - **Headless Edge against a local production build, every request outside `localhost:3000` blocked and logged:** `?demo=1` opens on Before with the bar, the legend (content 313 · 2%, scripts 6,281 · 40%, styles 37 · under 1%, markup 8,585 · 55%, menus 22 · under 1%, structured data 271 · 2%), "Your content is 2% of what an agent downloads. 96% (14,925 tokens) is code and layout.", 18 red and 1 grey `<mark>`s each with a hidden label, and "Showing the first 4,096 of 15,509 tokens."; After shows the draft preview, its "Preview: your site doesn't serve this yet" line, four struck-through rows and "−14,998 tokens, about 97% fewer". `&md=1` opens on After with "What your site sends…" and "−15,081 tokens, 97% fewer", and Before shows the same breakdown. Why it matters is visible in all four. No horizontal scroll at 320 and 375 px (the excerpt wraps inside its box), the demo dashboard loads, no request outside the app, no `/api` call, no console error.
+
+### Phase 14 — Full-screen app
+- **Why:** the user wants the app in SitecoreAI's **full-screen** extension point (`xmc:fullscreen`, in the core SDK's `AllowedExtensionPoints`). Sitecore lists such an app in the **Apps** drop-down of the SitecoreAI navigation header, and it opens full screen below that header (doc.sitecore.com/mp, "Extension points"). One app can enable several extension points, each with its own route, so the panel and the dashboard widget are unchanged.
+- **What it shows:** the dashboard widget at full size: the same header and the same five tabs, using the width. The Pages heatmap shows every category column without scrolling, and the Overview puts the hero and What changed side by side above 1280 px. No new features (section 12, decision 7).
+- **How it opens** (agreed with the user on 2026-11-04): **only from SitecoreAI's Apps menu.** There's no button in the dashboard widget.
+- **Which site:** the Apps menu sits outside any site, so the full-screen app likely gets no `site.context` (the widget reads its site from there today, in `useSitePages`). It gets a **site picker** in its header. It opens on the site picked last time (localStorage, per organisation), or the first site when there's none.
+- **Already enabled (2026-11-04):** the user switched on **Full screen** in the Cloud Portal (display name "Is It Agent-Ready for SitecoreAI?", Route URL `/`), and the app shows in the Apps menu. **`/` returns 404 on production**: the app has no root page, only `/dashboard-widget-extension` and `/pages-contextpanel-extension`. Opening it from the Apps menu shows a 404 until this phase ships.
+  - **Recommended:** change the Route URL to `/fullscreen-extension`, which matches the other two routes. That keeps `/` free for a landing page or the public scanner (section 11), and outside Sitecore `/` would get no host context anyway.
+  - **Until then:** turn Full screen off, or leave it on and point it at the spike page below.
+- **[SPIKE] first** (write to `docs/SPIKE-FINDINGS.md` section 11). The spike runs on a temporary page at `/fullscreen-extension` that logs, like the Phase 0 and Phase 9 spike boxes, opened from the Apps menu:
+  - **Host and context:**
+    - Which host type mounts it. Find out from the `host.state` shape (SPIKE-FINDINGS 7.1: `null`, `{ environment, language }`, or `{ organizationId, xmCloudTenantInfo, userInfo }`).
+    - What `application.context` returns: the Context IDs, and the extension point and its route.
+    - Whether `site.context` and `pages.context` answer. If `site.context` gives a site, the picker only switches sites.
+  - **Auth (remember section 13, item 1):** whether built-in authorization attaches a token here. Test `xmc.sites.listSites`, `xmc.sites.retrieveSite` and one authoring GraphQL query.
+  - **Open in Page Builder:** the tenant name, from `xmCloudTenantInfo.name` or the `tenant_name` claim (item 8).
+  - **The language**, and whether the host passes a theme.
+  - **Storage:** whether the full-screen iframe sees the widget's localStorage (the page cache and history). It should, being the same origin under the same Sitecore host.
+- **Build** (confirm after the spike):
+  - **Route:** `src/app/fullscreen-extension/page.tsx`.
+  - **Shared dashboard component:** move the dashboard page's body into `src/components/dashboard/DashboardApp.tsx`. It takes the site from a prop. The widget passes `site.context`; full screen passes the picked site; standalone passes `?domain=`.
+  - **`useSitePages`:** accepts a given site instead of subscribing to `site.context`.
+  - **Site picker:** from `xmc.sites.listSites`, remembering the last pick per organisation in localStorage.
+  - **Demo:** `/fullscreen-extension?demo=1` with a fixture list of two sites (BrandX plus one more) and no requests.
+  - **Keep** every localStorage key, so the full-screen app and the widget share the page cache, the agent-access cache and the history.
+- **Manual step for the user:** in the Cloud Portal, edit Full screen's Route URL to `/fullscreen-extension`. The app logo is what the Apps drop-down shows. API access is per app, so nothing else changes.
+- **Docs:**
+  - the README's extension points
+  - `PAGE-MATRIX-EXPLAINED.md` and `PAGE-MATRIX-TECHNICAL.md` (where to find the app, the site picker)
+  - an optional extra in the demo script
+- **Accept when:**
+  - **In Sitecore** (checked by the user):
+    - The app opens full screen from the Apps menu.
+    - It lists the sites, picking one scans it, and it reopens on that site.
+    - The five tabs work, and Open in Page Builder opens the page in Page Builder.
+  - **The widget and the panel are unchanged:**
+    - The widget still follows the site selected in Sitecore.
+    - The panel is unaffected.
+  - **Demo:** `?demo=1` works with no network.
+  - **Layout:** no horizontal scroll at 375 px, and the full width is used at 1440 px.
+  - **Tests:** vitest covers the site choice (remembered site, first site, a remembered site that no longer exists).
+- **Status (2026-11-05): built, waiting for the check in Sitecore** (section 13, item 18). Branch `feature/v2-phase-14-fullscreen-app`.
+- **Spike (2026-11-05, SPIKE-FINDINGS §11):** run from the Apps menu on production through a temporary page (PR #37, and PR #38 for a client that never started). The user changed Full screen's Route URL to `/fullscreen-extension` the same day. Findings:
+  - The full-screen host is the Pages-style host, with a Context ID.
+  - `site.context` and `pages.context` answer with no data.
+  - `listSites`, `retrieveSite` and authoring GraphQL work with built-in authorization. `listSites` already has each site's host name and home item.
+  - The tenant name is only in the `userInfo` claim.
+  - There's no language or theme.
+  - localStorage is shared with the widget, under the same site IDs.
+  - **`navigateToExternalUrl` isn't implemented** by this host.
+- **Agreed decisions** (with the user, 2026-11-05):
+  - **Default site:** the remembered site, else the site on `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN`, else the first site with a host name. listSites puts kpdemo first, and it has none.
+  - **Sites without a host name:** listed, disabled.
+  - **Remembered pick:** under `aiDiscovery:fullscreenSite:v1:<organizationId>`.
+  - **Open in Page Builder:** in full screen, with `window.open`.
+  - **Language and theme:** `en` and light, no picker.
+  - **Width:** tabs capped at 1600 px, up from 1320.
+  - **Demo:** picking the second site shows a toast and stays on BrandX.
+- **Built:**
+  - **`DashboardApp`** (`src/components/dashboard/DashboardApp.tsx`): the dashboard page's body, taking the client and an optional site, a picker, a site error and `openPagesInNewTab`. The widget route renders it as before.
+  - **`useSitePages(client, isInitialized, site?)`:** a given site replaces the `site.context` subscription and `retrieveSite`. A run counter stops an enumeration whose site changed meanwhile, and a scan caches under the site it started on.
+  - **`useSiteList`** reads `application.context`, then calls `listSites`. **`src/lib/sitecore/sites.ts`** has `siteOptionsFromListing`, `chooseSite` and the remembered pick.
+  - **`/fullscreen-extension`:** the picker under the app name. Outside Sitecore it shows "Open this from the Apps menu". It shows an alert when the sites can't be listed (with Retry), when none has a host name, or when the client can't connect. It mounts the client only once it knows where it runs.
+  - **Overview from 1280 px:** What changed beside the hero.
+  - **Demo:** `makeTestSiteList()`.
+  - The spike page is removed.
+- **Docs:**
+  - README: extension points, setup, demo.
+  - PAGE-MATRIX-EXPLAINED: where to find it, the header, What changed, a talking point.
+  - PAGE-MATRIX-TECHNICAL: where the dashboard runs, the site choice, storage, layout, demo, key files.
+  - The demo script's "If you have more time".
 
 ---
 
@@ -704,6 +838,8 @@ Tabs: **Overview · Pages · Agent access · AI citations · Files**
 | 3 | Optional extra citation engines (Perplexity / Gemini / OpenAI keys) | **Kept at the default in Phase 8 (2026-11-02): Claude only.** No Settings button; the probe types leave room for more engines. |
 | 4 | Blok vs custom tokens | **Decided:** Blok (Phase 0 spike), adopted in Phase 5 |
 | 5 | Build the public scanner (Phase 11)? | **Decided 2026-11-04: not now.** Moved to future scope (section 11), after Phase 12. |
+| 6 | Agent View toggle names (Phase 13) | **Decided 2026-11-04: Before / After**, with "Without optimisation…" / "With optimisation…" as the captions, under the section title "Compare". The full names don't fit next to the section title at 320 px. |
+| 7 | What the full-screen app shows (Phase 14) | **Decided 2026-11-04: the dashboard widget at full size**, opened only from SitecoreAI's Apps menu, with a site picker. No button in the widget, no page detail drawer. |
 
 ---
 
@@ -728,4 +864,6 @@ Things left open by a phase. Each phase session reads this list first and picks 
 | 13 | **Phase 8 on the deployed app.** Checked with a local production build only (the standalone dashboard against the replica, plan Phase 8 status). Not yet seen: the probe route on Vercel (a probe takes about 30 s, within `maxDuration = 90`), the tab inside Sitecore (item 8), and a real page that is found or cited (the replica isn't in any search results yet). The probe cache and the per-site rate limit live in one server instance's memory, so on Vercel they don't carry across instances or cold starts (the browser's 7-day cache still does). | **Deployed probe done (2026-11-02):** on production with `?domain=` the replica, one question probed and re-run from the cache, demo mode and the panel checked (plan Phase 8 status). **The tab inside Sitecore works (2026-11-03).** **A real found and cited page (2026-11-03):** the user ran irs.gov with "What are the 2026 IRA contribution limits?" (the spike's case, SPIKE-FINDINGS §5) in the standalone dashboard, and it worked. | — (if several people use the probes, or cost control across instances matters, revisit decision 2 (shared storage) together with authentication on the API routes) |
 | 14 | **Phase 9 acceptance in Sitecore.** Built and checked in `?demo=1`, and the AI routes with real Claude calls on a local build (plan Phase 9 status). Not yet seen with real writes: Apply on each card in Page Builder, the confirm dialog inside the iframe, the `[audit]` line and toast, a disabled Apply with its reason, and Generate for all from the dashboard. Also the panel regression moved here from item 1. | **Done (2026-11-03):** verified by the user on production after PR #27. In Page Builder, the AI Assist writes on the test pages worked with the confirm dialog, the `[audit]` line and the toast, each reverted, nothing published; an image in rich text shows Copy instead of Apply. From the dashboard, Generate for all wrote an approved description (the Banking article's description cleared for the test and restored). | — |
 | 15 | **Phase 10: rehearse the Symposium demo on the presenting laptop.** The script (`docs/SYMPOSIUM-DEMO-SCRIPT.md`) passed a scripted run in headless Edge with no network (plan Phase 10 status), but it hasn't been spoken through against a timer or shown on a projector. | **Closed by the user (2026-11-04).** | — (the presenter rehearses as they see fit: set-up, the six steps against a timer, the zoom level) |
+| 17 | **Phase 13 in Page Builder.** Built and checked in `?demo=1`, `&md=1`, and with the route against the BrandX replica (plan Phase 13 status). Not yet seen in Page Builder: Before / After at the panel's width with a real page, the replica's excerpt (its content starts past the excerpt, so the "Your content starts about N tokens in" line should show), and the route's larger response with `excerpt=1` (about 16 KB more) inside the iframe. | **Done (2026-11-05):** PR #35 merged and deployed to production; the user checked it and reported it working. | — (optional: the no-Markdown case on a real page needs a page or site without Markdown) |
+| 18 | **Phase 14 in Sitecore.** Built and checked in `?demo=1` and in headless Edge (plan Phase 14 status). Not yet seen in Sitecore: the picker's real list, a scan started from full screen, reopening on the remembered site, the widget still following its site, and Open in Page Builder through `window.open` (the host doesn't implement `navigateToExternalUrl`; the sandbox allows escaping popups, but it hasn't been tried). | Open. | The user checks it from the Apps menu after deploy: BrandKS (cached, about $0), then one small site (HelloWorld Corp, a few cents of `ai-check`). If `window.open` is blocked, try an `<a target="_blank">` link, then ask Sitecore whether the full-screen host will implement `navigateToExternalUrl`. |
 | 16 | **Anyone can call the API routes.** Found on 2026-11-04 after Phase 10. Four routes call Claude (`ai-check`, `assist`, `generate-meta`, `citation-probe`). Every route sends `Access-Control-Allow-Origin: *` and needs no login. Only `citation-probe` is rate-limited, in one instance's memory. Anyone with the production URL can spend the Anthropic budget. The key's monthly spend limit (set by the user) caps the cost, but abuse would then stop the AI features for everyone. | Open. Assigned to **Phase 12**. | Phase 12: spike first, then same-origin checks and rate limits that hold across instances. |

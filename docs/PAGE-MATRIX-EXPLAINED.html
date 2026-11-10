@@ -35,6 +35,11 @@
 <h1>Page Matrix Explained — A Guide for Marketers</h1>
 <p>The <strong>dashboard</strong> in <strong>Is It Agent-Ready? for SitecoreAI</strong> grades every page on your site and shows the results at a glance: one site score, one card per category, a heatmap of every page, and a <strong>Fix first</strong> list grouped by issue. Where the Page Builder panel is the detailed checklist for one page, the dashboard is the <strong>scorecard for the whole site</strong>.</p>
 <p>This guide explains what you see on the dashboard and why it matters. Use it as a demo cheat sheet.</p>
+<p><strong>Where to find it:</strong> the dashboard appears in two places in SitecoreAI, with the same tabs and the same results.</p>
+<ul>
+<li><strong>The dashboard widget</strong> shows the site you've selected in SitecoreAI.</li>
+<li><strong>The full-screen app</strong> opens from the <strong>Apps</strong> menu in SitecoreAI's header ("Is It Agent-Ready for SitecoreAI?") and uses the whole screen. It isn't tied to a site, so it has a <strong>site picker</strong> under the app name. It opens on the site you picked last time. Sites without a public web address in SitecoreAI are listed but can't be picked, because their pages can't be fetched. Both places share what they've scanned, so a site you scanned in the widget opens with its scores in full screen.</li>
+</ul>
 <hr/>
 <h2>The big idea: four questions every page must answer</h2>
 <p>AI assistants (ChatGPT, Claude, Gemini, Perplexity) and AI search now read your pages to answer people's questions. The dashboard scores each page on four plain questions:</p>
@@ -101,7 +106,7 @@
 <p><strong>Blocked pages:</strong> a page set to "noindex" in Sitecore (or tagged noindex/nosnippet) can't appear in AI answers at all, so it doesn't get a score. The dashboard shows it as <strong>Blocked</strong> and leaves it out of the site average.</p>
 <hr/>
 <h2>The header</h2>
-<p>The app name, your site's name and address, the <strong>Site type</strong> setting, when the site was last scanned, and <strong>Scan site</strong>, which rescans every page and re-runs the agent access checks. <strong>Site type</strong> (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.</p>
+<p>The app name, your site's name and address (in full screen, the site picker), the <strong>Site type</strong> setting, when the site was last scanned, and <strong>Scan site</strong>, which rescans every page and re-runs the agent access checks. <strong>Site type</strong> (Content site, Commerce, or App or API) tells the app which kind of site this is: App or API sites also get the agent protocols check, and Commerce sites the agentic checkout check.</p>
 <p>The dashboard has five tabs: <strong>Overview · Pages · Agent access · AI citations · Files</strong>.</p>
 <hr/>
 <h2>Overview</h2>
@@ -137,7 +142,7 @@
 <p>The descriptions go into each page's current version and follow your workflow; <strong>nothing is published</strong>. A page whose template has no meta description field can't be written, and says so. Each saved change is recorded (old and new value), and a message confirms how many were saved. The live pages, and their scores, change after you publish. In demo mode the suggestions are examples and nothing is sent to the AI; the confirmation still shows, but nothing is written.</p>
 <p>Every status has an icon and a word: ✓ Pass, ! Improve, ✕ Fix.</p>
 <h3>What changed since last scan</h3>
-<p>Next to Fix first, the news since the previous scan, worst first:</p>
+<p>Next to Fix first (on a wide screen, such as the full-screen app, beside the site score), the news since the previous scan, worst first:</p>
 <ul>
 <li><strong>▼ 18 /services dropped after the Oct 28 publish. Now needs work: One clear H1 and logical headings.</strong> A page lost 5 points or more; when it was published since the last scan, the card says when, and it names the checks that newly need work.</li>
 <li><strong>New: ChatGPT-User now gets 403 from your firewall (it got 200 last time).</strong> A search or user agent that could read the site and now can't (or <strong>▲</strong> can again). Training agents are left out: blocking them is your choice.</li>
@@ -243,6 +248,7 @@
 <li><strong>"Every status says what it is."</strong> An icon, a colour and a word, so nobody has to decode a colour.</li>
 <li><strong>"Measured, not guessed."</strong> The citation probe asks real questions with live web search and counts who the answer actually links to: "Cited in 2 of 7, found in 5 of 7, and this competitor was cited instead." The estimate beside it says why an engine can't cite you, straight from the Agent access results.</li>
 <li><strong>"What changed since last scan."</strong> A page that dropped after a publish, a firewall that started blocking ChatGPT-User, pages that became agent-ready: the news, without comparing reports by hand.</li>
+<li><strong>"Every site, full screen."</strong> From SitecoreAI's Apps menu the same dashboard opens across the whole screen, with a picker for every site in the organisation.</li>
 </ul>
 </body>
 </html>

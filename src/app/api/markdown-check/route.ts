@@ -15,7 +15,10 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-/** Evidence for P5 and P6: GET /api/markdown-check?url=https://example.com/page */
+/**
+ * Evidence for P5 and P6: GET /api/markdown-check?url=https://example.com/page
+ * `&excerpt=1` adds the HTML's first 16 KB, classified (the panel's Agent View).
+ */
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   if (!url) {
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const data = await collectMarkdownCheck(url);
+    const data = await collectMarkdownCheck(url, { excerpt: req.nextUrl.searchParams.get("excerpt") === "1" });
     // A hostname that resolves to a private address is only found at connect time.
     if (data.markdown.error === "blocked_url" && data.html.error === "blocked_url") {
       return NextResponse.json({ error: "blocked_url" }, { status: 400, headers: CORS_HEADERS });
