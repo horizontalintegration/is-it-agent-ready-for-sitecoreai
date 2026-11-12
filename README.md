@@ -62,12 +62,14 @@ Put these in `.env.local` for development and in your host's settings for deploy
 | `BRAND_VOICE_FILE` | No | Markdown brand-voice document, relative to the project root, used to ground meta generation (e.g. `brand/brandx.md`). Without it, a neutral default voice is used. |
 | `BRAND_NAME` | No | Brand name used in the generation prompts (e.g. `BrandX`). |
 | `SAFE_FETCH_ALLOW_HOSTS` | No | Comma-separated hostnames that skip the private-address check, e.g. `localhost` to scan a local rendering host. **Leave unset in production.** |
+| `UPSTASH_KV_REST_API_URL`, `UPSTASH_KV_REST_API_TOKEN` | Yes, in production | Upstash Redis (Vercel Marketplace, prefix `UPSTASH`), where the rate limits are counted across instances. Without them the limits are kept in each instance's memory, which is fine for local development. |
+| `RATE_LIMIT_<ROUTE>_IP_HOUR`, `RATE_LIMIT_<ROUTE>_DAY` | No | Rate limits for `AI_CHECK`, `GENERATE_META`, `ASSIST`, `CITATION_PROBE` and `PSI_CHECK`: calls per IP per hour, and per day for all callers. Defaults in `src/lib/server/rate-limit.ts` (about $3 a day of Claude at most). `0` refuses every call. |
 
 **Browser (`NEXT_PUBLIC_*`)**
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | Yes | Base URL of this app, prefixed to `/api/*` calls from inside the Sitecore iframe. `http://localhost:3000` in development. |
+| `NEXT_PUBLIC_APP_URL` | Yes | Base URL of this app, for links that open it outside the panel (View in dashboard). `http://localhost:3000` in development. The `/api/*` calls don't use it: they go to the page's own origin. |
 | `NEXT_PUBLIC_DEFAULT_SITE_DOMAIN` | Recommended | Published site URL (e.g. `https://www.example.com`), used when the SDK doesn't give a site hostname. |
 | `NEXT_PUBLIC_SITE_ROOT_PATH` | No | Content path of the site's Home item, if the dashboard can't find it through `xmc.sites`. |
 | `NEXT_PUBLIC_FIELD_TITLE`, `NEXT_PUBLIC_FIELD_META_DESCRIPTION`, `NEXT_PUBLIC_FIELD_OG_TITLE`, `NEXT_PUBLIC_FIELD_OG_DESCRIPTION` | No | Sitecore field names for the meta fields, if your templates don't use `pageTitle`, `MetaDescription`, `OpenGraphTitle`, `OpenGraphDescription`. |
@@ -84,6 +86,10 @@ AI check results are cached by a hash of the page title and text, in the browser
 ### Brand voice
 
 `brand/brandx.md` is the brand document for the BrandX demo site. To use your own brand, add a Markdown file under `brand/` (tone of voice, do's and don'ts, approved boilerplate, compliance rules) and set `BRAND_VOICE_FILE` and `BRAND_NAME`. Reading the brand kit directly from SitecoreAI is a planned enhancement.
+
+### Who may call the API routes
+
+Only the app's own pages. Each route refuses a request from another origin with a 403, and the routes that call Claude or PageSpeed have rate limits per IP per hour and per day, counted in Upstash Redis. Past a limit a route answers 429, and the panel and dashboard say which limit and when to try again. To call a Claude route by hand in development, send the page's own origin, e.g. `curl -H "Origin: http://localhost:3000" …`. Details: `docs/PAGE-CHECKS-TECHNICAL.md`, "Who may call the API routes".
 
 ## Demo mode
 

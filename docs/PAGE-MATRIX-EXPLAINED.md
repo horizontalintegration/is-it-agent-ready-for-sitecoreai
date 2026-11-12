@@ -54,6 +54,8 @@ The app name, your site's name and address (in full screen, the site picker), th
 
 The dashboard has five tabs: **Overview · Pages · Agent access · AI citations · Files**.
 
+**Daily limits on AI.** To keep the AI budget safe, the app allows only so many new AI requests an hour from one network, and so many a day for everyone (about 150 newly scanned pages, 40 generated descriptions and 30 citation probe requests). Pages whose text hasn't changed don't count. When a limit is reached, an amber note under the header says which one and when to try again, for example "Daily AI limit reached. Try again after 7:00 PM." Pages scanned meanwhile are scored without the AI checks and get their full score at the next scan.
+
 ---
 
 ## Overview
@@ -156,7 +158,7 @@ The totals read like **"Cited in the answer: 2 of 7 · Found in search results: 
 
 Sometimes Claude answers from memory without searching, even when asked to search. We then ask once more; if it still doesn't search, the question shows **Not searched** and is left out of the totals, because it says nothing about your site.
 
-**Cost and limits:** each question costs about 3 to 8 cents (Claude plus one web search; measured at about 3 cents on the BrandX replica), so a run of 8 is usually under $0.65. Probes run only when you click, never during a site scan. Results are kept for 7 days: **Run again** within a week shows the same results without asking again, except for questions that weren't searched. Editing one question asks only that one. The history of the last 10 runs is kept in your browser. A site can run at most 40 new probe questions an hour.
+**Cost and limits:** each question costs about 3 to 8 cents (Claude plus one web search; measured at about 3 cents on the BrandX replica), so a run of 8 is usually under $0.65. Probes run only when you click, never during a site scan. Results are kept for 7 days: **Run again** within a week shows the same results without asking again, except for questions that weren't searched. Editing one question asks only that one. The history of the last 10 runs is kept in your browser. A site can run at most 40 new probe questions an hour, and the app allows 30 new probe requests a day in all (see "Daily limits on AI" below).
 
 The caveat under the results says it plainly: **AI answers vary by time, location and engine. This is a sample, not a ranking.** The probes use Claude; other engines answer differently.
 

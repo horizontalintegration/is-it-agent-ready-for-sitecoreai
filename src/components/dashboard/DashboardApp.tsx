@@ -40,6 +40,7 @@ import type { SiteType } from "@/lib/checks/types";
 import { getConfiguredOrganization, getOrganizationInfo } from "@/lib/brand/organization";
 import { buildPagesEditorUrl, tenantNameFromHostState } from "@/lib/pages-editor-url";
 import { timeAgo } from "@/lib/relative-time";
+import { LimitBanner } from "@/components/shared/LimitBanner";
 import type { SiteOption } from "@/lib/sitecore/sites";
 import type { PageMatrixRow } from "@/types/dashboard";
 
@@ -316,6 +317,7 @@ export function DashboardApp({ client, isInitialized, site, sitePicker, siteErro
                 </Button>
               </div>
             </div>
+            <LimitBanner className="mt-2" />
             <TabsList aria-label="Dashboard sections" className="h-auto w-full justify-start gap-6 overflow-x-auto">
               <TabsTrigger value="overview" className={trigger}>Overview</TabsTrigger>
               <TabsTrigger value="pages" className={trigger}>Pages</TabsTrigger>

@@ -307,6 +307,8 @@ The **AI Assist** tab collects the fixes the panel can make for you, ordered by 
 - **Length limits** are shown under each suggestion (60 characters for the meta title, 120–160 for the meta description, 40–300 for FAQ answers, 125 for alt text). The count turns amber when a suggestion is outside the range, so you can trim it first.
 - Asking again for the same page text costs nothing: the answer is remembered until the text changes.
 
+**Daily limits on AI:** to keep the AI budget safe, the app allows only so many new AI requests an hour from one network, and so many a day for everyone. When a limit is reached, an amber note under the header says which one and when to try again, for example "Daily AI limit reached. Try again after 7:00 PM." Until then the AI checks (original content, follow-up questions) are left out of the score and AI Assist can't write new suggestions. Anything already answered keeps working.
+
 **In demo mode** (`?demo=1`), every fix shows an example suggestion, and nothing is sent to the AI. **Apply** opens the same confirmation box, but **Write to Sitecore** only says "Demo: nothing was written to Sitecore."
 
 ---

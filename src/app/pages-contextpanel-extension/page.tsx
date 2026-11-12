@@ -27,6 +27,7 @@ import { AssistTab } from "@/components/panel/AssistTab";
 import { WriteConfirmProvider } from "@/components/shared/WriteConfirm";
 import { demoAnswers } from "@/lib/assist/demo";
 import { Button } from "@/components/ui/button";
+import { LimitBanner } from "@/components/shared/LimitBanner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -294,6 +295,7 @@ export default function PagesContextPanel() {
             <Icon path={mdiRefresh} aria-hidden className={cn("size-5", isScanning && "animate-spin")} />
           </Button>
         </header>
+        <LimitBanner className="mx-4 mt-3 shrink-0" />
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="min-h-0 flex-1 gap-0">
           <TabsList aria-label="Panel sections" className="h-auto w-full shrink-0 justify-start gap-1 border-b px-2">

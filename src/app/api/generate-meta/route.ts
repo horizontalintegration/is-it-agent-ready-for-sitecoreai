@@ -4,7 +4,9 @@ import { contentKey } from "@/lib/ai/content-key";
 import { aiErrorResponse, aiResultCache, failureResponse, getModel, hasApiKey } from "@/lib/server/anthropic";
 import { readPageForQuestions } from "@/lib/server/citation-probe";
 import { generateMeta, isMetaField } from "@/lib/server/generate-meta";
+import { limitCall } from "@/lib/server/rate-limit";
 import { SafeFetchError } from "@/lib/server/safe-fetch";
+import { refuseCrossOrigin } from "@/lib/server/same-origin";
 
 /** Bump when the meta prompt changes, so cached bulk results aren't reused. */
 const META_CACHE_VERSION = "2026-11-03.1";
@@ -17,19 +19,11 @@ export const maxDuration = 60;
 // { value } response are what the UI and field write-back depend on.
 // ────────────────────────────────────────────────────────────────────────────
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
-}
-
 export async function POST(req: NextRequest) {
+  const refused = refuseCrossOrigin(req, { requireOrigin: true });
+  if (refused) return refused;
   if (!hasApiKey()) {
-    return NextResponse.json({ error: "api_key_missing" }, { status: 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "api_key_missing" }, { status: 500 });
   }
 
   let body: {
@@ -43,11 +37,11 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid_body" }, { status: 400, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
   if (!isMetaField(body.field)) {
-    return NextResponse.json({ error: "invalid_field" }, { status: 400, headers: CORS_HEADERS });
+    return NextResponse.json({ error: "invalid_field" }, { status: 400 });
   }
 
   const field = body.field;
@@ -67,11 +61,11 @@ export async function POST(req: NextRequest) {
       const blocked = err instanceof SafeFetchError;
       return NextResponse.json(
         { error: blocked ? "url_not_allowed" : "page_unreadable", detail: err instanceof Error ? err.message : undefined },
-        { status: blocked ? 400 : 502, headers: CORS_HEADERS },
+        { status: blocked ? 400 : 502 },
       );
     }
     if (!bodyText) {
-      return NextResponse.json({ error: "page_unreadable", detail: "no text on the page" }, { status: 502, headers: CORS_HEADERS });
+      return NextResponse.json({ error: "page_unreadable", detail: "no text on the page" }, { status: 502 });
     }
   }
 
@@ -86,26 +80,27 @@ export async function POST(req: NextRequest) {
   const hit = key ? (aiResultCache.get(key) as { value: string; maxChars: number; overLimit: boolean } | undefined) : undefined;
   if (hit) {
     console.info(`[generate-meta] ${field}: cache hit`);
-    return NextResponse.json({ field, ...hit, cached: true }, { headers: CORS_HEADERS });
+    return NextResponse.json({ field, ...hit, cached: true });
   }
+  const limited = await limitCall("generate-meta", req);
+  if (limited) return limited;
 
   try {
     const result = await generateMeta({ field, pageTitle, bodyText, currentValue, brand });
     if (result.ok && key) aiResultCache.set(key, { value: result.value, maxChars: result.maxChars, overLimit: result.overLimit });
     if (!result.ok) {
       if (result.error === "empty_value") {
-        return NextResponse.json({ error: "empty_value" }, { status: 502, headers: CORS_HEADERS });
+        return NextResponse.json({ error: "empty_value" }, { status: 502 });
       }
       const { status, body: errBody } = failureResponse(result);
-      return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+      return NextResponse.json(errBody, { status });
     }
 
     return NextResponse.json(
       { field, value: result.value, maxChars: result.maxChars, overLimit: result.overLimit },
-      { headers: CORS_HEADERS },
     );
   } catch (err) {
     const { status, body: errBody } = aiErrorResponse(err);
-    return NextResponse.json(errBody, { status, headers: CORS_HEADERS });
+    return NextResponse.json(errBody, { status });
   }
 }

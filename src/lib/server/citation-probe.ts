@@ -300,28 +300,5 @@ export function writeProbeCache(key: string, evidence: ProbeEvidence, now = Date
   probeCache.set(key, { at: now, evidence });
 }
 
-/** Uncached probes per site per hour. A page run is 5–10. */
-export const PROBES_PER_SITE_PER_HOUR = 40;
-const HOUR_MS = 60 * 60 * 1000;
-
-export class SiteRateLimiter {
-  private hits = new Map<string, number[]>();
-  constructor(private readonly limit = PROBES_PER_SITE_PER_HOUR, private readonly windowMs = HOUR_MS) {}
-
-  /** Records a probe for the site and returns true, or returns false when the site is over the limit. */
-  take(site: string, now = Date.now()): boolean {
-    const recent = (this.hits.get(site) ?? []).filter((t) => now - t < this.windowMs);
-    if (recent.length >= this.limit) {
-      this.hits.set(site, recent);
-      return false;
-    }
-    recent.push(now);
-    this.hits.set(site, recent);
-    return true;
-  }
-}
-
-export const probeLimiter = new SiteRateLimiter();
-
-/** The rate limit's key: the page's host without "www.". */
+/** The per-site rate limit's key (rate-limit.ts): the page's host without "www.". */
 export const siteOf = (pageUrl: string) => hostOf(pageUrl);

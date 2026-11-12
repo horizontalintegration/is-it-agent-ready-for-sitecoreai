@@ -5,7 +5,6 @@ import {
   generateQuestions,
   probeQuestion,
   readProbeCache,
-  SiteRateLimiter,
   writeProbeCache,
 } from "./citation-probe";
 import { fakeClient, fakeMessage } from "./anthropic-test-utils";
@@ -178,14 +177,5 @@ describe("cache and rate limit", () => {
     expect(readProbeCache("k1", 1_000 + PROBE_CACHE_MS - 1)).toBe(evidence);
     expect(readProbeCache("k1", 1_000 + PROBE_CACHE_MS)).toBeNull();
     expect(readProbeCache("missing")).toBeNull();
-  });
-
-  it("limits probes per site per hour", () => {
-    const limiter = new SiteRateLimiter(2, 1_000);
-    expect(limiter.take("a.example", 0)).toBe(true);
-    expect(limiter.take("a.example", 10)).toBe(true);
-    expect(limiter.take("a.example", 20)).toBe(false);
-    expect(limiter.take("b.example", 20)).toBe(true);
-    expect(limiter.take("a.example", 1_001)).toBe(true);
   });
 });

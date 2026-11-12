@@ -8,18 +8,8 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/generate-meta": ["./brand/**/*"],
   },
-  async headers() {
-    return [
-      {
-        source: "/api/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "Content-Type" },
-        ],
-      },
-    ];
-  },
+  // No CORS headers on /api: only the app's own pages call the routes, and
+  // each route refuses other origins (src/lib/server/same-origin.ts).
 };
 
 export default nextConfig;

@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AiResults } from "@/lib/rule-engine/types";
+import { activeLimit, readLimit } from "@/lib/api/limits";
 import { AI_CHECK_VERSION, contentKey } from "./content-key";
 
 const STORAGE_KEY = `aiDiscovery:ai-results:${AI_CHECK_VERSION}`;
@@ -66,10 +67,10 @@ export function writeAiResult(key: string, result: AiResults, store = defaultSto
 /**
  * AI check results for a page: from the cache when the content is unchanged,
  * otherwise from /api/ai-check. `force` skips the browser and server caches
- * (the panel's AI-only re-run). Returns null when the request fails.
+ * (the panel's AI-only re-run). Returns null when the request fails, and
+ * without asking while the ai-check rate limit is in force (`activeLimit`).
  */
 export async function fetchAiResults(
-  base: string,
   pageTitle: string,
   bodyText: string,
   opts: { force?: boolean } = {},
@@ -82,15 +83,22 @@ export async function fetchAiResults(
       return hit;
     }
   }
+  if (activeLimit("ai-check")) {
+    console.info(`[ai-cache] miss ${key.slice(0, 8)}: ai-check limit reached, skipped`);
+    return null;
+  }
   console.info(`[ai-cache] ${opts.force ? "forced re-run" : "miss"} ${key.slice(0, 8)}: calling ai-check`);
 
   try {
-    const res = await fetch(`${base}/api/ai-check`, {
+    const res = await fetch("/api/ai-check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pageTitle, bodyText, ...(opts.force ? { force: true } : {}) }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await readLimit("ai-check", res);
+      return null;
+    }
     const result = (await res.json()) as AiResults;
     writeAiResult(key, result);
     return result;

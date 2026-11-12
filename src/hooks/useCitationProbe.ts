@@ -17,6 +17,7 @@ import {
 } from "@/lib/citations/storage";
 import type { CitationDemo, ProbeEvidence, ProbeRun } from "@/lib/citations/types";
 import { localHistoryStore } from "@/lib/history/store";
+import { activeLimit, AI_BUSY_MESSAGE, limitMessage, readLimit } from "@/lib/api/limits";
 
 // The AI citations tab's Layer 2 (plan section 8): the question set, the
 // probe run and its history for one page. Every probe is one request to
@@ -24,7 +25,6 @@ import { localHistoryStore } from "@/lib/history/store";
 // read from the browser's cache (the server keeps its own cache too), so
 // running the same set again costs nothing. Demo mode never fetches.
 
-const API_BASE = process.env.NEXT_PUBLIC_APP_URL ?? "";
 const CONCURRENCY = 4;
 const DEFAULT_COUNTRY = "US";
 
@@ -53,11 +53,16 @@ export interface UseCitationProbeResult {
 }
 
 async function postJson<T>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${API_BASE}/api/citation-probe`, {
+  // Over a limit: the rest of the run fails at once, without asking.
+  const held = activeLimit("citation-probe");
+  if (held) throw new Error(limitMessage(held));
+  const res = await fetch("/api/citation-probe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const limit = await readLimit("citation-probe", res);
+  if (limit) throw new Error(limitMessage(limit));
   const data = (await res.json().catch(() => ({}))) as T & { error?: string; detail?: string };
   if (!res.ok || data.error) throw new Error(errorText(data.error, data.detail, res.status));
   return data;
@@ -65,8 +70,8 @@ async function postJson<T>(body: Record<string, unknown>): Promise<T> {
 
 function errorText(code: string | undefined, detail: string | undefined, status: number): string {
   switch (code) {
-    case "rate_limited":
-      return "Too many probes for this site in the last hour. Try again later.";
+    case "ai_busy":
+      return AI_BUSY_MESSAGE;
     case "page_fetch_failed":
       return "Couldn't read the page to suggest questions.";
     case "blocked_url":

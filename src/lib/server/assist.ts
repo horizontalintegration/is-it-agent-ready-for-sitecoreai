@@ -137,6 +137,11 @@ async function cacheKey(req: AssistRequest, model: string): Promise<string> {
   return contentKey([ASSIST_VERSION, kind, model, pageTitle, mainText.slice(0, PAGE_TEXT_MAX), JSON.stringify(rest)]);
 }
 
+/** Whether runAssist would answer from the cache, with no Claude call (the route's rate limit skips those). */
+export async function isAssistCached(req: AssistRequest): Promise<boolean> {
+  return aiResultCache.get(`assist:${await cacheKey(req, getModel())}`) !== undefined;
+}
+
 export async function runAssist(req: AssistRequest, brand: BrandVoice, client?: Anthropic): Promise<AssistResult> {
   const model = getModel();
   const key = await cacheKey(req, model);

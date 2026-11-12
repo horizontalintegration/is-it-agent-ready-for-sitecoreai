@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAiResults } from "@/lib/ai/ai-results-cache";
 import { normaliseText } from "@/lib/ai/content-key";
+import { readLimit } from "@/lib/api/limits";
 import type { DraftStatus } from "@/hooks/usePageHtml";
 import type {
   AiResults,
@@ -72,8 +73,6 @@ export function useScan(input: UseScanInput): UseScanResult {
   const [aiRequest, setAiRequest] = useState(0);
   const aiHandledRef = useRef(0);
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
   // Ref so the AI effect always reads the latest title without re-triggering
   // on every authoring field keystroke.
   const pageTitleRef = useRef(pageTitle);
@@ -85,9 +84,9 @@ export function useScan(input: UseScanInput): UseScanResult {
   const fetchHtml = useCallback(() => {
     const tokenParam = editingToken ? `&token=${encodeURIComponent(editingToken)}` : "";
     return tryJson<ParsedHtml>(
-      fetch(`${base}/api/preview-fetch?url=${encodeURIComponent(pageUrl)}${tokenParam}`)
+      fetch(`/api/preview-fetch?url=${encodeURIComponent(pageUrl)}${tokenParam}`)
     );
-  }, [base, pageUrl, editingToken]);
+  }, [pageUrl, editingToken]);
 
   // With no body text there's nothing to judge, so the call is skipped.
   // Results are cached by content hash, so unchanged text doesn't call Claude again.
@@ -100,7 +99,7 @@ export function useScan(input: UseScanInput): UseScanResult {
       console.info(`[scan] ai-check body: ${body.length} chars —`, body.slice(0, 200));
       const forUrl = pageUrlRef.current;
       setIsAiScanning(true);
-      fetchAiResults(base, title, body, { force }).then((result) => {
+      fetchAiResults(title, body, { force }).then((result) => {
         if (pageUrlRef.current !== forUrl) return;
         if (result) {
           setAi(result);
@@ -110,7 +109,7 @@ export function useScan(input: UseScanInput): UseScanResult {
         setIsAiScanning(false);
       });
     },
-    [base],
+    [],
   );
 
   // Fetch the live page whenever the page URL changes (i.e. the author
@@ -182,13 +181,16 @@ export function useScan(input: UseScanInput): UseScanResult {
     if (!pageUrl) return;
     setIsPsiScanning(true);
     tryJson<PsiResult>(
-      fetch(`${base}/api/psi-check?url=${encodeURIComponent(pageUrl)}`)
+      fetch(`/api/psi-check?url=${encodeURIComponent(pageUrl)}`).then(async (res) => {
+        await readLimit("psi-check", res);
+        return res;
+      })
     ).then((result) => {
       if (result) setPsi(result);
       setLastScannedAt(new Date());
       setIsPsiScanning(false);
     });
-  }, [pageUrl, base]);
+  }, [pageUrl]);
 
   const aiStale = ai !== null && aiBody !== "" && normaliseText(aiBody) !== normaliseText(bodyText);
 
